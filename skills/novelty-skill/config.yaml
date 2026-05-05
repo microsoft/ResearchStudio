@@ -1,0 +1,53 @@
+# NoveltySkill configuration
+# Default deployment: every model-driven phase uses the host LLM (whatever launched the skill).
+# Override only if you want per-phase routing.
+
+default_backend: host_llm
+
+# Per-profile overrides. Leave `backend` empty to inherit `default_backend`.
+profiles:
+  REASONING_LARGE:
+    backend: ""                       # used in Phase 3 (ideate), Phase 4 (audit), Phase 7 (reviewer attack)
+    min_context_tokens: 200000
+    requires: [json_schema, instruction_following]
+  REASONING_FAST:
+    backend: ""                       # used in Phase 1 (diagnose), Phase 2 (route), Phase 6 (claim design)
+    min_context_tokens: 32000
+    requires: [json_schema]
+  CLASSIFY_FAST:
+    backend: ""                       # used by sub-skill (intent, pattern_summary, novelty_check)
+    min_context_tokens: 8000
+    requires: [json_schema]
+  EMBEDDING:
+    backend: ""                       # always a dedicated embedding provider; no default
+    dim: 1024
+  VISION:
+    backend: ""                       # optional, off by default
+
+# External API keys (read from env)
+api_keys:
+  openalex_api_key: ${OPENALEX_API_KEY}
+  openreview_user:  ${OPENREVIEW_USER}
+  openreview_pass:  ${OPENREVIEW_PASS}
+
+# Time windows
+windows:
+  literature_broad_months: 24      # Phase 0 trend mapping (saturation, dominant patterns)
+  literature_recent_months: 4      # Phase 0 freshness scan
+  collision_check_months: 6        # Phase 5 collision check
+
+# Decision thresholds
+thresholds:
+  audit_min_score_per_dim: 3       # Phase 4 audit
+  audit_min_total: 28              # out of 40 (8 dims x 5)
+  collision_blocking_categories: [1, 2, 3, 4, 5, 6]
+  outside_taxonomy_max_per_query: 1
+  novelty_target: oral             # one of: publication | oral (default) | best_paper
+
+# Output
+output:
+  default_dir: ./novelty_skill_output
+  always_write_pdf: true
+  always_write_json: true
+  include_lit_appendix: true
+  include_risk_audit: true

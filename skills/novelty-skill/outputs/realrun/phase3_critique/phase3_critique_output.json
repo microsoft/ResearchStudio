@@ -1,0 +1,107 @@
+{
+  "_dryrun_note": "Phase 3.2 audit on C1 (RLHF finite-sample SFT-as-adversarial). Reads 1 sub-pattern card (C15 for primary analytic_refinement) + 1 innovation pattern card (assumption_audit_and_relax for secondary) + lit_table.md + anti-patterns.md + collision_hits.json (122 hits, 26 on-topic). Single LLM call.",
+
+  "candidate_id": "C1",
+
+  "composition_reject_check": {
+    "primary": {
+      "pattern_id": "analytic_refinement_of_loose_bounds",
+      "anchor": "sub_pattern:C15",
+      "tactical_failure_mode_quoted": "Three recurring failure modes in C15 rejects: (1) the 'sharpening' is a routine port of known machinery rather than a genuinely tighter object; (2) the targeted 'loose step' turns out not to be load-bearing; (3) the substitution introduces auxiliary assumptions that nullify the perceived tightness. Diagnostic: was the swap audibly tighter on the same object, or a re-derivation under different assumptions/algorithm?",
+      "reject_lessons_evaluated": [
+        {
+          "paper_id": "ICLR_2023_0245",
+          "lesson_quoted": "Targeting properties already established in the literature is substitution without sharpening — the targeted property must be genuinely loose downstream.",
+          "candidate_match": "no",
+          "reasoning": "The asymptotic limit step in W4399115631 has not been replaced by a finite-sample form anywhere in current RLHF theory literature; the residual ε(n, ...) is genuinely missing downstream, not already established."
+        },
+        {
+          "paper_id": "NeurIPS_2024_1182",
+          "lesson_quoted": "Adapting Adam-style proofs to Adafactor by bounding rank-1 approximation error reads as mechanical proof-template porting, not loose-primitive replacement.",
+          "candidate_match": "borderline",
+          "reasoning": "Bernstein-on-Σ_pref is a known concentration template; the question is whether replacing the asymptotic limit with Bernstein qualifies as 'mechanical port' or 'genuine sharpening'. The candidate argues it is genuine because Σ_pref structure is non-trivial (rank-deficient on preference manifold) — but this needs explicit demonstration in theoretical_leg, currently asserted not proven."
+        },
+        {
+          "paper_id": "ICML_2025_1674",
+          "lesson_quoted": "Relaxing global Lipschitz/smoothness to a local expected-gradient bound that 'unifies' analyses can be reading as assuming what is to be proved.",
+          "candidate_match": "borderline",
+          "reasoning": "The candidate's Bernstein bound assumes sub-Gaussian preference-gradient samples and bounded ‖∇R_proxy − ∇R_true‖_op. The boundedness assumption may be where the loose step gets hidden — if the bound on operator norm is loose, the cascaded ε is also loose. Need to verify the assumption is the structurally correct condition, not 'assumed what's to be proved'."
+        },
+        {
+          "paper_id": "NeurIPS_2023_0586",
+          "lesson_quoted": "Introducing cubic regularization to enable a rate is changing the algorithm rather than sharpening the analysis.",
+          "candidate_match": "no",
+          "reasoning": "Candidate explicitly preserves the SFT-anchored PPO algorithm; only the β_t coefficient schedule changes (which is a hyperparameter of W4399115631's algorithm, not an algorithm change)."
+        }
+      ],
+      "verdict": "borderline"
+    },
+    "secondaries": [
+      {
+        "pattern_id": "assumption_audit_and_relax",
+        "anchor": "pattern_card:failure_modes",
+        "failure_modes_evaluated": [
+          {
+            "failure_mode_quoted": "Asserting an assumption is being relaxed without demonstrating it was actually binding — the proposed change works empirically but the paper never shows that the identified assumption (rather than capacity, data quality, or regularization) drove the prior failure.",
+            "candidate_match": "borderline",
+            "reasoning": "Candidate audits the assumption 'KL-to-SFT distance is sufficient to track proxy-true reward divergence in finite sample' but does not demonstrate this assumption is binding via a separation result (e.g., constructing a specific Σ_pref structure under which W4399115631's asymptotic form is provably Ω(√(d/n)) loose). Without this separation, the binding-status of the audited assumption is asserted not proved."
+          },
+          {
+            "failure_mode_quoted": "Identifying the right hidden assumption but offering only an empirical fix — no theorem characterizes when the relaxation succeeds, so the contribution reduces to a heuristic with one new dataset.",
+            "candidate_match": "no",
+            "reasoning": "Candidate has theoretical_leg with explicit Bernstein-type theorem; not empirical fix only."
+          },
+          {
+            "failure_mode_quoted": "Combining the relaxation with multiple other novelties at once, so reviewers cannot attribute gains to the audited assumption — papers stack components and skip ablations isolating the targeted assumption.",
+            "candidate_match": "no",
+            "reasoning": "Single intervention: β_t schedule. Algorithm and rest of training pipeline byte-identical to W4399115631's prescription."
+          },
+          {
+            "failure_mode_quoted": "Treating the relaxation as a 'natural extension' that inherits the prior framework's validity automatically, without verifying that the inherited theory actually carries over.",
+            "candidate_match": "no",
+            "reasoning": "Candidate explicitly proves the finite-sample form; does not assume W4399115631's asymptotic argument trivially extends."
+          },
+          {
+            "failure_mode_quoted": "Auditing an assumption that is genuinely violated, but in a regime where the violation is small enough that the proposed fix yields only marginal improvements.",
+            "candidate_match": "no",
+            "reasoning": "User's regime is HH-RLHF n ≈ 161k preference pairs against d ~ million-parameter policy gradients. The asymptotic limit n → ∞ is loose by orders of magnitude in this regime; the fix's predicted gain (≥ 0.15 bits/token at peak) is not marginal."
+          }
+        ],
+        "verdict": "borderline"
+      }
+    ],
+    "verdict": "borderline",
+    "reasoning": "Both primary and secondary borderline on the same axis: the candidate audits the audited assumption (KL-to-SFT sufficient at finite sample) and proposes a sharper Bernstein bound, but does not provide a separation result demonstrating the audited assumption is binding (the operator-norm bound on ‖∇R_proxy − ∇R_true‖ may itself be the loose step that survives the rewrite). C15 reject lesson 'substitution introduces auxiliary assumptions that nullify the perceived tightness' (ICML_2025_1674) is the dominant risk."
+  },
+
+  "anti_pattern_check": {
+    "matched_pattern_id": null,
+    "required_mitigation_quoted": null,
+    "mitigation_substantively_delivered": "n/a",
+    "reasoning": "Composition is {analytic_refinement_of_loose_bounds, assumption_audit_and_relax}. None of the 3 anti-patterns (audit+auxiliary_signal / audit+invariance / audit+surgical) match this composition."
+  },
+
+  "paper_pointed_threat": {
+    "threat_paper_id": "arxiv:2602.21765v1",
+    "threat_source": "collision_hits",
+    "subsumption_argument": "arxiv:2602.21765v1 ('Generalisation of RLHF under Reward Shift and Clipped KL Regularisation') develops generalisation theory for RLHF accounting for reward shift and clipped KL, presenting bounds that decompose the generalisation error into (1) sampling error from prompts/rollouts, (2) reward-shift error, (3) KL-clipping error. The candidate's residual ε(n, ‖∇R_proxy − ∇R_true‖) is functionally analogous to (1) — a finite-sample residual from preference data sampling. Threat paper's claim is broader (3 error sources, generalization bound) but its 'optimal KL clipping threshold' practical implication overlaps directly with our 'derived β_t schedule'. A reviewer will lead with: 'why is your Bernstein-on-Σ_pref result not a special case of arxiv:2602.21765's generalization bound under the assumption that reward shift and KL clipping errors are dominated by sampling error?'",
+    "addressable_via": "Sharpen differentiation_from_lit to (a) add arxiv:2602.21765v1 entry with explicit delta — their bound is on generalization error decomposition (one-time threshold + budget allocation); ours is on the regularization SCHEDULE β_t derived from a finite-sample equivalence to a specific classical object (adversarial regularizer). Different artifact (schedule vs bound), different starting point (W4399115631 equivalence vs general RLHF theory). (b) Add a corollary in theoretical_leg showing the relationship — under specific assumptions, our residual recovers their sampling-error term as a special case, but not vice versa."
+  },
+
+  "verdict": "revise",
+  "verdict_layer": "soft_judgment",
+  "verdict_rationale": "Hard floor did not fire (composition_reject_check verdict=borderline not triggered; anti_pattern null; threat_paper_id is not exact-mechanism overlap with arxiv:2602.21765v1 since the artifact and starting point differ). Soft judgment: composition_reject_check is borderline because (a) C15 reject lesson 'substitution introduces auxiliary assumptions that nullify tightness' (ICML_2025_1674) is partially matched — the operator-norm assumption may be the new loose step, and (b) assumption_audit secondary lacks explicit binding-constraint separation result, the same load-bearing weakness flagged by C15's failure mode 3. Both are addressable in theoretical_leg by adding the separation construction. Plus paper_pointed_threat arxiv:2602.21765v1 is real — addressable via sharper differentiation_from_lit. Two load-bearing borderline findings + one addressable threat → revise.",
+
+  "revision_targets": [
+    {
+      "field": "theoretical_leg",
+      "issue": "C15 reject lesson 'auxiliary assumption nullifies tightness' (ICML_2025_1674) borderline — operator-norm assumption on ‖∇R_proxy − ∇R_true‖ may be the new loose step; assumption_audit binding-constraint separation missing",
+      "fix_direction": "Add a Separation Lemma to theoretical_leg: construct a specific preference-gradient covariance structure Σ_pref* (e.g., rank-deficient on a low-dim subspace of the preference manifold) under which the asymptotic SFT-as-adversarial equivalence W4399115631 is provably Ω(√(d/n)) loose, demonstrating (1) the assumption being relaxed (asymptotic-limit-on-Σ_pref) IS the binding constraint and not a peripheral concern, and (2) the operator-norm assumption is structurally tight rather than a covertly assumed tightness. The separation should explicitly construct an instance where W4399115631's bound is loose AND our finite-sample form recovers the optimal rate, distinguishing genuine sharpening from mechanical port."
+    },
+    {
+      "field": "differentiation_from_lit",
+      "issue": "paper_pointed_threat arxiv:2602.21765v1 (Generalisation of RLHF under Reward Shift and Clipped KL) — claim-level overlap on 'finite-sample principled bound for KL regularization in RLHF'",
+      "fix_direction": "Add a 5th differentiation_from_lit entry for arxiv:2602.21765v1 with explicit delta: their decomposition produces a one-time optimal KL-clipping threshold + budget allocation under generalization error decomposition (3 sources: sampling, shift, clipping). Ours produces a dynamic regularization SCHEDULE β_t derivable per-checkpoint from preference-gradient covariance, anchored to a specific classical-object equivalence (SFT loss ↔ adversarial regularizer per W4399115631), not a generic generalization bound. Show the corollary direction: our residual ε(n, Σ_pref) recovers their sampling-error term under specific assumptions, but their bound does not yield our schedule structure. Different artifact and starting point."
+    }
+  ]
+}

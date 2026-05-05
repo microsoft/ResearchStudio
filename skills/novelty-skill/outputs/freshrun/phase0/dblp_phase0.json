@@ -1,0 +1,81 @@
+[
+ {
+  "title": "Motion Consistency Model: Accelerating Video Diffusion with Disentangled Motion-Appearance Distillation",
+  "title_norm": "motion consistency model accelerating video diffusion with disentangled motion a",
+  "abstract": "",
+  "year": 2024,
+  "venue": "NeurIPS",
+  "authors": [
+   "Yuanhao Zhai 0001",
+   "Kevin Lin",
+   "Zhengyuan Yang",
+   "Linjie Li",
+   "Jianfeng Wang",
+   "Chung-Ching Lin"
+  ],
+  "citations": null,
+  "source": "dblp",
+  "source_id": "conf/nips/0001LYLWLD0W24",
+  "doi": "",
+  "paper_url": "http://papers.nips.cc/paper_files/paper/2024/hash/c859b99b5d717c9035e79d43dfd69435-Abstract-Conference.html",
+  "published_iso": ""
+ },
+ {
+  "title": "Morse: Dual-Sampling for Lossless Acceleration of Diffusion Models",
+  "title_norm": "morse dual sampling for lossless acceleration of diffusion models",
+  "abstract": "",
+  "year": 2025,
+  "venue": "ICML",
+  "authors": [
+   "Chao Li",
+   "Jiawei Fan",
+   "Anbang Yao"
+  ],
+  "citations": null,
+  "source": "dblp",
+  "source_id": "conf/icml/LiFY25",
+  "doi": "",
+  "paper_url": "https://proceedings.mlr.press/v267/li25m.html",
+  "published_iso": ""
+ },
+ {
+  "title": "SCott: Accelerating Diffusion Models with Stochastic Consistency Distillation",
+  "title_norm": "scott accelerating diffusion models with stochastic consistency distillation",
+  "abstract": "",
+  "year": 2025,
+  "venue": "AAAI",
+  "authors": [
+   "Hongjian Liu",
+   "Qingsong Xie",
+   "Tianxiang Ye",
+   "Zhijie Deng",
+   "Chen Chen 0015",
+   "Shixiang Tang"
+  ],
+  "citations": null,
+  "source": "dblp",
+  "source_id": "conf/aaai/LiuXYDCTFLZ25",
+  "doi": "10.1609/AAAI.V39I5.32580",
+  "paper_url": "https://doi.org/10.1609/aaai.v39i5.32580",
+  "published_iso": ""
+ },
+ {
+  "title": "Acc3D: Accelerating Single Image to 3D Diffusion Models via Edge Consistency Guided Score Distillation",
+  "title_norm": "acc3d accelerating single image to 3d diffusion models via edge consistency guid",
+  "abstract": "",
+  "year": 2025,
+  "venue": "CVPR",
+  "authors": [
+   "Kendong Liu",
+   "Zhiyu Zhu",
+   "Hui Liu 0032",
+   "Junhui Hou"
+  ],
+  "citations": null,
+  "source": "dblp",
+  "source_id": "conf/cvpr/LiuZ0H25",
+  "doi": "10.1109/CVPR52734.2025.01680",
+  "paper_url": "https://openaccess.thecvf.com/content/CVPR2025/html/Liu_Acc3D_Accelerating_Single_Image_to_3D_Diffusion_Models_via_Edge_CVPR_2025_paper.html",
+  "published_iso": ""
+ }
+]

@@ -1,0 +1,14 @@
+openreview-py
+zhipuai
+chromadb
+sentence-transformers
+fastmcp
+arxiv
+scholarly>=1.7.11
+tqdm
+jsonlines
+pandas
+numpy
+pytest
+python-dotenv
+sniffio

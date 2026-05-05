@@ -1,0 +1,94 @@
+{
+  "_dryrun_note": "Phase 2.2 generation reading: innovation-patterns/formal_reframing_via_equivalence.md + innovation-patterns/assumption_audit_and_relax.md + innovation-sub-patterns/C28.md (parent: formal_reframing) + closest_adjacent abstracts. Anti-pattern check: clean (Composition 1 doesn't match any of 3 anti-patterns).",
+
+  "candidate_id": "C1",
+  "title": "Consistency Distillation as Augmented-Data ELBO at the Boundary",
+  "hook": "The CD boundary instability isn't a numerical issue — it's a missing data augmentation. Consistency distillation IS the ELBO of an augmented model.",
+  "problem": "The user's EDM-to-4NFE consistency-loss distillation produces a student that lags the teacher precisely at the boundary regime t→0 where the score Lipschitz constant blows up. Recent work treats the boundary failure as a numerical instability requiring stabilization or stochasticity (SCott); we propose it is structurally a missing-data-augmentation issue.",
+
+  "pattern_composition": [
+    {
+      "pattern_id": "formal_reframing_via_equivalence",
+      "role": "primary",
+      "what_this_pattern_contributes": "Recovers the consistency-loss objective as an exact instance of a known classical object (ELBO of an augmented model under Tweedie reformulation), producing a closed-form algorithmic consequence rather than asserted theoretical consistency."
+    },
+    {
+      "pattern_id": "assumption_audit_and_relax",
+      "role": "secondary",
+      "what_this_pattern_contributes": "Names the implicit assumption being relaxed by the augmentation — the standard CD's claim that the score function is well-defined at all t including t→0 — and shows the augmented form replaces it with a measurable smoothness condition on A_θ."
+    }
+  ],
+
+  "sub_pattern_id": "C28",
+  "sub_pattern_rationale": {
+    "when_to_pick_quote": "Pick this tactic when the target is a single empirically successful loss/acquisition/regularizer/update rule that has no probabilistic story, and you can name in advance the classical object it most resembles (ELBO, Bayes posterior, KSD, MMD, minimax-optimal density estimator).",
+    "how_lens_question_operationalizes_here": "The consistency-loss is empirically successful (CD has driven significant few-step diffusion progress) but lacks a clean probabilistic story specifically at the boundary regime — closest_adjacent papers (SCott, Motion CM) treat the boundary fix as heuristic stochasticity or empirical disentanglement. The classical target named in advance: the ELBO of a teacher-conditioned augmented model. The bridge: a Tweedie-style reformulation. This parallels the corpus's representative Oral example NeurIPS_2023_0753, which identified an implicit data augmentation that makes monotonically-weighted diffusion training equal the ELBO of an augmented model — our candidate makes the structurally analogous identification for two-network distillation, where the augmentation must be parameterized by the teacher's score function (a construction NeurIPS_2023_0753 does not require because it operates in single-network setting).",
+    "siblings_considered": [
+      {
+        "sibling_sub_pattern_id": "C16",
+        "why_not_picked": "C16 (Mechanism Reframing via Mathematical Equivalence) reformulates COMPUTATIONAL OPERATORS for efficiency wins (e.g., kernel decomposition in attention). Our bottleneck is in the OBJECTIVE (consistency-loss specification at t→0), not an operator that needs cheaper implementation. Wrong cluster."
+      },
+      {
+        "sibling_sub_pattern_id": "C08",
+        "why_not_picked": "C08 (Formal Abstraction for Tight Expressivity Bounds) derives capability bounds for architectures via algebra/circuits. We are not bounding what an architecture can compute — we are reformulating an objective so its boundary regime is well-specified. Wrong target type."
+      }
+    ]
+  },
+  "outside_taxonomy": false,
+
+  "core_mechanism": "(1) Define the augmentation A_θ parameterized by the EDM teacher's score function: A_θ(x_t) is a noise-conditioned distribution interpolating between x_t and the teacher's predicted x_0. (2) Show via Tweedie's formula that L_CD(x_t, t) at t→0 equals the ELBO of the augmented model under A_θ in the limit Δt→0; the equality persists at finite NFE under a stated condition on A_θ's smoothness. (3) Replace the consistency-loss term with the augmented-ELBO directly — the augmentation IS the well-specified loss. (4) Train the 4-NFE student on augmented-ELBO and verify the equivalence empirically by computing |L_CD - L_augmented_ELBO| at multiple t-points against the theoretical ε(t) bound.",
+
+  "novelty_claim": "First derivation that consistency-distillation IS an augmented-data ELBO; the boundary-regime instability is recovered as a missing augmentation rather than a numerical singularity. Subsumes SCott's stochastic CD heuristic and Motion CM's disentangled-distillation heuristic as special cases of the augmentation distribution choice.",
+
+  "theoretical_leg": "Theorem (Augmented-ELBO Equivalence): L_CD(x_t, t) = ELBO_{A_θ}(x_t, t) + ε(t), where ε(t) → 0 as Δt → 0 and ε(t) ≤ C · ‖∇²s_θ(x_t,t)‖_op · Δt² at finite NFE for an explicit constant C depending on the teacher's noise schedule. Proof: Tweedie's formula applied to the consistency-loss term, with teacher-score-conditioned augmentation distribution.",
+
+  "engineering_leg": "~8 lines of PyTorch replacing the consistency-loss term with augmented-ELBO computation: parameterize A_θ from the teacher (existing teacher-score evaluation already in CD training loop, no extra cost), sample augmented data, use standard ELBO gradient. Rest of training pipeline byte-identical.",
+
+  "differentiation_from_lit": [
+    {
+      "paper_id": "dblp:conf/aaai/LiuXYDCTFLZ25",
+      "delta": "SCott introduces stochasticity into CD as a heuristic relaxation of the deterministic-trajectory assumption; we derive the relaxation as a specific augmentation distribution A_θ that satisfies the ELBO equivalence — SCott's stochasticity is recovered as a special case of A_θ's noise schedule, not introduced as an independent design choice."
+    },
+    {
+      "paper_id": "dblp:conf/nips/0001LYLWLD0W24",
+      "delta": "Motion CM disentangles motion vs appearance trajectories empirically for video CD; our derivation provides a structural reason why disentanglement is sufficient (the disentangled appearance trajectory has lower Lipschitz constant at boundary, satisfying our smoothness condition on A_θ) and shows the disentanglement need not be domain-specific to video — it follows from the augmentation framework."
+    },
+    {
+      "paper_id": "arxiv:2603.08709v1",
+      "delta": "Scale Space Diffusion connects diffusion timestep semantics to scale-space theory at the conceptual level; we produce a closed-form algebraic identity (CD = augmented ELBO) that scale-space framing does not — the equivalence yields an executable training change, not just a conceptual reframing."
+    },
+    {
+      "paper_id": "arxiv:2604.10857v1",
+      "delta": "Query Lower Bounds establishes information-theoretic minimum on score evaluations for diffusion sampling; our equivalence theorem characterizes when the consistency-loss objective at finite NFE is well-specified — the lower bound gives 'how few queries are achievable in principle', our theorem gives 'how the loss should be specified to actually run at that few-NFE regime'."
+    }
+  ],
+
+  "falsification_prediction": {
+    "what_we_run": "Train 4-NFE consistency-distilled student on CIFAR-10 with EDM teacher (50 NFE), comparing three setups: (a) vanilla CD, (b) SCott stochastic CD, (c) augmented-ELBO loss. Measure FID@4NFE on dev set and verify the equivalence theorem empirically by computing L_CD vs L_augmented_ELBO on held-out batches at t∈{0.005, 0.05, 0.5}.",
+    "success": "FID@4NFE for augmented-ELBO student within 0.3 FID of EDM teacher@50NFE on CIFAR-10 dev; equivalence theorem's ε(t) bound holds within numerical precision (∥L_CD - L_augmented_ELBO∥ < theoretical ε at all 3 t-points) for the augmented-ELBO student.",
+    "failure_a_numerical": "FID@4NFE for augmented-ELBO student does not improve over vanilla CD or SCott (gap unchanged or worse).",
+    "failure_b_mechanistic": "FID improves but the equivalence theorem's empirical ε at boundary t (t=0.005) exceeds the theoretical bound — indicating the augmented-ELBO interpretation is wrong (the reformulation isn't actually the loss being optimized; the FID gain came from regularization side-effect).",
+    "compute_budget": "0.6 GPU-day for the minimal experiment (CIFAR-10, single seed, 3 setups × 4 t-points probed). User has 4×A100×3wk ≈ 84 A100-day; budget is 2 orders of magnitude under available — feasible.",
+    "decision_rule": "if failure_a or failure_b → kill"
+  },
+
+  "mechanism_probe_proposal": "Compute L_CD(x_t, t) and L_augmented_ELBO(x_t, t) on the same held-out batches at t∈{0.005, 0.05, 0.5} — the equivalence theorem says they should agree within ε(t). Discriminating outcome: empirical |L_CD - L_augmented_ELBO| ≤ ε_theoretical at each t for the augmented-ELBO student; for vanilla CD student the gap is unbounded at t=0.005. This distinguishes 'reformulation IS the loss' (success) from 'reformulation is just a regularizer' (failure_b).",
+
+  "R0_case": {
+    "novelty_case": "First derivation that consistency-distillation IS an augmented-data ELBO at the boundary (signature: derivable theorem coupled to an observable empirical regime — the ε(t) gap measurable across t-points). Closest_adjacent papers (SCott, Motion CM, Scale Space Diffusion, Query Lower Bounds) leave this open at the user's boundary regime: CD has no derived equivalence to a classical object that holds at t→0.",
+    "almost_prior": {
+      "paper_id": "NeurIPS_2023_0753",
+      "what_step_was_missed": "NeurIPS_2023_0753 derived the augmented-ELBO equivalence for monotonically-weighted DIFFUSION TRAINING (single-network setting). The parallel for two-network DISTILLATION requires constructing the teacher-conditioned augmentation distribution A_θ — they don't construct this because their setting doesn't have a teacher. The structural step they missed: extending the augmentation construction to two-network coupling."
+    }
+  },
+
+  "is_reframing_contribution": true,
+
+  "signature_terms": [
+    "consistency distillation augmented ELBO",
+    "Tweedie formula CD equivalence",
+    "teacher-conditioned augmentation distribution",
+    "boundary regime score Lipschitz",
+    "two-network distillation ELBO"
+  ]
+}

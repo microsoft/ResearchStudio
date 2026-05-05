@@ -1,0 +1,93 @@
+# Decompose and Recombine
+_id: `decomposition_into_tractable_stages` · confidence: **high** · O31/H5/R32 · meta cov O27/31, H5/5, R32/32_
+
+**Plain alias**. _Break the hard task into stages with clear interfaces_
+
+**Definition**. Break a monolithic problem along a natural axis (time, space, modality, agents, distributions, objective components, reasoning steps) into sub-problems each solvable with simpler machinery, then recombine their solutions to reconstruct the global answer.
+
+**Operational signature**. partition problem P along axis A into {P_i} → solve each P_i with targeted method → aggregate/compose {solution_i} back to a solution for P with preserved guarantees
+
+**When to apply**. When P is intractable as a whole but admits a separation (timescale, locality, privacy boundary, subgoal, Pareto component) that isolates orthogonal difficulties.
+
+**Sample note**. n_oral=31, n_reject=32 with 87% and 100% meta-coverage respectively support strong claims; HC sample is exactly n=5, so the oral_hc_gap should be read as suggestive rather than statistically firm.
+
+## Step-by-Step
+1. Pick the decomposition axis: timescale, locality, privacy boundary, sub-population, computational stage — the axis must be intrinsic to the problem, not arbitrary.
+2. Partition P into sub-problems {P_i} where each P_i has a known or constructible solution method targeted at its specific structure.
+3. Specify the interface contract between stages: what each exposes, what invariants each preserves, how composition errors propagate.
+4. Solve each P_i; for each, name the method and why it's appropriate at this granularity (not a generic solver).
+5. Aggregate the sub-solutions back to a solution for P with stated guarantees — preservation theorem, ablation chain, or known invariant.
+6. Demonstrate via ablation that the decomposition (not bundled tricks) is the binding factor in the observed gain.
+
+## Success conditions (from Oral)
+- **The decomposition axis is justified by an explicit independence or separation claim that is then proved or measured (timescale separation, factor independence, multiplicative decomposability), not merely asserted.**
+  - evidence: `ICML_2025_1738`, `NeurIPS_2025_1864`, `NeurIPS_2025_1873`, `NeurIPS_2025_1945`, `ICML_2024_1138`
+  - Oral papers turn 'decompose' from a design intuition into a load-bearing technical claim: 1738 proves loss factors multiplicatively into LR-anneal and distribution-shift components and fits each separately; 1864 proves overfitting and generalization are separated by an analytically computed timescale gap; 1873 and 1138 use timescale separation to make a coupled nonconvex system tractable; 1945 derives τ_gen=O(1) vs τ_mem=Ω(n). The independence is not assumed — it is the central theorem.
+- **Each sub-problem is solvable with strictly simpler / pre-existing machinery, and the recombination operator is explicit and lossless on the property being claimed (accuracy, identity, convergence rate).**
+  - evidence: `ICLR_2023_0337`, `ICLR_2024_0826`, `NeurIPS_2025_1854`, `ICML_2024_1072`, `ICLR_2025_1603`
+  - 0337 splits multi-step reasoning into Selection and Inference, each within a 7B LM's single-step capability, and the loop is the recombination; 1854 splits long-motion generation into SPDM (segments) + TPDM (transitions) with a phase-state interface; 1072 factorizes speech into independent codec streams that recombine coherently at synthesis; 0826 uses execution states (not syntax) as the interface between sub-programs; 1603 retrieves clips then interpolates. The interface between stages is concrete and the gain over end-to-end is directly attributable to it.
+- **The chosen axis exposes a *non-obvious* compositional structure — semantic execution state instead of syntax, factorized latent instead of holistic signal, hierarchical/recursive instead of flat — and the paper articulates why the prevailing axis was wrong.**
+  - evidence: `ICLR_2024_0826`, `ICLR_2024_0881`, `ICML_2023_0466`, `NeurIPS_2024_1328`, `NeurIPS_2025_1915`
+  - 0826 explicitly argues that execution states (semantic) decompose better than program syntax; 0881 argues theorem libraries should be mutable, not static; 0466 extends a flat automaton with a call-stack subroutine semantics; 1328 and 1915 decompose a generative signal into part-level streams (identity/motion or head/body/hand) whose independence is geometrically motivated. Reviewers reward the reframe of *what* to decompose along, not just the act of decomposing.
+- **Decomposition is paired with a recombination guarantee — convergence rate matched, global coherence preserved, or empirical equivalence-to-noise validated — rather than relying on the parts being 'good enough' separately.**
+  - evidence: `ICML_2023_0413`, `ICLR_2025_1541`, `ICML_2025_1791`, `NeurIPS_2025_1830`
+  - 0413 proves Error Feedback in non-convex FL recovers full-precision rates with linear speedup despite being decomposed across heterogeneous clients; 1541 proves convergence with parameters depending only on system-level (not per-component) quantities; 1791 measures inter-model curve differences against intra-run seed noise to show the decomposition is exact, not just approximate; 1830 derives a multiscale equation that matches three observed phases. The 'recombine' step is held to a quantitative bar.
+- **When the decomposition surfaces a meta-decision (when/where to spend compute), it is implemented as a separate dedicated module with its own training signal, not absorbed into the primary model.**
+  - evidence: `ICLR_2023_0272`, `ICLR_2025_1505`, `ICLR_2024_0922`
+  - 0272 adds a dedicated mask-predictor that tells the symbolic reasoner where to act; 1505 adds an introspection network separate from the prediction network for early-exit decisions; 0922 separates hypothesis generation from hypothesis testing/refinement. Decomposition becomes architectural — the meta-component has a distinct training objective — rather than a prompt-level trick.
+
+## Failure modes (from Reject)
+- **Decomposition is proposed but ablations do not isolate which component drives the gain, leaving open whether a simpler baseline matches it.**
+  - evidence: `ICLR_2023_0234`, `ICLR_2024_0814`, `ICLR_2025_1605`, `ICLR_2025_1514`
+  - Meta-reviews flag this directly: 0234 — random selection performs within one std of the proposed method on final accuracy despite the elaborate decomposition; 0814 — selection procedure is not ablated independently from the single-objective oracle; 1605 — clustering and prompt-init ablations missing; 1514 — modular planner/executor not ablated, accuracy gains do not justify 6× compute. The paper says 'we decompose'; reviewers ask 'and what part of the decomposition is doing the work?'
+- **Two known techniques are stitched together along a plausible decomposition axis without showing the axis addresses the binding constraint.**
+  - evidence: `NeurIPS_2024_1160`, `NeurIPS_2024_1174`, `ICLR_2025_1429`
+  - 1160 layers blockchain + FL + anomaly detection without showing which layer solves the cited problem; 1174 conditions a GAN on a structural embedding for inertial signals but reviewers cite limited novelty over standard augmentation; without convincing motivation; 1429 reformulates centralized ML-IRL into federated form but reviewers find limited differentiation from prior work. The decomposition is engineering composition, not a structural insight that resolves a specific obstruction.
+- **Distributed/federated reformulation that assumes away the hard case of the decomposition rather than confronting it.**
+  - evidence: `ICLR_2024_0960`, `ICLR_2023_0310`, `NeurIPS_2023_0634`
+  - 0960's Byzantine-resilience theorem holds only when Byzantine clients form a small fraction over all iterations — the AC says 'the really interesting case is the one where Byzantine clients can form a majority in some iterations [...] this difficult case is not studied'; 0310's bilevel formulation is criticized for shaky basic assumptions; 0634 sits in a crowded space without isolating its contribution. The decomposition is technically correct but pre-empts the hardness it claims to address.
+- **Decomposition is recast amortization or a known wrapper, presented as a new method rather than as the application of a known pattern.**
+  - evidence: `ICLR_2023_0271`, `ICLR_2023_0280`, `NeurIPS_2024_1311`
+  - 0271 (predict params from datasets), 0280 (Meta OT — predict warm-start), and 1311 (predict quantum-circuit params) are each reviewed as plausible amortization frameworks but rejected for lacking either compelling applications, scope, or differentiation from concurrent work. When decomposition reduces to 'train an offline predictor for the inner loop,' reviewers want either a new theoretical guarantee or a use case where the pattern is uniquely enabling.
+- **Decomposition adds complexity without a clear net win on the metric that motivated it.**
+  - evidence: `NeurIPS_2023_0635`, `NeurIPS_2023_0666`, `ICML_2025_1812`, `ICLR_2024_0902`
+  - 0635 — 'idea of local and global knowledge distillation significantly complicates the federated learning setting' with too many tunable variables; 0666 — disentangling lighting/texture is conceptually clean but quantitative gains are marginal and qualitative results inconsistent; 1812 — manual transition-token selection makes the decomposition fragile and narrow; 0902 — multi-objective evolutionary SR cannot demonstrate advantage over baselines. The decomposition is real but its overhead is not amortized by the result.
+- **Multi-objective / Pareto reformulations that replace a scalar weighting with a richer structure but cannot show the new structure unlocks a regime the old one missed.**
+  - evidence: `ICLR_2025_1424`, `ICLR_2025_1356`, `ICLR_2024_0814`
+  - 1424 reframes IB trade-offs as multi-objective optimization, but reviewers cite small datasets and unproven stability — the non-convexity-of-frontier claim is not isolated as the limiting factor; 1356 combines MTO statistics with linear scalarization but reviewers find the contribution limited; 0814 provably traces the Pareto front but is compared to only one baseline. Replacing scalar with vector objectives is structurally appealing, but reviewers demand evidence the scalar form was demonstrably the bottleneck.
+
+## Oral vs Reject gap
+> Oral papers earn the decomposition by promoting it from design intuition to a load-bearing technical claim: they either prove the parts are independent (multiplicative loss in 1738; timescale gap in 1864/1945; mean-field PDE separation in 1138/1830) or measure inter-component coupling against a noise floor (1791). Reject papers assert the decomposition and ablate the *whole pipeline*, leaving reviewers unable to tell whether the chosen axis (per-client, per-objective, planner/executor, blockchain+FL+anomaly) is the binding constraint or just one of many possible carvings — 0234, 0814, 1514, 1605, and 1424 are all flagged for this exact gap. Second, Oral papers specify the recombination operator with a quantitative property it must preserve (rate, identity, coherence-within-noise), while Reject papers stitch components with heuristic glue and report end-task numbers — when those numbers are marginal (0666, 0902) or the cost balloons (1514: 6× slower), the decomposition has nothing to fall back on. Third, Oral papers articulate *why the prevailing axis was wrong* (semantic vs syntactic in 0826; mutable vs static library in 0881; recursive vs flat formalism in 0466), whereas Reject papers decompose along the most obvious axis without engaging the cognitive barrier they had to break.
+
+## Oral vs HC gap
+> HC sample (n=5) is at the threshold; reading them as a contrast: HC papers (0624 EmbodiedGPT, 0656 HuggingGPT, 0677 LLM+PDDL, 0756 VideoComposer, 0942 SEINE) use decomposition as an *engineering integration* pattern — compose pre-existing systems, route subtasks to specialists, surface intermediate latents as conditioning — and meta-reviews praise utility and breadth while flagging "limited technical novelty" or "concept previously explored." Oral papers, by contrast, use decomposition to expose *new analytical structure* (timescale separation, factorizable training dynamics, recursive automata semantics) that yields a theorem or a measurement at the noise floor. The HC bar is "this composition works and is useful"; the Oral bar is "this decomposition reveals a previously invisible structural property of the system."
+
+## Reviewer expectations
+- _[reject_reviews]_ Show, with an ablation that holds everything else fixed, which component of the decomposition is responsible for the gain — random or simpler baselines must be ruled out, not just outperformed in aggregate.
+- _[reject_reviews]_ When the decomposition is a federated/distributed reformulation, do not assume away the hard case (e.g., majority-Byzantine rounds, full participation) the original problem made hard; address it head-on.
+- _[oral_reviews]_ Provide a quantitative recombination guarantee — convergence rate matched, generalization gap derived, curves collapsed within seed noise — not just qualitative coherence.
+- _[both]_ When introducing modular pipelines (planner+executor, mask+reasoner, codec+diffusion), demonstrate compute/latency cost is justified by the accuracy or controllability gain; reviewers explicitly weigh this trade-off.
+- _[oral_reviews]_ Articulate why the natural axis of decomposition is the *right* one — what hidden structure (timescale, factor, semantic state) the chosen axis exposes that the obvious axis would obscure.
+- _[reject_reviews]_ If the decomposition reduces to amortization or to a wrapper around an existing solver, provide either a new theoretical property or a setting where the wrapper is uniquely enabling — otherwise reviewers call it incremental.
+
+## Cognitive barriers
+- Treating a process as monolithic by default — reasoning as a single capability (0337), symbolic constraints as globally enforced (0272), libraries as static expert artifacts (0881), face dynamics as a single high-dimensional signal (1328) — blocks the move to view the process as composed of separable sub-operations.
+- Assuming coupled nonconvex dynamics are intractable end-of-story rather than searching for a different analysis frame (mean-field, timescale separation, multiscale) that makes them decomposable — the cognitive cost of switching mathematical machinery (1138, 1864, 1830) is what stops the decomposition from being attempted.
+- Confusing the natural unit with the right unit: program syntax instead of execution state (0826), holistic motion instead of part-level streams (1915), absolute outputs instead of ordinal rankings — practitioners default to the most visible decomposition axis even when a less obvious axis carries the actual independence structure.
+- Believing that joint modeling is needed for global coherence (factorized synthesis 'risks inconsistencies' — 1072; selection/inference 'must be end-to-end' — 0337), so the burden of proof feels asymmetrically high on the decomposer to show recombination is lossless, even when the joint formulation has no such evidence in its favor.
+
+## Representative examples
+- **[Oral]** `ICML_2025_1738` — Proves the continual-pretraining loss decomposes *multiplicatively* into a distribution-shift factor and an LR-annealing factor, fits each independently, and recombines them into a predictive law that holds across hyperparameter settings — the cleanest example of 'independence is a theorem, not a hope'.
+  - _Lesson_: Independence is a theorem, not a hope — proving the loss decomposes multiplicatively into independent factors lets each be fit separately and recombined into a predictive law.
+- **[Oral]** `ICLR_2024_0826` — ExeDec argues the right unit of decomposition is *execution state* (what each sub-program produces), not program syntax — a deliberate reframe of the decomposition axis that exposes the compositional generalization gap others were missing.
+  - _Lesson_: The decomposition AXIS can itself be the contribution — choosing execution state over program syntax exposes a compositional gap others missed entirely.
+- **[Oral]** `NeurIPS_2025_1854` — Splits long-motion generation into SPDM (semantic clips) + TPDM (transitions) with a phase-space interface borrowed from physics-based animation — each sub-problem becomes independently tractable and the recombination is geometrically meaningful, not heuristic stitching.
+  - _Lesson_: Borrow interface contracts from neighboring fields (here: phase-space animation) — geometric interfaces between stages produce meaningful recombination, not heuristic stitching.
+- **[Oral]** `NeurIPS_2025_1945` — Derives two distinct training timescales (τ_gen=O(1), τ_mem=Ω(n)) for diffusion models and proves the gap grows with dataset size — turning early stopping from a heuristic into an emergent property of a decomposable training dynamic.
+  - _Lesson_: When the decomposition has emergent structure (τ_gen vs τ_mem with provable gap), heuristics like early stopping become first-principles consequences.
+- **[Reject]** `ICLR_2025_1514` — MSR-ViR decomposes VideoQA into planner + grounded executors but the meta-review notes the gain does not justify a 6× compute increase and the decomposition's per-module contribution is not isolated — a textbook 'modularity without ablations' failure.
+  - _Lesson_: A decomposition that demands 6× compute must demonstrate per-module contribution via ablation — without isolating which module pays for the cost, modular gain looks like a brute-force win.
+- **[Reject]** `ICLR_2024_0960` — Extends Byzantine-resilient FL to partial participation but, per the AC, 'assumes away' the hard case where Byzantine clients can form a majority in some rounds — the decomposition is technically correct but evades the regime that made the problem interesting.
+  - _Lesson_: Decompositions that 'assume away' the hardest regime (Byzantine majority) are technically correct but evade the case that made the problem interesting.
+- **[Reject]** `ICLR_2023_0234` — Proposes a sophisticated ranking-preserving condensation surrogate, but the meta-review observes random selection performs within one std on final accuracy — exemplifying decomposition that cannot demonstrate it is the binding factor in observed gains.
+  - _Lesson_: If random selection performs within one std of the proposed decomposition, the decomposition is not the binding factor in the reported gains — ablation against the trivial baseline is mandatory.

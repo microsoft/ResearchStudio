@@ -1,0 +1,23 @@
+{
+  "step_name": "pattern_summary",
+  "rubric_file": "/home/ntu/zqh/research/novelty_skill/skills/novelty-lit-search/references/pattern-summary-rubric.md",
+  "inputs": {
+    "lit_results": "/home/ntu/zqh/research/novelty_skill/skills/novelty-skill/outputs/realrun/phase0/lit_results.json",
+    "lit_table_columns": [
+      "paper_id",
+      "year_month",
+      "venue",
+      "title",
+      "methodology tags",
+      "bottleneck this paper targets",
+      "open issue / unresolved gap",
+      "resolves_problem",
+      "retrieved_via"
+    ]
+  },
+  "expected_outputs": [
+    "lit_table.md"
+  ],
+  "instruction": "Read pattern-summary-rubric.md, classify each paper from lit_results into 1-3 of the 13 methodologies, tag bottleneck_targeted / open_issue / resolves_problem per the rubric (resolves_problem is high-bar; ≤5% of papers — leave empty otherwise). Render lit_table.md only (columns per inputs). The methodology distribution and saturation flags are derived by Phase 1 Step 1.0 from lit_table directly; no separate summary file needed.",
+  "re_invocation": "no re-invocation; write lit_table.md directly to out_dir; Phase 1 entry assertion will pick it up"
+}

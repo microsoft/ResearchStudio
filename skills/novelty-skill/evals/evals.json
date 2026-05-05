@@ -1,0 +1,83 @@
+{
+  "skill_name": "novelty-skill",
+  "purpose": "Starter eval set for the iteration loop documented in skill-creator. Use these as the seed for with-skill vs baseline comparisons. Add real user queries from the working notebook over time.",
+  "scope_note": "novelty-skill produces ONE Oral-level (top ~5%) idea per query. The skill emits exactly one of three outcomes: an idea-card PDF (audit advance / revise→3.3), do_not_generate.md (Phase 1 OOD), or phase_3_failed.md (audit abandons). There are no degraded-tier fallbacks — when the audit cannot clear, the run abandons rather than emit a half-baked artifact.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "diffusion_sampling_acceleration_oral_target",
+      "prompt": "I'm working on speeding up diffusion model sampling. Currently I distill an EDM teacher (50 NFE) into a consistency-loss student targeting 4 NFE. I have 4 A100s for 3 weeks. Target venue: ICLR 2026.",
+      "expected_behavior": [
+        "Phase 0 orchestrator emits .intent_extraction_pending sentinel; host LLM produces 3-5 search queries from intent-recognition.md and re-invokes phase0 with --queries",
+        "Phase 0 retrieval succeeds: lit_grounding_mode = real, ≥40 deduped papers in lit_table.md tagged with methodology / bottleneck / open_issue",
+        "Phase 1 lens probes: ≥2 active lenses with sharpness ≥ 2 after persistence × activity caps, citing Phase-0 paper IDs in literature_grounding; bottleneck statement is a concrete literature-grounded gap paragraph (NOT a category label like 'optimization')",
+        "Phase 2 generates K=3 candidates anchored on three different active lenses; each carries D6 (gap closure) + R0_strength (novelty advocacy); winner selected by argmax(D6 + R0_strength); falsification_prediction.what_we_run + .compute_budget < 7 GPU-days + mechanism_probe_proposal all present",
+        "Phase 3 collision check (6-month focused): each retrieved hit classified into the 7-class taxonomy; categories 1-6 trigger remediation, only category 7 passes through with delta in differentiation_from_lit",
+        "Phase 3 audit: D4 (falsifiability) ≥ 4, D5 (leg balance) ≥ 4, D6 (gap closure) ≥ 4 for advance verdict; non-compensatory",
+        "Phase 3 reviewer simulation: all four attackers (R1-R4) remediated in final_candidate OR R1 cancelled by R0; R3 mechanism_rebuttal references mechanism_probe_proposal; R0 advocate_passed = true with R0_strength ≥ 3",
+        "Phase 4 expansion produces motivation (problem_framing × active lenses, why_now, why_prior_stopped[], what_changes_when_gap_closes, oral_case_mechanism), method_flow (numbered steps with linked_component / linked_falsification), claims, falsification_prediction (echoed verbatim), feasibility_validation (5 sub-checks with overall verdict), abstract_draft, reviewer_concerns_and_responses (R3 entry includes mechanism_rebuttal)",
+        "Output is one idea-card PDF (or honest phase_3_failed.md with explicit reasons); compute is feasible (4×A100×3wk = ~84 A100-days vs 7 GPU-day budget = feasible by an order of magnitude)"
+      ],
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 2,
+      "name": "rl_reward_hacking_diagnosis",
+      "prompt": "I'm seeing reward hacking in PPO-trained agents on a simulated robot manipulation benchmark. The reward signal is the natural one (success completion) but the policy finds an exploit. I have a small lab GPU cluster (8 A100s) and ~6 weeks. What's the most defensible Oral-level proposal I could pursue?",
+      "expected_behavior": [
+        "Phase 1 active lenses include either evaluation_validity_via_controlled_perturbation OR mechanistic_probing_with_intervention (the reward-hacking framing is fundamentally about evaluation validity / mechanism localization)",
+        "Phase 2 K=3 candidates: at least one anchors on evaluation_validity_via_controlled_perturbation; tactical_cluster_id selected with structured tactical_cluster_rationale (4 fields)",
+        "Phase 3 collision filters out at least one candidate that overlaps with recent reward-hacking work (the field is hot — Anthropic, METR, etc.)",
+        "If no candidate clears the audit hard floor (D4/D5/D6 ≥ 4), the skill HONESTLY emits phase_3_failed.md with explicit 'why audit abandoned' diagnosis — does NOT inflate to advance"
+      ],
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 3,
+      "name": "ood_input_too_vague",
+      "prompt": "I want to publish a paper at NeurIPS this year. What should I work on?",
+      "expected_behavior": [
+        "Phase 1 routes to state='do_not_generate' (no domain / baseline / data / specific bottleneck — fails OOD trigger from intake-routing.md)",
+        "Output is a do_not_generate.md with concrete remedial steps (literature mapping, dataset audit, baseline reproduction)",
+        "No ideas are generated; Phase 2-4 are skipped",
+        "The user is asked to provide: domain, current baseline, available data, target venue (venue is given but no other context)"
+      ],
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 4,
+      "name": "stretch_best_paper_diagnostic",
+      "prompt": "My area is mechanistic interpretability of LLMs. I have access to base model checkpoints up to 70B, 32 H100s for 3 months, and a strong collaborator on the theory side. I want to push for the strongest possible result — give me the Oral-level proposal AND a clear diagnostic of what would push above Oral toward Best Paper.",
+      "expected_behavior": [
+        "Phase 2 candidate generation includes the C3 Oral-level reframing variant (counterintuitive hook + minimality + reframing-first); this is where Best-Paper-shaped ideas typically emerge",
+        "Phase 3.3 meta-(b) stretch diagnostic is sharp and references the candidate's specific PC-bias type (Strong-PC / Community / Mixed lens) per methodology-pc-bias.md, not a generic 'add more experiments' answer",
+        "Phase 4 output's idea-card PDF renders meta_review.best_paper_gap as an appendix section (informational; the moves named there are NOT folded into method_flow / falsification — the user's commitment is the Oral target, the diagnostic is what extra work would push further)",
+        "Output is exactly one idea card (NOT '2 ideas' as in earlier scope); internal K=1 generation produces no alt_candidates"
+      ],
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 5,
+      "name": "outside_taxonomy_warranted",
+      "prompt": "I want to study how AI agents form sub-skills emergently when given long-horizon tasks in open-ended environments — closer to developmental psychology than traditional ML training. I have substantial compute and 4 months. Find me an Oral-level proposal.",
+      "expected_behavior": [
+        "Phase 2 candidate generation may set outside_taxonomy=true on the winner candidate when no methodology composition cleanly serves the diagnosed gap",
+        "outside_justification names each rejected child cluster (4 fields populated, NOT a generic 'none of the methodologies fit')",
+        "Phase 3 audit's D3 (methodology + tactic fit) is set to null when outside_taxonomy=true; outside_justification is verified instead — the audit reads the rejected-cluster list and confirms each was named",
+        "advance is still reachable for outside_taxonomy candidates IF D4/D5/D6 ≥ 4 (no D3 substitution required); the candidate is not penalized for not fitting historically-induced patterns"
+      ],
+      "files": [],
+      "assertions": []
+    }
+  ],
+  "next_steps": [
+    "Run each eval with the skill installed and without (baseline). Use skill-creator's iteration loop: skills/novelty-skill-workspace/iteration-N/eval-{id}/{with_skill,without_skill}/outputs/",
+    "Draft programmatically-checkable assertions for each eval. Examples: 'phase1_output.json contains state in [proceed, needs_clarification, do_not_generate]', 'phase2_output.json.k3_candidates length == 3', 'phase4_output.json.feasibility_validation.overall in [feasible, tight, infeasible]'.",
+    "Use generate_review.py from skill-creator to produce the side-by-side viewer.",
+    "Iterate on the skill based on user review."
+  ]
+}

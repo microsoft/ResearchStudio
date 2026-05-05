@@ -1,0 +1,201 @@
+[
+ {
+  "title": "NI Sampling: Accelerating Discrete Diffusion Sampling by Token Order Optimization",
+  "title_norm": "ni sampling accelerating discrete diffusion sampling by token order optimization",
+  "abstract": "Discrete diffusion language models (dLLMs) have recently emerged as a promising alternative to traditional autoregressive approaches, offering the flexibility to generate tokens in arbitrary orders and the potential of parallel decoding. However, existing heuristic sampling strategies remain inefficient: they choose only a small part of tokens to sample at each step, leaving substantial room for improvement. In this work, we study the problem of token sampling order optimization and demonstrate its significant potential for acceleration. Specifically, we find that fully leveraging correct predictions at each step can reduce the number of sampling iterations by an order of magnitude without compromising accuracy. Based on this, we propose Neural Indicator Sampling (NI Sampling), a general sampling order optimization framework that utilize a neural indicator to decide which tokens should be sampled at each step. We further propose a novel trajectory-preserving objective to train the indicator. Experiments on LLaDA and Dream models across multiple benchmarks show that our method achieves up to 14.3$\\times$ acceleration over full-step sampling with negligible performance drop, and consistently outperforms confidence threshold sampling in the accuracy-step trade-off. Code is available at https://github.com/imagination-research/NI-Sampling.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Enshu Liu",
+   "Xuefei Ning",
+   "Yu Wang",
+   "Zinan Lin"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.18471v2",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.18471v2",
+  "published_iso": "2026-04-20T16:22:59Z"
+ },
+ {
+  "title": "Diffusion Mental Averages",
+  "title_norm": "diffusion mental averages",
+  "abstract": "Can a diffusion model produce its own \"mental average\" of a concept-one that is as sharp and realistic as a typical sample? We introduce Diffusion Mental Averages (DMA), a model-centric answer to this question. While prior methods aim to average image collections, they produce blurry results when applied to diffusion samples from the same prompt. These data-centric techniques operate outside the model, ignoring the generative process. In contrast, DMA averages within the diffusion model's semantic space, as discovered by recent studies. Since this space evolves across timesteps and lacks a direct decoder, we cast averaging as trajectory alignment: optimize multiple noise latents so their denoising trajectories progressively converge toward shared coarse-to-fine semantics, yielding a single sharp prototype. We extend our approach to multimodal concepts (e.g., dogs with many breeds) by clustering samples in semantically-rich spaces such as CLIP and applying Textual Inversion or LoRA to bridge CLIP clusters into diffusion space. This is, to our knowledge, the first approach that delivers consistent, realistic averages, even for abstract concepts, serving as a concrete visual summary and a lens into model biases and concept representation.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Phonphrm Thawatdamrongkit",
+   "Sukit Seripanitkarn",
+   "Supasorn Suwajanakorn"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.29239v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.29239v1",
+  "published_iso": "2026-03-31T04:08:20Z"
+ },
+ {
+  "title": "Diffusion-DRF: Free, Rich, and Differentiable Reward for Video Diffusion Fine-Tuning",
+  "title_norm": "diffusion drf free rich and differentiable reward for video diffusion fine tunin",
+  "abstract": "Video diffusion alignment has been heavily relied on scalar rewards. These rewards are typically derived from learned reward models in human preference datasets, requiring additional training and extensive collection. Moreover, scalar rewards provide coarse, global supervision, offering limited prompt-generation mismatch credit assignment and making models prone to reward exploitation and unstable optimization. We propose Diffusion-DRF, a free, rich, and differentiable reward framework for video diffusion fine-tuning. Diffusion-DRF employs a frozen, off-the-shelf Vision-Language Model (VLM) as the critic, eliminating the need for reward model training. Instead of relying on a single scalar reward, it decomposes each user prompt into multi-dimensional questions with freeform dense VQA explanation queries, yielding information-rich feedback. By direct differentiable optimization over this rich feedback, Diffusion-DRF achieves stable reward-based tuning without preference datasets collection. Diffusion-DRF achieves significant gains both quantitatively and qualitatively, outperforming state-of-the-art Flow-GRPO by 4.74% in overall performance on unseen VBench-2.0.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Yifan Wang",
+   "Yanyu Li",
+   "Gordon Guocheng Qian",
+   "Sergey Tulyakov",
+   "Yun Fu",
+   "Anil Kag"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2601.04153v2",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2601.04153v2",
+  "published_iso": "2026-01-07T18:05:08Z"
+ },
+ {
+  "title": "Discrete diffusion samplers and bridges: Off-policy algorithms and applications in latent spaces",
+  "title_norm": "discrete diffusion samplers and bridges off policy algorithms and applications i",
+  "abstract": "Sampling from a distribution $p(x) \\propto e^{-\\mathcal{E}(x)}$ known up to a normalising constant is an important and challenging problem in statistics. Recent years have seen the rise of a new family of amortised sampling algorithms, commonly referred to as diffusion samplers, that enable fast and efficient sampling from an unnormalised density. Such algorithms have been widely studied for continuous-space sampling tasks; however, their application to problems in discrete space remains largely unexplored. Although some progress has been made in this area, discrete diffusion samplers do not take full advantage of ideas commonly used for continuous-space sampling. In this paper, we propose to bridge this gap by introducing off-policy training techniques for discrete diffusion samplers. We show that these techniques improve the performance of discrete samplers on both established and new synthetic benchmarks. Next, we generalise discrete diffusion samplers to the task of bridging between two arbitrary distributions, introducing data-to-energy Schrödinger bridge training for the discrete domain for the first time. Lastly, we showcase the application of the proposed diffusion samplers to data-free posterior sampling in the discrete latent spaces of image generative models.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Arran Carter",
+   "Sanghyeok Choi",
+   "Kirill Tamogashev",
+   "Víctor Elvira",
+   "Nikolay Malkin"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.05961v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.05961v1",
+  "published_iso": "2026-02-05T18:16:57Z"
+ },
+ {
+  "title": "Accelerating Diffusion Decoders via Multi-Scale Sampling and One-Step Distillation",
+  "title_norm": "accelerating diffusion decoders via multi scale sampling and one step distillati",
+  "abstract": "Image tokenization plays a central role in modern generative modeling by mapping visual inputs into compact representations that serve as an intermediate signal between pixels and generative models. Diffusion-based decoders have recently been adopted in image tokenization to reconstruct images from latent representations with high perceptual fidelity. In contrast to diffusion models used for downstream generation, these decoders are dedicated to faithful reconstruction rather than content generation. However, their iterative sampling process introduces significant latency, making them impractical for real-time or large-scale applications. In this work, we introduce a two-stage acceleration framework to address this inefficiency. First, we propose a multi-scale sampling strategy, where decoding begins at a coarse resolution and progressively refines the output by doubling the resolution at each stage, achieving a theoretical speedup of $\\mathcal{O}(\\log n)$ compared to standard full-resolution sampling. Second, we distill the diffusion decoder at each scale into a single-step denoising model, enabling fast and high-quality reconstructions in a single forward pass per scale. Together, these techniques yield an order-of-magnitude reduction in decoding time with little degradation in output quality. Our approach provides a practical pathway toward efficient yet expressive image tokenizers. We hope it serves as a foundation for future work in efficient visual tokenization and downstream generation.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Chuhan Wang",
+   "Hao Chen"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.19570v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.19570v1",
+  "published_iso": "2026-03-20T02:24:58Z"
+ },
+ {
+  "title": "Accelerating Diffusion-based Video Editing via Heterogeneous Caching: Beyond Full Computing at Sampled Denoising Timestep",
+  "title_norm": "accelerating diffusion based video editing via heterogeneous caching beyond full",
+  "abstract": "Diffusion-based video editing has emerged as an important paradigm for high-quality and flexible content generation. However, despite their generality and strong modeling capacity, Diffusion Transformers (DiT) remain computationally expensive due to the iterative denoising process, posing challenges for practical deployment. Existing video diffusion acceleration methods primarily exploit denoising timestep-level feature reuse, which mitigates the redundancy in denoising process, but overlooks the architectural redundancy within the DiT that many attention operations over spatio-temporal tokens are redundantly executed, offering little to no incremental contribution to the model output. This work introduces HetCache, a training-free diffusion acceleration framework designed to exploit the inherent heterogeneity in diffusion-based masked video-to-video (MV2V) generation and editing. Instead of uniformly reuse or randomly sampling tokens, HetCache assesses the contextual relevance and interaction strength among various types of tokens in designated computing steps. Guided by spatial priors, it divides the spatial-temporal tokens in DiT model into context and generative tokens, and selectively caches the context tokens that exhibit the strongest correlation and most representative semantics with generative ones. This strategy reduces redundant attention operations while maintaining editing consistency and fidelity. Experiments show that HetCache achieves a noticeable acceleration, including a 2.67$\\times$ latency speedup and FLOPs reduction over commonly used foundation models, with negligible degradation in editing quality.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Tianyi Liu",
+   "Ye Lu",
+   "Linfeng Zhang",
+   "Chen Cai",
+   "Jianjun Gao",
+   "Yi Wang",
+   "Kim-Hui Yap",
+   "Lap-Pui Chau"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.24260v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.24260v1",
+  "published_iso": "2026-03-25T12:53:31Z"
+ },
+ {
+  "title": "Beyond VLM-Based Rewards: Diffusion-Native Latent Reward Modeling",
+  "title_norm": "beyond vlm based rewards diffusion native latent reward modeling",
+  "abstract": "Preference optimization for diffusion and flow-matching models relies on reward functions that are both discriminatively robust and computationally efficient. Vision-Language Models (VLMs) have emerged as the primary reward provider, leveraging their rich multimodal priors to guide alignment. However, their computation and memory cost can be substantial, and optimizing a latent diffusion generator through a pixel-space reward introduces a domain mismatch that complicates alignment. In this paper, we propose DiNa-LRM, a diffusion-native latent reward model that formulates preference learning directly on noisy diffusion states. Our method introduces a noise-calibrated Thurstone likelihood with diffusion-noise-dependent uncertainty. DiNa-LRM leverages a pretrained latent diffusion backbone with a timestep-conditioned reward head, and supports inference-time noise ensembling, providing a diffusion-native mechanism for test-time scaling and robust rewarding. Across image alignment benchmarks, DiNa-LRM substantially outperforms existing diffusion-based reward baselines and achieves performance competitive with state-of-the-art VLMs at a fraction of the computational cost. In preference optimization, we demonstrate that DiNa-LRM improves preference optimization dynamics, enabling faster and more resource-efficient model alignment.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Gongye Liu",
+   "Bo Yang",
+   "Yida Zhi",
+   "Zhizhou Zhong",
+   "Lei Ke",
+   "Didan Deng",
+   "Han Gao",
+   "Yongxiang Huang",
+   "Kaihao Zhang",
+   "Hongbo Fu",
+   "Wenhan Luo"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.11146v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.11146v1",
+  "published_iso": "2026-02-11T18:57:29Z"
+ },
+ {
+  "title": "Scale Space Diffusion",
+  "title_norm": "scale space diffusion",
+  "abstract": "Diffusion models degrade images through noise, and reversing this process reveals an information hierarchy across timesteps. Scale-space theory exhibits a similar hierarchy via low-pass filtering. We formalize this connection and show that highly noisy diffusion states contain no more information than small, downsampled images - raising the question of why they must be processed at full resolution. To address this, we fuse scale spaces into the diffusion process by formulating a family of diffusion models with generalized linear degradations and practical implementations. Using downsampling as the degradation yields our proposed Scale Space Diffusion. To support Scale Space Diffusion, we introduce Flexi-UNet, a UNet variant that performs resolution-preserving and resolution-increasing denoising using only the necessary parts of the network. We evaluate our framework on CelebA and ImageNet and analyze its scaling behavior across resolutions and network depths. Our project website ( https://prateksha.github.io/projects/scale-space-diffusion/ ) is available publicly.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Soumik Mukhopadhyay",
+   "Prateksha Udhayanan",
+   "Abhinav Shrivastava"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.08709v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.08709v1",
+  "published_iso": "2026-03-09T17:59:42Z"
+ },
+ {
+  "title": "Learning Illumination Control in Diffusion Models",
+  "title_norm": "learning illumination control in diffusion models",
+  "abstract": "Controlling illumination in images is essential for photography and visual content creation. While closed-source models have demonstrated impressive illumination control, open-source alternatives either require heavy control inputs like depth maps or do not release their data and code. We present a fully open-source and reproducible pipeline for learning illumination control in diffusion models. Our approach builds a data engine that transforms well-lit images into supervised training triplets consisting of a poorly-illuminated input image, a natural language lighting instruction, and a well-illuminated output image. We finetune a diffusion model on this data and demonstrate significant improvements over baseline SD 1.5, SDXL, and FLUX.1-dev models in perceptual similarity, structural similarity, and identity preservation. Our work provides a reproducible solution built entirely with open-source tools and publicly available data. We release all our code, data, and model weights publicly.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Nishit Anand",
+   "Manan Suri",
+   "Christopher Metzler",
+   "Dinesh Manocha",
+   "Ramani Duraiswami"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.24877v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.24877v1",
+  "published_iso": "2026-04-27T18:03:42Z"
+ },
+ {
+  "title": "Query Lower Bounds for Diffusion Sampling",
+  "title_norm": "query lower bounds for diffusion sampling",
+  "abstract": "Diffusion models generate samples by iteratively querying learned score estimates. A rapidly growing literature focuses on accelerating sampling by minimizing the number of score evaluations, yet the information-theoretic limits of such acceleration remain unclear.\n  In this work, we establish the first score query lower bounds for diffusion sampling. We prove that for $d$-dimensional distributions, given access to score estimates with polynomial accuracy $\\varepsilon=d^{-O(1)}$ (in any $L^p$ sense), any sampling algorithm requires $\\widetildeΩ(\\sqrt{d})$ adaptive score queries. In particular, our proof shows that any sampler must search over $\\widetildeΩ(\\sqrt{d})$ distinct noise levels, providing a formal explanation for why multiscale noise schedules are necessary in practice.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Zhiyang Xun",
+   "Eric Price"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.10857v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.10857v1",
+  "published_iso": "2026-04-12T23:47:46Z"
+ }
+]

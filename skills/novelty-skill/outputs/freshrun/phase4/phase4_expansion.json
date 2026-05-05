@@ -1,0 +1,33 @@
+{
+  "title": "Consistency Distillation as Augmented-Data ELBO at the Boundary",
+  "hook": "The CD boundary instability isn't a numerical issue — it's a missing data augmentation. Consistency distillation IS the ELBO of an augmented model.",
+  "theoretical_leg": "Theorem (Augmented-ELBO Equivalence): L_CD(x_t, t) = ELBO_{A_θ}(x_t, t) + ε(t), where ε(t) → 0 as Δt → 0 and ε(t) ≤ C · ‖∇²s_θ(x_t,t)‖_op · Δt² at finite NFE. Proof: Tweedie's formula applied to consistency-loss term with teacher-score-conditioned augmentation. Empirical falsification: tightness of ε(t) bound at finite NFE measured at multiple t-points.",
+  "engineering_leg": "~8 lines of PyTorch replacing CD loss term with augmented-ELBO. Parameterize A_θ from teacher (existing teacher-score evaluation in CD training, no overhead), sample augmented data, use ELBO gradient. Rest of training pipeline byte-identical.",
+  "falsification_prediction": {
+    "what_we_run": "Train 4-NFE consistency-distilled student on CIFAR-10 with EDM teacher (50 NFE), comparing three setups: (a) vanilla CD, (b) SCott stochastic CD, (c) augmented-ELBO loss. Measure FID@4NFE on dev set and verify the equivalence theorem empirically by computing L_CD vs L_augmented_ELBO on held-out batches at t∈{0.005, 0.05, 0.5}.",
+    "success": "FID@4NFE for augmented-ELBO student within 0.3 FID of EDM teacher@50NFE on CIFAR-10 dev; equivalence theorem's ε(t) bound holds within numerical precision (∥L_CD - L_augmented_ELBO∥ < theoretical ε at all 3 t-points) for the augmented-ELBO student.",
+    "failure_a_numerical": "FID@4NFE for augmented-ELBO student does not improve over vanilla CD or SCott (gap unchanged or worse).",
+    "failure_b_mechanistic": "FID improves but the equivalence theorem's empirical ε at boundary t (t=0.005) exceeds the theoretical bound — indicating the augmented-ELBO interpretation is wrong (the reformulation isn't actually the loss being optimized; the FID gain came from regularization side-effect).",
+    "compute_budget": "0.6 GPU-day for the minimal experiment (CIFAR-10, single seed, 3 setups × 4 t-points probed). User has 4×A100×3wk ≈ 84 A100-day; budget is 2 orders of magnitude under available — feasible.",
+    "decision_rule": "if failure_a or failure_b → kill"
+  },
+  "mechanism_probe_proposal": "Compute L_CD(x_t, t) and L_augmented_ELBO(x_t, t) on the same held-out batches at t∈{0.005, 0.05, 0.5} — the equivalence theorem says they should agree within ε(t). Discriminating outcome: empirical |L_CD - L_augmented_ELBO| ≤ ε_theoretical at each t for the augmented-ELBO student; for vanilla CD student the gap is unbounded at t=0.005. This distinguishes 'reformulation IS the loss' (success) from 'reformulation is just a regularizer' (failure_b).",
+  "differentiation_from_lit": [
+    {
+      "paper_id": "dblp:conf/aaai/LiuXYDCTFLZ25",
+      "delta": "SCott introduces stochasticity into CD as a heuristic relaxation; we derive the relaxation as a specific A_θ that satisfies the ELBO equivalence — SCott's stochasticity recovered as a special case of A_θ's noise schedule, not introduced as independent design choice."
+    },
+    {
+      "paper_id": "dblp:conf/nips/0001LYLWLD0W24",
+      "delta": "Motion CM disentangles motion vs appearance trajectories empirically; our derivation shows disentanglement is sufficient (lower Lipschitz at boundary satisfies our smoothness condition on A_θ) and need not be domain-specific to video."
+    },
+    {
+      "paper_id": "arxiv:2603.08709v1",
+      "delta": "Scale Space Diffusion connects diffusion timesteps to scale-space conceptually; we produce a closed-form algebraic identity with executable training change, not just conceptual reframing."
+    },
+    {
+      "paper_id": "arxiv:2604.10857v1",
+      "delta": "Query Lower Bounds gives information-theoretic minimum on score evaluations; our equivalence theorem characterizes when the consistency-loss objective at finite NFE is well-specified — lower bound says 'few queries achievable in principle', our theorem says 'how to specify the loss to actually run there'."
+    }
+  ]
+}

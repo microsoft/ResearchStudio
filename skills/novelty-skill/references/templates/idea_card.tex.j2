@@ -1,0 +1,112 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1.6cm]{geometry}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage[breakable]{tcolorbox}
+\usepackage{booktabs}
+\usepackage{fontspec}
+\usepackage[CJKmath=true]{xeCJK}
+\setCJKmainfont{Noto Sans CJK SC}[BoldFont=Noto Sans CJK SC Bold, AutoFakeBold=false]
+
+\definecolor{cblue}{HTML}{4C72B0}
+\definecolor{cgold}{HTML}{DD8452}
+\definecolor{cgreen}{HTML}{55A868}
+\definecolor{cred}{HTML}{C44E52}
+\definecolor{bgskill}{HTML}{F0F7FF}
+
+\hypersetup{colorlinks=true, linkcolor=cblue, urlcolor=cblue}
+\setlength{\parskip}{4pt}\setlength{\parindent}{0pt}
+
+\begin{document}
+
+\begin{tcolorbox}[colback=bgskill, colframe=cblue, title=\textbf{NoveltySkill — Oral-Ready Idea Card}, breakable]
+
+\textbf{Title}: {{ title }}
+
+\textbf{Hook}: \emph{ {{ hook }} }
+
+\section*{Abstract}
+{{ abstract_draft }}
+
+\section*{Motivation}
+\textbf{Problem framing.} {{ motivation.problem_framing }}
+
+\textbf{Why now.} {{ motivation.why_now }}
+
+\textbf{What changes when the gap closes.} {{ motivation.what_changes_when_gap_closes }}
+
+\textbf{Why prior work stopped:}
+{{ __list__motivation.why_prior_stopped }}
+
+\section*{Core claim}
+\textbf{Core claim.} {{ core_claim }}
+
+\textbf{Sub-claims.}
+{{ __list__sub_claims }}
+
+\section*{Method flow}
+\textbf{High-level pipeline.} {{ method_flow.high_level_pipeline }}
+
+\textbf{Steps.}
+{{ __list__method_flow.steps }}
+
+\textbf{Preservation argument.} {{ method_flow.preservation_argument }}
+
+\section*{Theorem / algorithm / system design}
+{{ theorem_or_algorithm_or_system_design }}
+
+\section*{Theoretical leg}
+{{ theoretical_leg }}
+
+\section*{Engineering leg}
+{{ engineering_leg }}
+
+\section*{Falsification prediction}
+\textbf{What we run.} {{ falsification_prediction.what_we_run }}
+
+\textbf{Success.} {{ falsification_prediction.success }}
+
+\textbf{Failure (a) — numerical.} {{ falsification_prediction.failure_a_numerical }}
+
+\textbf{Failure (b) — mechanistic.} {{ falsification_prediction.failure_b_mechanistic }}
+
+\textbf{Compute budget.} {{ falsification_prediction.compute_budget }}
+
+\textbf{Decision rule.} {{ falsification_prediction.decision_rule }}
+
+\section*{Mechanism probe}
+{{ mechanism_probe_proposal }}
+
+\section*{Feasibility validation}
+\textbf{Compute.} \emph{ {{ feasibility_validation.compute.verdict }} } — {{ feasibility_validation.compute.rationale }}
+
+\textbf{Data.} \emph{ {{ feasibility_validation.data.verdict }} } — {{ feasibility_validation.data.rationale }}
+
+\textbf{Theoretical.} \emph{ {{ feasibility_validation.theoretical.verdict }} } — {{ feasibility_validation.theoretical.rationale }}
+
+\textbf{Engineering.} \emph{ {{ feasibility_validation.engineering.verdict }} } — {{ feasibility_validation.engineering.rationale }}
+
+\textbf{Falsification.} \emph{ {{ feasibility_validation.falsification.verdict }} } — {{ feasibility_validation.falsification.rationale }}
+
+\textbf{Overall.} \emph{ {{ feasibility_validation.overall }} }
+
+\section*{Differentiation from recent literature}
+{{ __list__differentiation_from_lit }}
+
+\section*{Reviewer concerns and responses}
+{{ __list__reviewer_concerns_and_responses }}
+
+\section*{Innovation patterns active in this area}
+\textbf{Based on Phase 0 retrieval} (n = {{ domain_landscape.n_papers }} on-topic papers):
+{{ __list__domain_landscape.pattern_distribution }}
+
+\textbf{This candidate uses:}
+{{ __list__domain_landscape.candidate_uses }}
+
+\textbf{Position.} {{ domain_landscape.position_note }}
+
+\end{tcolorbox}
+
+\end{document}

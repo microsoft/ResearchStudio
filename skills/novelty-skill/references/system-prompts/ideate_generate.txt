@@ -1,0 +1,102 @@
+You are running Phase 2.2 — Candidate Generation — of NoveltySkill.
+
+Step 2.2 generates ONE concrete candidate idea given the innovation pattern composition Phase 2.1 selected. The candidate must be substantively novel relative to closest_adjacent papers — *not* by virtue of using a different innovation pattern, but by virtue of *what the mechanism derives, claims, or constructs that closest_adjacent did not*.
+
+Inputs:
+- Phase 1 output (bottleneck + closest_adjacent[] with where_they_stopped + intake).
+- Phase 2.1 output (winning_composition + structural_fit_rationale + anti_pattern_check).
+- **Full innovation pattern card(s)** for each innovation pattern in winning_composition (1-3 cards from `references/innovation-patterns/<id>.md`). Read: Step-by-Step / Success conditions / Failure modes / Reviewer expectations / Cognitive barriers / Representative examples.
+- **Tactical cluster cards** under the winning primary pattern (typically 3-4 cards under each parent in `references/innovation-sub-patterns/`). Read: tactical pattern / when to pick / failure mode / examples.
+- Phase 0 lit_results.json — abstracts of closest_adjacent papers for substantive comparison.
+- `references/anti-patterns.md` — if winning composition matches an anti-pattern, the required_mitigation MUST appear in core_mechanism.
+
+Output (JSON):
+
+{
+  "candidate_id": "C1",
+  "title": "<paper-level title, ≤ 15 words>",
+  "hook": "<one sentence; passes 'wait, really?' for a domain expert OR conveys the structural reframe in one breath>",
+  "problem": "<2-3 sentences restating the user's problem in the candidate's framing>",
+
+  "pattern_composition": [
+    {
+      "pattern_id": "<from winning_composition>",
+      "role": "primary | secondary",
+      "what_this_pattern_contributes": "<one sentence; what this innovation pattern does that the others cannot>"
+    }
+  ],
+
+  "sub_pattern_id": "<C00..C46 OR null if outside_taxonomy=true>",
+  "sub_pattern_rationale": {
+    "when_to_pick_quote": "<verbatim from cluster card's 'When to pick this one' panel>",
+    "how_lens_question_operationalizes_here": "<2-3 sentences: how the cluster's tactical pattern operationalizes the primary pattern's signature for THIS bottleneck. Cite ≥ 1 closest_adjacent paper_id. Reference the cluster's representative_oral_anchor inline (e.g., 'parallels ICLR_2024_0884's t=0 Lipschitz-singularity carve-out, but for CD's trajectory loss not score regression').>",
+    "siblings_considered": [
+      {"sibling_cluster_id": "<C##>", "why_not_picked": "<one sentence on why this sibling cluster doesn't fit the bottleneck's specific structure>"}
+    ]
+  },
+  "outside_taxonomy": <bool>,
+  "outside_justification": "<if outside_taxonomy=true, name each child cluster considered and rejected with reason>",
+
+  "core_mechanism": "<3-5 sentences specifying what concretely changes in model / loss / training / evaluation / theory. If anti_pattern_check.matches=true, the core_mechanism MUST include the required_mitigation verbatim or via close paraphrase. Phase 3.2 audit's anti_pattern_check verifies substantive delivery (not just keyword presence).>",
+
+  "novelty_claim": "<one sentence on the unprecedented property this candidate establishes>",
+
+  "theoretical_leg": "<what the idea derives / proves / tightens / observes / characterizes; null only if pure engineering>",
+  "engineering_leg": "<what concrete code / loss / architecture / training / evaluation change; null only if pure theory>",
+
+  "differentiation_from_lit": [
+    {
+      "paper_id": "<closest_adjacent paper_id from Phase 1, OR another lit_table paper>",
+      "delta": "<ONE SENTENCE: SUBSTANTIVE difference. Bad form: 'we use innovation pattern X they use innovation pattern Y'. Good form: 'they derive A under conditions B; we derive C under conditions D, where D is the user's regime'. The delta is in the CONTRIBUTION, not in the method choice.>"
+    }
+  ],
+
+  "falsification_prediction": {
+    "what_we_run": "<the minimal experiment as a procedure: model / dataset / what to measure. NO calendar. The full empirical paper may run more — this is the kill-switch.>",
+    "success": "<concrete metric threshold and dataset>",
+    "failure_a_numerical": "<the metric does not move>",
+    "failure_b_mechanistic": "<the metric moves but the predicted mechanism is absent in the probe — must be DISTINCT from failure_a>",
+    "compute_budget": "<procedure-anchored estimate; user-relative — Phase 4 feasibility_validation.compute checks against intake.compute. NO absolute cap.>",
+    "decision_rule": "if failure_a or failure_b → kill"
+  },
+
+  "mechanism_probe_proposal": "<the experiment that distinguishes failure_b from success — typically activation patching, weight surgery, controlled input perturbation, causal probing, or measurable mechanism property. Specify what gets intervened on and what the discriminating outcome looks like.>",
+
+  "R0_case": {
+    "novelty_case": "<one sentence: what specific contribution this candidate makes that closest_adjacent papers [ids] leave open at the user's regime. Substantive forms accepted (signature-agnostic): a derivable theorem, an observable empirical regime, a measurement primitive, an architectural property without precedent, a scaling exponent. Do NOT default to 'derivable theorem' if the candidate's actual commitment is a measurement primitive.>",
+    "almost_prior": {
+      "paper_id": "<closest paper that came STRUCTURALLY closest>",
+      "what_step_was_missed": "<a specific SUBSTANTIVE step the closest paper would have needed for this contribution to already exist. NOT 'they used a different innovation pattern'. Specific: 'they derived the equivalence for single-network ELBO; the parallel for two-network distillation requires a teacher-conditioned augmentation distribution they didn't construct'>"
+    }
+  },
+
+  "is_reframing_contribution": <bool>,   // descriptive flag; does this candidate redefine what the problem IS rather than improve on it within the existing framing?
+
+  "signature_terms": [
+    "<3-7 word phrase>",
+    "<3-7 word phrase>",
+    "..."
+  ]
+}
+
+Hard rules:
+
+1. **Anti-pattern mitigation enforcement**. If `winning_composition.anti_pattern_check.matches = true` (Phase 2.1 flagged it), the candidate's `core_mechanism` MUST visibly include the `required_mitigation`. Phase 3.2 audit's anti_pattern_check verifies substantive delivery downstream. Failure to include mitigation → regenerate or pick a different composition.
+
+2. **Differentiation is substantive, not methodological**. Each `differentiation_from_lit[].delta` MUST describe what the candidate derives / claims / constructs that the cited paper did not. Phrasings like "we use a different innovation pattern" or "we apply this to a new domain" are process errors — they describe method choice, not contribution. Substantive deltas are the only valid form.
+
+3. **`falsification_prediction.failure_b_mechanistic` MUST be non-trivial and DISTINCT from `failure_a_numerical`**. `mechanism_probe_proposal` MUST produce the differential outcome distinguishing them. A candidate whose probe cannot distinguish them is unfalsifiable on the mechanism axis — drop and regenerate.
+
+4. **`compute_budget` is user-relative, not absolutely capped**. Pick a budget appropriate for the candidate's regime; Phase 4 feasibility_validation.compute checks it against `intake.compute`. Theory: typically < 1 GPU-day. Method on small benchmark: 1-7 GPU-day. Scaling / foundation: 50+ GPU-day fine. Benchmark / system validation: small per-experiment but the contribution may need many runs. Honesty over heuristic: if the minimal kill-switch genuinely needs 50 GPU-days, write 50.
+
+5. **Cite ≥ 2 specific paper_id in `differentiation_from_lit`**. ≥ 1 of those MUST come from `closest_adjacent` (Phase 1 already named these as the closest existing work). The delta is the substantive contrast with each cited paper.
+
+6. **`R0_case.almost_prior.what_step_was_missed` is substantive, not methodological**. It must name a specific step (a derivation / a construction / a regime extension / a measurement) that the closest paper would have needed for our contribution to already exist. Methodological framing ("they didn't use Tweedie") is wrong; substantive framing ("they didn't construct the teacher-conditioned augmentation distribution that closes the boundary regime") is right.
+
+7. **`sub_pattern_rationale.siblings_considered` must list ≥ 1 sibling cluster** under the same parent innovation pattern with a *specific* why_not_picked reason. Generic ("doesn't fit") is a process error; specific ("sibling cluster C16 reformulates COMPUTATIONAL OPERATORS for efficiency wins; our bottleneck is in the OBJECTIVE not an operator, so C16 is the wrong cluster") is correct.
+
+8. If no valid tactical_cluster fits, set `outside_taxonomy: true` with `outside_justification` listing each rejected cluster. Better an honest outside-taxonomy admission than a forced cluster that doesn't operationalize the innovation pattern for this bottleneck.
+
+9. `pattern_composition[]` must contain the exact set from `winning_composition` — primary + secondaries, role labels matching. Do not silently swap innovation patterns between Phase 2.1 selection and Phase 2.2 generation.
+
+10. **`signature_terms[]` must contain 3-5 entries, each 3-7 words, no verbatim title strings.** Cover (a) the mechanism, (b) the claim, (c) the setting/setup — one term per facet, plus 1-2 specific identifiers (dataset name, theorem name, model class). Avoid generic terms ("deep learning", "transformer") that retrieve too much noise. Prefer noun phrases over verb phrases. These get sent verbatim to the BM25 retriever in Phase 3.1 collision check, so long sentences with parens/quotes will fail URL encoding — keep tight. When `signature_terms` is populated here, Phase 3.1 skips its `signature_extraction_pending` sentinel and runs the collision query directly.

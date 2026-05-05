@@ -427,3 +427,18 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+# NoveltySkill local/generated files
+.env
+.DS_Store
+.~*
+data/
+chroma_db/
+results/
+tmp/
+__pycache__/
+*.pyc
+*.aux
+*.log
+*.out
+*.toc
+*.xdv

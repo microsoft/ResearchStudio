@@ -1,0 +1,96 @@
+You are running Phase 1 — Bottleneck Identification — of NoveltySkill.
+
+ENTRY ASSERTION (run first, halt if it fails):
+
+1. Read `outputs/phase0/.lit_grounding_mode`. If file missing → stop with `error: phase_0_bypassed`. If contents is `connector_failure` → stop with `error: no_connector_available`. If `webfallback` → continue but propagate the mode flag to downstream phases (idea card will surface a per-row warning in lit_appendix). If `real` → continue.
+
+2. Verify `outputs/phase0/lit_table.md` exists with columns `paper_id | year_month | venue | title | innovation pattern tags | bottleneck this paper targets | open issue / unresolved gap | resolves_problem | retrieved_via`. Missing file or schema → stop with `error: lit_table_schema_violation`.
+
+The earlier design ran 13 separate lens probes here, each scoring 0-3 sharpness with persistence × activity caps. That structure was removed because its mechanical complexity (rule + LLM hybrid scoring, cross-lens consistency Jaccard checks, persistence/activity matrix) added drift more than signal. Phase 1 now does one substantive thing: read user intent + the retrieved literature, and write a literature-grounded bottleneck statement plus the routing decision. Selection of innovation patterns happens at Phase 2.1, not here.
+
+Inputs:
+- The user's research question (free text) and intake context.
+- Phase 0 lit_table.md (paper-level evidence table).
+- Phase 0 lit_results.json (per-paper raw retrieval data including abstracts; consult when bottleneck reasoning needs abstract-level grounding).
+- references/intake-routing.md (OOD triggers).
+
+**One-shot guarantee**: this run does not pause to ask the user for missing intake fields. Infer reasonable values from the user's free text and Phase 0 retrieval (e.g., infer `domain` from concentrated innovation pattern tags; infer `compute` as "unstated; assume modest single-GPU" if absent). Mark inferred fields in `intake._inferred_fields`. If a load-bearing field is hopelessly missing (no domain / baseline / data / limitation can be inferred at all), route to `state: do_not_generate` rather than asking.
+
+Output (JSON):
+
+{
+  "intake": {
+    "domain": "...", "venue": "...", "time": "...", "data": [...], "compute": "...",
+    "expertise": "...", "preference": "theory|empirical|both", "baseline": "...",
+    "limitation": "...", "contribution_type": "theory|method|benchmark|system|application|scaling|empirical_reveal",
+    "_inferred_fields": ["<field names that were inferred from context, not stated by user>"]
+  },
+
+  "bottleneck_statement": "<one paragraph stitching the user's stated limitation with the literature evidence into a single concrete gap. MUST cite ≥ 2 paper_id from lit_table.md inline. NOT a category label like 'optimization bottleneck' or 'representation problem' — write a specific structural gap.>",
+
+  "closest_adjacent": [
+    {
+      "paper_id": "<paper_id from lit_table>",
+      "what_they_did": "<one sentence on the move that paper made>",
+      "where_they_stopped": "<one sentence on what their method does NOT close — the residue this candidate could pick up>"
+    }
+  ],
+
+  "what_phase_0_did_not_address": [
+    "<one specific aspect of the user's problem that no retrieved paper addresses; ≥ 2 entries>"
+  ],
+
+  "domain_pattern_distribution": {
+    "n_total": <int>,             // total papers in lit_table
+    "n_on_topic": <int>,          // count excluding rows tagged 'n/a (off-topic)' / 'n/a (survey)'
+    "patterns": [
+      {
+        "pattern_id": "<one of the 13 innovation pattern IDs>",
+        "count": <int>,           // number of on-topic papers using this pattern (primary or secondary)
+        "share": <float>,         // count / n_on_topic
+        "saturation": "high | medium | low"  // high if share ≥ 0.30, medium if 0.15 ≤ share < 0.30, low otherwise
+      }
+    ],
+    "saturation_threshold_high": 0.30,
+    "saturation_threshold_medium": 0.15,
+    "notes": "<one sentence: the most-used pattern in this domain and what limitation closest_adjacent papers using it tend to share, OR 'no shared limitation visible' if patterns/stopping points are diverse>"
+  },
+
+  "state": "proceed | do_not_generate",
+
+  "ood_reasons": [   // populated only when state=do_not_generate
+    {
+      "trigger_id": <int>,
+      "trigger_name": "<short name from intake-routing.md>",
+      "match_evidence": "<why this trigger fires for this query>"
+    }
+  ],
+
+  "remedial_steps": [   // populated only when state=do_not_generate
+    "<concrete fields the user should add to their query for re-invocation>"
+  ]
+}
+
+Routing (binary — no `needs_clarification` mid-flow):
+- **state=proceed**: a literature-grounded bottleneck can be written (≥ 2 paper_ids in lit_table actually carry the bottleneck's residue) AND no OOD trigger fires AND the user's stated direction is coherent enough to ground a candidate.
+- **state=do_not_generate**: any of —
+  (a) intake-routing.md OOD trigger fires (Too broad / No anchor / Engineering integration / No verifiable benchmark / Constraint-venue mismatch / Unobtainable resources)
+  (b) lit_table is too sparse — fewer than 5 papers truly relate to the user's direction (the rest are loose keyword matches), so the bottleneck cannot be literature-grounded
+  (c) the user's direction is genuinely blank-space (no adjacent literature) — the lens-mode skill is not built for agenda-setting work
+  (d) the user's request is for a benchmark / system construction — these contribution types exist in the corpus but have a different falsification structure that the simplified flow does not yet support; route with a redirect note
+
+In all do_not_generate cases, populate `ood_reasons` (which trigger / criterion fired) and `remedial_steps` (concrete fields to add for re-invocation). DO NOT pause to ask the user for clarification — emit the diagnosis and stop.
+
+Hard rules:
+
+1. `bottleneck_statement` MUST cite ≥ 2 paper_id from lit_table.md inline. A bottleneck statement without paper citations is a process error.
+
+2. `closest_adjacent[]` MUST have ≥ 2 entries. Each `paper_id` MUST appear in lit_table.md. The `where_they_stopped` field MUST name a *specific* limit (e.g., "treats preconditioning as a design choice rather than as a derived consequence"), not a generic "limited evaluation" or "could be extended".
+
+3. `bottleneck_statement` is NOT a category label. If you find yourself writing "the bottleneck is assumption-related" or "this is a representation problem", rewrite as a concrete structural statement.
+
+4. Do NOT propose ideas, innovation patterns, or compositions in this phase. Phase 1 diagnoses; Phase 2 selects innovation pattern and generates a candidate; Phase 3 critiques.
+
+5. Anti-patterns and 13 innovation patterns are NOT consulted at this phase. Phase 2.1 reads `references/innovation-patterns/overview.md` + `references/anti-patterns.md` to choose composition. Phase 1 just writes the bottleneck — the composition decision is downstream.
+
+6. **`domain_pattern_distribution` is informational only**. It surfaces what innovation patterns the lit_table.md aggregate is using, so the final idea card can show this distribution to the user. It is NOT a generation signal — Phase 2.1 selects compositions by structural fit, not by domain pattern saturation. The distribution shows up in the user-facing PDF / markdown output to give the user transparency about where the candidate sits in the area's pattern usage. Compute by counting `innovation pattern tags` in lit_table for on-topic rows only (exclude rows tagged `n/a (off-topic)`, `n/a (survey)`). Each paper's primary + secondary tags both count. Round share to 2 decimals.

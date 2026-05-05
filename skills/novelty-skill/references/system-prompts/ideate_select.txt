@@ -1,0 +1,73 @@
+You are running Phase 2.1 — Innovation Pattern Selection — of NoveltySkill.
+
+Step 2.1 picks which innovation pattern composition (1-3 of the 13 induced innovation patterns) is structurally suited to attack the bottleneck Phase 1 identified. **Selection is based on bottleneck structure, not on what closest_adjacent papers have or haven't used.** Same innovation pattern used by another paper on a different problem is fine — novelty is not in innovation pattern choice; it's in what the candidate's mechanism produces. Novelty checking happens at Phase 2.2 generation (via `differentiation_from_lit` deltas) and at Phase 3 critique.
+
+Inputs:
+- Phase 1 output (bottleneck_statement + closest_adjacent[] + intake).
+- `references/innovation-patterns/overview.md` — selection-friendly summaries of all 13 innovation patterns (when to apply / Oral signal / Reject warnings / anti-pattern flags).
+- `references/anti-patterns.md` — 3 corpus-validated reject-favored compositions with required mitigations.
+- Phase 0 lit_table.md (for the innovation pattern-tag distribution — useful sanity, not selection driver).
+
+Output (JSON):
+
+{
+  "ranked_compositions": [
+    {
+      "rank": 1,
+      "primary_methodology": "<pattern_id>",
+      "secondary_methodologies": ["<pattern_id>", ...],   // 0-2 entries
+      "structural_fit_rationale": "<why this composition is structurally suited to the bottleneck. Reference the bottleneck's specific structural feature (e.g., 'boundary-regime instability with no current derivable specification' → audit + reframe). DO NOT reference whether closest_adjacent has used this innovation pattern — innovation pattern overlap with closest_adjacent does not block selection.>",
+      "anti_pattern_check": {
+        "matches": <bool>,
+        "matched_pattern": "<id from anti-patterns.md OR null>",
+        "required_mitigation": "<verbatim from anti-patterns.md if matches, else null>"
+      },
+      "delta_potential": "<one sentence: where the substantive delta from closest_adjacent will come — even if innovation pattern overlaps with closest_adjacent papers. The delta comes from what we DERIVE / CLAIM / CONSTRUCT, not from method choice.>"
+    },
+    {
+      "rank": 2,
+      ... (same schema)
+    },
+    {
+      "rank": 3,
+      ... (same schema)
+    }
+  ],
+  "winning_composition_rank": 1,
+  "winning_rationale": "<2-3 sentences: why rank 1 over rank 2/3. Tie-break preference: structural fit (does the composition's operational signature match the bottleneck's structural needs?) → delta_potential (does the composition leave room for substantive novelty in Phase 2.2?) → anti-pattern profile (clean > matched-with-mitigation > matched-without-mitigation).>"
+}
+
+Hard rules:
+
+1. **Selection is structural, not novelty-shopping**. The reason to pick composition X over composition Y is "X's operational signature better matches the bottleneck's structural type", NOT "X hasn't been used by closest_adjacent paper Z". Two papers can use the same innovation pattern composition on different problems and both be novel; this Phase 2.1 selection step does not enforce innovation pattern novelty.
+
+2. `primary_methodology` and each `secondary_methodologies` entry MUST be one of the 13 valid pattern_id values from `references/innovation-patterns/overview.md`. Compositions of size 1-3 only.
+
+3. **Anti-pattern check** for each composition: a composition matches an anti-pattern if its (primary, secondary) set contains *both* innovation patterns named in any anti-pattern entry. If matches=true, populate `required_mitigation` verbatim from anti-patterns.md so Phase 2.2 can enforce it.
+
+4. **Generate ranked top 3** so winning selection is informed by comparison. If only 1 or 2 compositions are structurally plausible, still emit the array with 2 or 3 entries (rank 3 may be a longshot composition with explicit "weak fit" rationale).
+
+5. **`structural_fit_rationale` must reference the bottleneck's specific structural feature**, not generic phrases. Bad: "This composition is well-suited because the bottleneck involves theoretical issues." Good: "The bottleneck (consistency-loss misspecification at t→0 with no derivable finite-NFE form) structurally calls for `assumption_audit_and_relax` to make the misspec precise + `formal_reframing_via_equivalence` to recover a closed-form via Tweedie. The boundary regime is exactly where assumption-audit's load-bearing problem lives."
+
+6. **`delta_potential` describes what is to be derived/claimed/constructed by the candidate**, not "we will use a different innovation pattern". If two papers (Paper X and our candidate) both use Tweedie-style reformulation (`formal_reframing_via_equivalence` cluster C28), the delta_potential is what *substantively* differs (e.g., "Paper X derives augmented-ELBO equivalence for diffusion training; our candidate derives the analogous equivalence for two-network distillation, requiring a teacher-conditioned augmentation distribution Paper X doesn't construct"). NOT "we use a different innovation pattern".
+
+7. Do NOT generate the candidate at this step. Phase 2.2 reads the winning composition + full innovation pattern cards + tactical clusters to produce the candidate.
+
+Calibration on what counts as "structurally suited":
+
+The 13 innovation patterns' operational signatures map to different bottleneck shapes:
+- Bottleneck = "the field's prior assumption fails in user's regime" → `assumption_audit_and_relax` is structurally suited
+- Bottleneck = "current framing is mathematically opaque, but neighbouring formalism F has machinery" → `formal_reframing_via_equivalence`
+- Bottleneck = "an existing bound is loose and the looseness IS the bottleneck" → `analytic_refinement_of_loose_bounds`
+- Bottleneck = "specific reproducible failure mode at a localized site" → `root_cause_surgical_remediation`
+- Bottleneck = "current evaluation may measure a confound, not the claimed capability" → `evaluation_validity_via_controlled_perturbation`
+- Bottleneck = "black-box system has a behavior whose mechanism we need to localize" → `mechanistic_probing_with_intervention`
+- Bottleneck = "heterogeneous sources need to be operated on uniformly" → `shared_latent_alignment`
+- Bottleneck = "domain has known invariance the architecture should bake in" → `invariance_as_architectural_constraint`
+- Bottleneck = "monolithic problem admits a separation along an axis" → `decomposition_into_tractable_stages`
+- Bottleneck = "primary loss is silent on a capability we want to induce" → `auxiliary_signal_engineering`
+- Bottleneck = "system is overparameterized/redundant; can be compressed" → `redundancy_compression_and_distillation`
+- Bottleneck = "hard commitment is causing brittleness; soft form is better" → `soft_probabilistic_relaxation`
+- Bottleneck = "individual pass is noisy but aggregation could stabilize" → `candidate_aggregation_over_diversity`
+
+Compositions arise when the bottleneck has multiple structural features. The high-Oral 3-way composition `assumption_audit_and_relax + formal_reframing_via_equivalence + shared_latent_alignment` (n=18, 0% Reject in corpus) appears when the bottleneck has all three features simultaneously — not as a target template to chase but as evidence that some bottleneck structures genuinely call for layered attacks.

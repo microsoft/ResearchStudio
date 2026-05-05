@@ -1,0 +1,41 @@
+[
+ {
+  "title": "Confronting Reward Model Overoptimization with Constrained RLHF",
+  "title_norm": "confronting reward model overoptimization with constrained rlhf",
+  "abstract": "",
+  "year": 2024,
+  "venue": "ICLR",
+  "authors": [
+   "Ted Moskovitz",
+   "Aaditya K. Singh",
+   "DJ Strouse",
+   "Tuomas Sandholm",
+   "Ruslan Salakhutdinov",
+   "Anca D. Dragan"
+  ],
+  "citations": null,
+  "source": "dblp",
+  "source_id": "conf/iclr/MoskovitzSSSSDM24",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=gkfUvn0fLU",
+  "published_iso": ""
+ },
+ {
+  "title": "Iterative Data Smoothing: Mitigating Reward Overfitting and Overoptimization in RLHF",
+  "title_norm": "iterative data smoothing mitigating reward overfitting and overoptimization in r",
+  "abstract": "",
+  "year": 2024,
+  "venue": "ICML",
+  "authors": [
+   "Banghua Zhu",
+   "Michael I. Jordan",
+   "Jiantao Jiao"
+  ],
+  "citations": null,
+  "source": "dblp",
+  "source_id": "conf/icml/ZhuJJ24",
+  "doi": "",
+  "paper_url": "https://proceedings.mlr.press/v235/zhu24e.html",
+  "published_iso": ""
+ }
+]

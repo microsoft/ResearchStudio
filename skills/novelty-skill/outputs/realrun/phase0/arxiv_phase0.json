@@ -1,0 +1,220 @@
+[
+ {
+  "title": "Generalisation of RLHF under Reward Shift and Clipped KL Regularisation",
+  "title_norm": "generalisation of rlhf under reward shift and clipped kl regularisation",
+  "abstract": "Alignment and adaptation in large language models heavily rely on reinforcement learning from human feedback (RLHF); yet, theoretical understanding of its generalisability remains premature, especially when the learned reward could shift, and the KL control is estimated and clipped. To address this issue, we develop generalisation theory for RLHF that explicitly accounts for (1) \\emph{reward shift}: reward models are trained on preference data from earlier or mixed behaviour policies while RLHF optimises the current policy on its own rollouts; and (2) \\emph{clipped KL regularisation}: the KL regulariser is estimated from sampled log-probability ratios and then clipped for stabilisation, resulting in an error to RLHF. We present generalisation bounds for RLHF, suggesting that the generalisation error stems from a sampling error from prompts and rollouts, a reward shift error, and a KL clipping error. We also discuss special cases of (1) initialising RLHF parameters with a uniform prior over a finite space, and (2) training RLHF by stochastic gradient descent, as an Ornstein-Uhlenbeck process. The theory yields practical implications in (1) optimal KL clipping threshold, and (2) budget allocation in prompts, rollouts, and preference data.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Kenton Tang",
+   "Yuzhu Chen",
+   "Fengxiang He"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.21765v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.21765v1",
+  "published_iso": "2026-02-25T10:36:17Z"
+ },
+ {
+  "title": "reward-lens: A Mechanistic Interpretability Library for Reward Models",
+  "title_norm": "reward lens a mechanistic interpretability library for reward models",
+  "abstract": "Every RLHF-trained language model is shaped by a reward model, yet the mechanistic interpretability toolkit -- logit lens, direct logit attribution, activation patching, sparse autoencoders -- was built for generative LLMs whose primitives all project onto a vocabulary unembedding. Reward models replace that with a scalar regression head, breaking each tool. We present reward-lens, an open-source library that ports this toolkit to reward models, organised around one observation: the reward head's weight vector $w_r$ is the natural axis for every interpretability question. The library provides a Reward Lens, component attribution, three-mode activation patching, a reward-hacking probe suite, TopK SAE feature attribution, cross-model comparison, and five theory-grounded extensions (distortion index, divergence-aware patching, misalignment cascade detection, reward-term conflict analysis, concept-vector analysis). A ten-method adapter protocol covers Llama, Mistral, Gemma-2, and ArmoRM multi-objective heads, with a generic adapter for any HuggingFace sequence classification model. We validate on two production reward models across ~695 RewardBench pairs. The central empirical finding is negative: linear attribution does not predict causal patching effects (mean Spearman $ρ= -0.256$ on Skywork, $-0.027$ on ArmoRM). The framework treats this disagreement as a property to expose, not a bug -- motivating a design that keeps observational and causal views first-class and directly comparable.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Mohammed Suhail B Nadaf"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.26130v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.26130v1",
+  "published_iso": "2026-04-28T21:38:10Z"
+ },
+ {
+  "title": "Factored Causal Representation Learning for Robust Reward Modeling in RLHF",
+  "title_norm": "factored causal representation learning for robust reward modeling in rlhf",
+  "abstract": "A reliable reward model is essential for aligning large language models with human preferences through reinforcement learning from human feedback. However, standard reward models are susceptible to spurious features that are not causally related to human labels. This can lead to reward hacking, where high predicted reward does not translate into better behavior. In this work, we address this problem from a causal perspective by proposing a factored representation learning framework that decomposes the model's contextual embedding into (1) causal factors that are sufficient for reward prediction and (2) non-causal factors that capture reward-irrelevant attributes such as length or sycophantic bias. The reward head is then constrained to depend only on the causal component. In addition, we introduce an adversarial head trained to predict reward from the non-causal factors, while applying gradient reversal to discourage them from encoding reward-relevant information. Experiments on both mathematical and dialogue tasks demonstrate that our method learns more robust reward models and consistently improves downstream RLHF performance over state-of-the-art baselines. Analyses on length and sycophantic bias further validate the effectiveness of our method in mitigating reward hacking behaviors.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Yupei Yang",
+   "Lin Yang",
+   "Wanxi Deng",
+   "Lin Qu",
+   "Fan Feng",
+   "Biwei Huang",
+   "Shikui Tu",
+   "Lei Xu"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2601.21350v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2601.21350v1",
+  "published_iso": "2026-01-29T07:18:45Z"
+ },
+ {
+  "title": "Mitigating Multimodal Hallucination via Phase-wise Self-reward",
+  "title_norm": "mitigating multimodal hallucination via phase wise self reward",
+  "abstract": "Large Vision-Language Models (LVLMs) still struggle with vision hallucination, where generated responses are inconsistent with the visual input. Existing methods either rely on large-scale annotated data for fine-tuning, which incurs massive computational overhead, or employ static post-hoc strategies that overlook the dynamic nature of hallucination emergence. To address these, we introduce a new self-rewarding framework, enabling dynamic hallucination mitigation at inference time without external supervision. On the empirical side, we reveal that visual hallucination exhibits phase-wise dynamic patterns, peaking at the onset of each semantic phase. Drawing on these insights, we propose \\textbf{PSRD} (\\textbf{Phase-wise \\textbf{S}elf-\\textbf{R}eward \\textbf{D}ecoding) for online hallucination correction guided by phase-wise self-reward signals. To reduce the cost of repeated self-evaluation during decoding, we distill the hallucination guidance signal from LVLMs into a lightweight reward model. The reward model subsequently provides on-the-fly guidance for targeted intervention during the decoding process, enabling precise hallucination suppression. The proposed PSRD significantly reduces the hallucination rate of LLaVA-1.5-7B by 50.0% and consistently outperforms existing post-hoc methods across five hallucination evaluation benchmarks for four LVLMs. Further analysis confirms that PSRD effectively mitigates hallucination propagation and achieves a highly controllable trade-off between strong performance and inference efficiency.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Yu Zhang",
+   "Chuyang Sun",
+   "Kehai Chen",
+   "Xuefeng Bai",
+   "Yang Xiang",
+   "Min Zhang"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.17982v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.17982v1",
+  "published_iso": "2026-04-20T09:04:49Z"
+ },
+ {
+  "title": "The Art of Efficient Reasoning: Data, Reward, and Optimization",
+  "title_norm": "the art of efficient reasoning data reward and optimization",
+  "abstract": "Large Language Models (LLMs) consistently benefit from scaled Chain-of-Thought (CoT) reasoning, but also suffer from heavy computational overhead. To address this issue, efficient reasoning aims to incentivize short yet accurate thinking trajectories, typically through reward shaping with Reinforcement Learning (RL). In this paper, we systematically investigate the mechanics of efficient reasoning for LLMs. For comprehensive evaluation, we advocate for more fine-grained metrics, including length distribution conditioned on correctness and performance across a wide spectrum of token budgets ranging from 2k to 32k. First, we reveal that the training process follows a two-stage paradigm: length adaptation and reasoning refinement. Through extensive experiments (about 0.2 million GPU hours) in a unified protocol, we deconstruct training prompts and rollouts, reward shaping, and optimization strategies. A central finding is to maintain a sufficient density of positive reward signals and avoid the short-is-correct trap. Moreover, the learned length bias generalizes across domains and difficulty levels. We distill these findings into valuable insights and practical guidelines, and validate them across the Qwen3 models ranging from 0.6B to 30B, demonstrating the robustness and generalization. Weights are available at https://wutaiqiang.github.io/project/Art",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Taiqiang Wu",
+   "Zenan Xu",
+   "Bo Zhou",
+   "Ngai Wong"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.20945v3",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.20945v3",
+  "published_iso": "2026-02-24T14:28:16Z"
+ },
+ {
+  "title": "CausalRM: Causal-Theoretic Reward Modeling for RLHF from Observational User Feedbacks",
+  "title_norm": "causalrm causal theoretic reward modeling for rlhf from observational user feedb",
+  "abstract": "Despite the success of reinforcement learning from human feedback (RLHF) in aligning language models, current reward modeling heavily relies on experimental feedback data collected from human annotators under controlled and costly conditions. In this work, we introduce observational reward modeling -- learning reward models with observational user feedback (e.g., clicks, copies, and upvotes) -- as a scalable and cost-effective alternative. We identify two fundamental challenges in this setting: (1) observational feedback is noisy due to annotation errors, which deviates it from true user preference; (2) observational feedback is biased by user preference, where users preferentially provide feedback on responses they feel strongly about, which creats a distribution shift between training and inference data. To address these challenges, we propose CausalRM, a causal-theoretic reward modeling framework that aims to learn unbiased reward models from observational feedback. To tackle challenge (1), CausalRM introduces a noise-aware surrogate loss term that is provably equivalent to the primal loss under noise-free conditions by explicitly modeling the annotation error generation process. To tackle challenge (2), CausalRM uses propensity scores -- the probability of a user providing feedback for a given response -- to reweight training samples, yielding a loss function that eliminates user preference bias. Extensive experiments across diverse LLM backbones and benchmark datasets validate that CausalRM effectively learns accurate reward signals from noisy and biased observational feedback and delivers substantial performance improvements on downstream RLHF tasks -- including a 49.2% gain on WildGuardMix and a 32.7% improvement on HarmBench. Code is available on our project website.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Hao Wang",
+   "Licheng Pan",
+   "Zhichao Chen",
+   "Chunyuan Zheng",
+   "Zhixuan Chu",
+   "Xiaoxi Li",
+   "Yuan Lu",
+   "Xinggao Liu",
+   "Haoxuan Li",
+   "Zhouchen Lin"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.18736v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.18736v1",
+  "published_iso": "2026-03-19T10:37:34Z"
+ },
+ {
+  "title": "Robust Post-Training for Generative Recommenders: Why Exponential Reward-Weighted SFT Outperforms RLHF",
+  "title_norm": "robust post training for generative recommenders why exponential reward weighted",
+  "abstract": "Aligning generative recommender systems to user preferences via post-training is critical for closing the gap between next-item prediction and actual recommendation quality. Existing post-training methods are ill-suited for production-scale systems: RLHF methods reward hack due to noisy user feedback and unreliable reward models, offline RL alternatives require propensity scores that are unavailable, and online interaction is infeasible. We identify exponential reward-weighted SFT with weights $w = \\exp(r/λ)$ as uniquely suited to this setting, and provide the theoretical and empirical foundations that explain why. By optimizing directly on observed rewards without querying a learned reward model, the method is immune to reward hacking, requires no propensity scores, and is fully offline. We prove the first policy improvement guarantees for this setting under noisy rewards, showing that the gap scales only logarithmically with catalog size and remains informative even for large item catalogs. Crucially, we show that temperature $λ$ explicitly and quantifiably controls the robustness-improvement tradeoff, providing practitioners with a single interpretable regularization hyperparameter with theoretical grounding. Experiments on three open-source and one proprietary dataset against four baselines confirm that exponential reward weighting is simple, scalable, and consistently outperforms RLHF-based alternatives.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Keertana Chidambaram",
+   "Sanath Kumar Krishnamurthy",
+   "Qiuling Xu",
+   "Ko-Jen Hsiao",
+   "Moumita Bhattacharya"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.10279v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.10279v1",
+  "published_iso": "2026-03-10T23:48:25Z"
+ },
+ {
+  "title": "Mitigating Reward Hacking in RLHF via Advantage Sign Robustness",
+  "title_norm": "mitigating reward hacking in rlhf via advantage sign robustness",
+  "abstract": "Reward models (RMs) used in reinforcement learning from human feedback (RLHF) are vulnerable to reward hacking: as the policy maximizes a learned proxy reward, true quality plateaus or degrades. We make the assumption that reward hacking is often caused by flipped advantage signs: instead of reducing the likelihood of a bad response, a flipped sign causes the update to increase it. By considering an adversarial perturbation in the RM parameter space, we can derive a certified sign-preservation radius, which is the smallest perturbation that can flip the advantage sign during policy optimization. Based on this formulation, we propose Sign-Certified Policy Optimization (SignCert-PO), down-weighting non-robust completions in the policy gradient update. Unlike prior approaches that require multiple RMs or access to the RM training data, SignCert-PO is lightweight and operates purely at the policy optimization stage using only the RM parameters and on-policy completions. On TL;DR summarization and AlpacaFarm benchmarks, SignCert-PO consistently achieves a better win rate than baselines and reduces reward hacking.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Shinnosuke Ono",
+   "Johannes Ackermann",
+   "Soichiro Nishimori",
+   "Takashi Ishida",
+   "Masashi Sugiyama"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.02986v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.02986v1",
+  "published_iso": "2026-04-03T11:45:16Z"
+ },
+ {
+  "title": "GSRM: Generative Speech Reward Model for Speech RLHF",
+  "title_norm": "gsrm generative speech reward model for speech rlhf",
+  "abstract": "Recent advances in speech language models, such as GPT-4o Voice Mode and Gemini Live, have demonstrated promising speech generation capabilities. Nevertheless, the aesthetic naturalness of the synthesized audio still lags behind that of human speech. Enhancing generation quality requires a reliable evaluator of speech naturalness. However, existing naturalness evaluators typically regress raw audio to scalar scores, offering limited interpretability of the evaluation and moreover fail to generalize to speech across different taxonomies. Inspired by recent advances in generative reward modeling, we propose the Generative Speech Reward Model (GSRM), a reasoning-centric reward model tailored for speech. The GSRM is trained to decompose speech naturalness evaluation into an interpretable acoustic feature extraction stage followed by feature-grounded chain-of-thought reasoning, enabling explainable judgments. To achieve this, we curated a large-scale human feedback dataset comprising 31k expert ratings and an out-of-domain benchmark of real-world user-assistant speech interactions. Experiments show that GSRM substantially outperforms existing speech naturalness predictors, achieving model-human correlation of naturalness score prediction that approaches human inter-rater consistency. We further show how GSRM can improve the naturalness of speech LLM generations by serving as an effective verifier for online RLHF.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Maohao Shen",
+   "Tejas Jayashankar",
+   "Osama Hanna",
+   "Naoyuki Kanda",
+   "Yancheng Wang",
+   "Kateřina Žmolíková",
+   "Ruiming Xie",
+   "Niko Moritz",
+   "Anfeng Xu",
+   "Yashesh Gaur",
+   "Gregory Wornell",
+   "Qing He",
+   "Jilong Wu"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.13891v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.13891v1",
+  "published_iso": "2026-02-14T21:22:55Z"
+ },
+ {
+  "title": "Real-Time Aligned Reward Model beyond Semantics",
+  "title_norm": "real time aligned reward model beyond semantics",
+  "abstract": "Reinforcement Learning from Human Feedback (RLHF) is a pivotal technique for aligning large language models (LLMs) with human preferences, yet it is susceptible to reward overoptimization, in which policy models overfit to the reward model, exploit spurious reward patterns instead of faithfully capturing human intent. Prior mitigations primarily relies on surface semantic information and fails to efficiently address the misalignment between the reward model (RM) and the policy model caused by continuous policy distribution shifts. This inevitably leads to an increasing reward discrepancy, exacerbating reward overoptimization. To address these limitations, we introduce R2M (Real-Time Aligned Reward Model), a novel lightweight RLHF framework. R2M goes beyond vanilla reward models that solely depend on the semantic representations of a pretrained LLM. Instead, it leverages the evolving hidden states of the policy (namely policy feedback) to align with the real-time distribution shift of the policy during the RL process. This work points to a promising new direction for improving the performance of reward models through real-time utilization of feedback from policy models.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Zixuan Huang",
+   "Xin Xia",
+   "Yuxi Ren",
+   "Jianbin Zheng",
+   "Xuefeng Xiao",
+   "Hongyan Xie",
+   "Li Huaqiu",
+   "Songshi Liang",
+   "Zhongxiang Dai",
+   "Fuzhen Zhuang",
+   "Jianxin Li",
+   "Yikun Ban",
+   "Deqing Wang"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2601.22664v3",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2601.22664v3",
+  "published_iso": "2026-01-30T07:32:35Z"
+ }
+]

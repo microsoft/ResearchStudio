@@ -1,0 +1,69 @@
+{
+  "_dryrun_note": "Phase 1 bottleneck identification on RLHF reward model overoptimization. Reads phase0/lit_table.md + lit_results.json. Single LLM call.",
+
+  "intake": {
+    "domain": "RLHF / language model alignment",
+    "venue": "ICLR / NeurIPS 2026",
+    "time": "8 weeks",
+    "data": ["Anthropic HH-RLHF preference dataset", "open-source SFT base (e.g., Llama-3-8B)", "held-out preference test set"],
+    "compute": "8×A100×8wk ≈ 448 A100-day",
+    "expertise": "RLHF training (PPO + DPO familiarity) + theoretical preference learning",
+    "preference": "both",
+    "baseline": "vanilla PPO with KL-to-SFT regularization (constant β)",
+    "limitation": "policy KL stays small but proxy reward keeps climbing while held-out true reward (gold model) plateaus and degrades — classical Goodhart's-law overoptimization signature; current heuristic mitigations (early stopping, ensemble of reward models) lack a principled stopping rule",
+    "contribution_type": "method",
+    "_inferred_fields": ["data", "compute", "expertise", "venue"]
+  },
+
+  "bottleneck_statement": "The user's RLHF pipeline exhibits the canonical reward-model overoptimization gap: the policy KL constraint to the SFT prior holds, but the proxy reward keeps climbing while a held-out gold reward plateaus and then degrades — Goodhart's law on a learned proxy. dblp:conf/iclr/MoskovitzSSSSDM24 (Constrained RLHF) reformulates this as constrained RL with a threshold on the proxy/true gap proxy, but chooses the threshold heuristically and does not derive a principled tightening schedule. dblp:conf/icml/ZhuJJ24 (Iterative Data Smoothing) attacks the upstream cause (reward model overfitting on sparse preferences) but the smoothing strength is empirically tuned. openalex:W4399115631 (SFT-as-adversarial regularizer) derives an asymptotic equivalence between SFT loss and an adversarial reward regularizer, opening a formal-reframing path, but does not characterize finite-sample behavior — the user's regime. The unaddressed gap: a derivable, finite-sample-valid stopping/regularization criterion tied to the proxy-true reward divergence, rather than a heuristic threshold or empirical smoothing strength.",
+
+  "closest_adjacent": [
+    {
+      "paper_id": "dblp:conf/iclr/MoskovitzSSSSDM24",
+      "what_they_did": "Reformulates RLHF as a constrained RL problem, with a constraint on a proxy of the proxy-vs-true reward gap; uses Lagrangian methods to enforce the constraint during PPO training.",
+      "where_they_stopped": "Constraint threshold and Lagrangian schedule are heuristic; no principled rule derived from the proxy-true gap structure for when/how to tighten."
+    },
+    {
+      "paper_id": "dblp:conf/icml/ZhuJJ24",
+      "what_they_did": "Iterative data smoothing on the preference dataset to reduce reward-model overfitting upstream; theoretically motivated by overfit-bias decomposition.",
+      "where_they_stopped": "Smoothing strength is iteratively tuned; no closed-form characterization of when smoothing prevents overoptimization vs when policy still exploits residual gap."
+    },
+    {
+      "paper_id": "openalex:W4399115631",
+      "what_they_did": "Derives an equivalence between SFT loss term and an adversarial regularizer on the reward model, providing a formal-reframing of why SFT-anchored RLHF mitigates overoptimization.",
+      "where_they_stopped": "Equivalence is asymptotic in dataset size and policy capacity; finite-sample / finite-data behavior (the user's regime) not characterized — the regularization strength is derived only in the limit."
+    },
+    {
+      "paper_id": "openalex:W4417212154",
+      "what_they_did": "Trains an ensemble of reward models, uses ensemble disagreement as an uncertainty signal to penalize policy when proxy reward is high but uncertain.",
+      "where_they_stopped": "Ensemble disagreement is a heuristic proxy for the true-vs-proxy reward gap; no derivation of when disagreement provably tracks the gap, so calibration is empirical."
+    }
+  ],
+
+  "what_phase_0_did_not_address": [
+    "a finite-sample regularization schedule tied analytically to the proxy-true reward divergence (rather than heuristic thresholds, empirical smoothing strengths, or ensemble-disagreement proxies)",
+    "a derivable stopping rule for RLHF policy optimization that does not require access to a held-out gold reward model",
+    "characterization of when the SFT-as-adversarial-regularizer equivalence (W4399115631) breaks at finite data — and what to do at the breaking regime"
+  ],
+
+  "domain_pattern_distribution": {
+    "n_total": 27,
+    "n_on_topic": 8,
+    "patterns": [
+      {"pattern_id": "assumption_audit_and_relax", "count": 4, "share": 0.50, "saturation": "high"},
+      {"pattern_id": "analytic_refinement_of_loose_bounds", "count": 2, "share": 0.25, "saturation": "medium"},
+      {"pattern_id": "auxiliary_signal_engineering", "count": 2, "share": 0.25, "saturation": "medium"},
+      {"pattern_id": "formal_reframing_via_equivalence", "count": 1, "share": 0.13, "saturation": "low"},
+      {"pattern_id": "evaluation_validity_via_controlled_perturbation", "count": 1, "share": 0.13, "saturation": "low"},
+      {"pattern_id": "mechanistic_probing_with_intervention", "count": 1, "share": 0.13, "saturation": "low"},
+      {"pattern_id": "root_cause_surgical_remediation", "count": 1, "share": 0.13, "saturation": "low"}
+    ],
+    "saturation_threshold_high": 0.30,
+    "saturation_threshold_medium": 0.15,
+    "notes": "assumption_audit_and_relax dominates this area (4/8 on-topic papers, primary or secondary). The 3 audit-class papers in closest_adjacent (Moskovitz, Zhu+audit, W4417212154+audit) share a common stopping point: heuristic / iterative / disagreement-based regularization schedules with no derived form. analytic_refinement and auxiliary_signal are at medium saturation; formal_reframing is under-saturated despite providing the only existing finite-sample-anchored theoretical equivalence (W4399115631)."
+  },
+
+  "state": "proceed",
+  "ood_reasons": [],
+  "remedial_steps": []
+}

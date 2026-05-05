@@ -1,0 +1,604 @@
+[
+ {
+  "title": "Artificial Intelligence in Multimedia Content Generation: A Review of Audio and Video Synthesis Techniques",
+  "title_norm": "artificial intelligence in multimedia content generation a review of audio and v",
+  "abstract": "ABSTRACT Recent breakthroughs in generative AI have markedly elevated the realism and controllability of synthetic media. In the visual modality, long‐context attention mechanisms and diffusion‐style refinements now deliver videos with superior temporal consistency, spatial coherence, and high‐resolution detail. These techniques underpin an expanding set of applications ranging from text‐guided storyboarding and animation to engineering visualization and virtual prototyping. In the audio modality, token‐based representations combined with hierarchical decoding enable the direct production of faithful speech, music, and ambient sound from textual prompts, powering rapid voice‐over creation, personalized music, and immersive soundscapes. The frontier is shifting toward unified audio–visual pipelines that synchronize imagery with dialog, sound effects, and ambience, promising end‐to‐end tooling for a wide variety of applications such as education, simulation, entertainment, and accessible content production. This review surveys these advances across modalities and outlines future research directions focused on improving generation efficiency, coherence, and controllability across modalities.",
+  "year": 2025,
+  "venue": "Journal of the Society for Information Display",
+  "authors": [
+   "Charles Ding",
+   "Rohan Tan Bhowmik"
+  ],
+  "citations": 2,
+  "source": "openalex",
+  "source_id": "W4416979137",
+  "doi": "10.1002/jsid.2111",
+  "paper_url": "https://onlinelibrary.wiley.com/doi/pdfdirect/10.1002/jsid.2111",
+  "published_iso": "2025-12-03",
+  "paper_id": "openalex:W4416979137"
+ },
+ {
+  "title": "Flow matching meets biology and life science: a survey",
+  "title_norm": "flow matching meets biology and life science a survey",
+  "abstract": "Over the past decade, advances in generative modeling, such as generative adversarial networks, masked autoencoders, and diffusion models, have significantly transformed biological research and discovery, enabling breakthroughs in molecule design, protein generation, catalysis discovery, drug discovery, and beyond. At the same time, biological applications have served as valuable testbeds for evaluating the capabilities of generative models. Recently, flow matching has emerged as a powerful and efficient alternative to diffusion-based generative modeling, with growing interest in its application to problems in biology and life sciences. This paper presents the first comprehensive survey of recent developments in flow matching and its applications in biological domains. We begin by systematically reviewing the foundations and variants of flow matching, and then categorize its applications into three major areas: biological sequence modeling, molecule generation and design, and peptide and protein generation. For each, we provide an in-depth review of recent progress. We also summarize commonly used datasets and software tools, and conclude with a discussion of potential future directions.",
+  "year": 2026,
+  "venue": "npj Artificial Intelligence",
+  "authors": [
+   "Zihao Li",
+   "Zhichen Zeng",
+   "Xiao Lin",
+   "Fan Fang",
+   "Yanru Qu",
+   "Zhe Xu"
+  ],
+  "citations": 1,
+  "source": "openalex",
+  "source_id": "W7126214886",
+  "doi": "10.1038/s44387-025-00066-y",
+  "paper_url": "https://www.nature.com/articles/s44387-025-00066-y.pdf",
+  "published_iso": "2026-01-31",
+  "paper_id": "openalex:W7126214886"
+ },
+ {
+  "title": "V-GRPO: Online Reinforcement Learning for Denoising Generative Models Is Easier than You Think",
+  "title_norm": "v grpo online reinforcement learning for denoising generative models is easier t",
+  "abstract": "Aligning denoising generative models with human preferences or verifiable rewards remains a key challenge. While policy-gradient online reinforcement learning (RL) offers a principled post-training framework, its direct application is hindered by the intractable likelihoods of these models. Prior work therefore either optimizes an induced Markov decision process (MDP) over sampling trajectories, which is stable but inefficient, or uses likelihood surrogates based on the diffusion evidence lower bound (ELBO), which have so far underperformed on visual generation. Our key insight is that the ELBO-based approach can, in fact, be made both stable and efficient. By reducing surrogate variance and controlling gradient steps, we show that this approach can beat MDP-based methods. To this end, we introduce Variational GRPO (V-GRPO), a method that integrates ELBO-based surrogates with the Group Relative Policy Optimization (GRPO) algorithm, alongside a set of simple yet essential techniques. Our method is easy to implement, aligns with pretraining objectives, and avoids the limitations of MDP-based methods. V-GRPO achieves state-of-the-art performance in text-to-image synthesis, while delivering a $2\\times$ speedup over MixGRPO and a $3\\times$ speedup over DiffusionNFT.",
+  "year": 2026,
+  "venue": "ArXiv.org",
+  "authors": [
+   "Bingda Tang",
+   "Yuhui Zhang",
+   "Xiaohan Wang",
+   "Jiayuan Mao",
+   "Ludwig Schmidt",
+   "Serena Yeung-Levy"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7158423315",
+  "doi": "",
+  "paper_url": "https://arxiv.org/pdf/2604.23380",
+  "published_iso": "2026-04-25",
+  "paper_id": "openalex:W7158423315"
+ },
+ {
+  "title": "Trustworthy Deep Learning: Robustness, Uncertainty Quantification, and Adversarial Resilience",
+  "title_norm": "trustworthy deep learning robustness uncertainty quantification and adversarial ",
+  "abstract": "Deep learning has become one of the most vital infrastructures under study and entirely a subject of research not at a slow rate that will allow us to comprehend its failures. We apply neural networks to hospitals, financial markets, autonomous systems, and so on, but the culture of the field has traditionally been that benchmark accuracy is the most valued criterion. This book is a corrective. Credible AIs are based on three pillars that are interdependent. Robustness poses whether a model will continue to handle purely outside the regime of its training distribution. Uncertainty quantification inquires a question on whether a model knows which it does not know. Adversarial resilience. The question of adversarial resilience is whether a model can be resilient to its intended manipulation. Each of the challenges is severe in itself; the combination of all of them determines the difference between a model that is functional in the laboratory and one that is worth trusted in the real world. The book is structured in this regard, having three parts, each of them representing the pillar, and a final section, the evaluation frameworks and open problems. The chapters are concluded by exercises as well as annotated literature pointers. The companion repository contains the code of the core examples. It presupposes the knowledge of the basics of deep learning among the readers. It does not need any specific experience in Bayesian statistics or adversarial machine learning. Graduate learners, those who work in the high-stakes fields, and researchers who seek to make cross-cutting in the three areas will all have something appropriate to them. We are honest in our writing of what cannot and can be done by the current method. Strategies that seemed to be good have again and again been defeated by an adaptive attack; distributions that seemed to be estimated have been wrecked by distribution shift. Where evidence is great, we say so. Where it is amalgamated, we say that too. Instead of an optimistic map of the frontier an accurate map of the frontier is of better service to the reader. Deep learning has provided us with unprecedented abilities. There is work to do in order to get those capabilities dependable, truthful about their capabilities and inaccessible to abuse. Hopefully, this book is one of these steps.",
+  "year": 2026,
+  "venue": "",
+  "authors": [
+   "Karn Singh",
+   "Puneet Garg"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7155642061",
+  "doi": "10.70593/978-93-7185-510-5",
+  "paper_url": "https://deepscienceresearch.com/dsr/catalog/download/609/2661/4843",
+  "published_iso": "2026-04-13",
+  "paper_id": "openalex:W7155642061"
+ },
+ {
+  "title": "Beyond Masks: Efficient, Flexible Diffusion Language Models via Deletion-Insertion Processes",
+  "title_norm": "beyond masks efficient flexible diffusion language models via deletion insertion",
+  "abstract": "While Masked Diffusion Language Models (MDLMs) relying on token masking and unmasking have shown promise in language modeling, their computational efficiency and generation flexibility remain constrained by the masking paradigm. In this paper, we propose Deletion-Insertion Diffusion language models (DID) that rigorously formulate token deletion and insertion as discrete diffusion processes, replacing the masking and unmasking processes in current MDLMs. DID improves training and inference efficiency by eliminating two major sources of computational overhead in MDLMs: the computations on non-informative 1) <br/> tokens inherent to its paradigm, and 2) <br/> tokens introduced in variable-length settings. Furthermore, DID offers greater flexibility by: 1) natively supporting variable-length sequences without requiring fixed-length padding, and 2) an intrinsic self-correction mechanism during generation due to insertion that dynamically adjusts token positions. To train DID, we design a score-based approach that assigns scores to token insertion operations and derive appropriate training objectives. The objectives involve subsequence counting problems, which we efficiently solve via a parallelized dynamic programming algorithm. Our experiments across fixed and variable-length settings demonstrate the advantage of DID over baselines of MDLMs and existing insertion-based LMs, in terms of modeling performance, sampling quality, and training/inference speed, without any hyperparameter tuning.",
+  "year": 2026,
+  "venue": "Rare & Special e-Zone (The Hong Kong University of Science and Technology)",
+  "authors": [
+   "Fangyu DING",
+   "Ding Ding",
+   "Sijin Chen",
+   "Kaibo WANG",
+   "Peng Xu",
+   "Zijin Feng"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7139586635",
+  "doi": "",
+  "paper_url": "https://openalex.org/W7139586635",
+  "published_iso": "2026-01-01",
+  "paper_id": "openalex:W7139586635"
+ },
+ {
+  "title": "OMG-Agent: Toward Robust Missing Modality Generation with Decoupled Coarse-to-Fine Agentic Workflows",
+  "title_norm": "omg agent toward robust missing modality generation with decoupled coarse to fin",
+  "abstract": "Data incompleteness severely impedes the reliability of multimodal systems. Existing reconstruction methods face distinct bottlenecks: conventional parametric/generative models are prone to hallucinations due to over-reliance on internal memory, while retrieval-augmented frameworks struggle with retrieval rigidity. Critically, these end-to-end architectures are fundamentally constrained by Semantic-Detail Entanglement -- a structural conflict between logical reasoning and signal synthesis that compromises fidelity. In this paper, we present \\textbf{\\underline{O}}mni-\\textbf{\\underline{M}}odality \\textbf{\\underline{G}}eneration Agent (\\textbf{OMG-Agent}), a novel framework that shifts the paradigm from static mapping to a dynamic coarse-to-fine Agentic Workflow. By mimicking a \\textit{deliberate-then-act} cognitive process, OMG-Agent explicitly decouples the task into three synergistic stages: (1) an MLLM-driven Semantic Planner that resolves input ambiguity via Progressive Contextual Reasoning, creating a deterministic structured semantic plan; (2) a non-parametric Evidence Retriever that grounds abstract semantics in external knowledge; and (3) a Retrieval-Injected Executor that utilizes retrieved evidence as flexible feature prompts to overcome rigidity and synthesize high-fidelity details. Extensive experiments on multiple benchmarks demonstrate that OMG-Agent consistently surpasses state-of-the-art methods, maintaining robustness under extreme missingness, e.g., a $2.6$-point gain on CMU-MOSI at $70$\\% missing rates.",
+  "year": 2026,
+  "venue": "ArXiv.org",
+  "authors": [
+   "Ruiting Dai",
+   "Zheyu Wang",
+   "Haoyu Yang",
+   "Yihan Liu",
+   "Chengzhi Wang",
+   "Zekun Zhang"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7128096875",
+  "doi": "",
+  "paper_url": "https://arxiv.org/pdf/2602.04144",
+  "published_iso": "2026-02-04",
+  "paper_id": "openalex:W7128096875"
+ },
+ {
+  "title": "An approach to medium-term coastal morphological modelling",
+  "title_norm": "an approach to medium term coastal morphological modelling",
+  "abstract": "This thesis presents the implementation of fully three-dimensional sediment transport and morphological updating formulations within a proven three-dimensional hydrodynamic flow solver. The thesis briefly discusses the formulations used to model both suspended and bed-load transport of non-cohesive sediment, and describes the implementation of a morphological updating scheme which incorporates novel approaches to morphological acceleration and dry bank erosion. Approaches used to model the three-dimensional effects of waves on coastal hydrodynamics and of three-dimensional currents on waves are also discussed.Results of several validation studies are presented and the model is shown to perform well in a series of simplified theoretical, laboratory, and full scale test cases. Application of the model and acceleration techniques to the complex and dynamic entrance to Willapa Bay, WA, USA is also discussed. Model processes are validated against the results of an extensive field measurement campaign, and diagnostic morphological model simulations are performed for two historical periods of contrasting morphological development. Input reduction and morphological acceleration techniques used to perform 5-year simulations of Willapa Bay are critically analysed and a new generic method to select a representative morphological tide for coastal environments containing significant diurnal tidal energy is presented.",
+  "year": 2026,
+  "venue": "",
+  "authors": [
+   "Giles Lesser"
+  ],
+  "citations": 80,
+  "source": "openalex",
+  "source_id": "W2132441680",
+  "doi": "10.1201/9781003759850",
+  "paper_url": "http://resolver.tudelft.nl/uuid:27a1ffa0-580e-4eae-907b-ce6f901e652e",
+  "published_iso": "2026-01-16",
+  "paper_id": "openalex:W2132441680"
+ },
+ {
+  "title": "Revisiting Recent Progress in the Karch-Randall Braneworld",
+  "title_norm": "revisiting recent progress in the karch randall braneworld",
+  "abstract": "Abstract Motivated by the study of entanglement island in the Karch-Randall braneworld, it has been conjectured and proven in general that entanglement island is not consistent with long-range (massless) gravity. In this paper, we provide a careful check of this conclusion in a model of massless gravity that is constructed using the Karch-Randall braneworld. We show that there is indeed no entanglement island and hence not a nontrivial Page curve due to the diffeomorphism invariance if we are studying the correct question. We will also clarify the subtlety that is important to put this question in a correct manner. Moreover, we show that this conclusion is not affected by deforming the set-up with the Dvali-Gabadadze-Porrati (DGP) terms. Furthermore, we show that the consistency of holography in this model will provide nontrivial constraints to the DGP parameters. This study provides an example that causality and holography in anti-de Sitter space can be used to constrain low energy effective theories. We also clarify several subtleties in the braneworld gravity which were overlooked in the literature. We show that a direct implication of these clarifications is a resolution of the causality paradox in the Karch-Randall braneworld. At the end, we discuss the robustness of the above results against possible coarse-graining protocols to define a subregion in a gravitational theory. Contents 1 Introduction 1 2 No Entanglement Island in Massless Gravity 4 2.1 The Set-up 4 2.2 The Question and the Result without DGP Terms 5 2.3 Adding DGP Terms Doesn't Change the Result 8 2.4 A Question in the Boundary Description 9 3 Consistency of Wedge Holography and the Swampland Bounds 10 4 The Intermediate Picture and Coarse-Graining 11 4.1 The Precise Description of the Intermediate Picture 12 4.2 An Implication-Resolution of the Causality Paradox 15 4.3 The Derivation of the Modified Island Formula 19 4.4 A Potential Puzzle and Its Resolution 21 4.5 Robustness of the Result Under Coarse Graining 22 5 Conclusion 23",
+  "year": 2026,
+  "venue": "Classical and Quantum Gravity",
+  "authors": [
+   "Hao Geng"
+  ],
+  "citations": 10,
+  "source": "openalex",
+  "source_id": "W4382498758",
+  "doi": "10.1088/1361-6382/ae62ec",
+  "paper_url": "https://arxiv.org/pdf/2306.15671",
+  "published_iso": "2026-04-21",
+  "paper_id": "openalex:W4382498758"
+ },
+ {
+  "title": "AI-driven Physics Informed Neural Network for Daily Temperature Forecasting with Constraint Aware Learning and Explainable Feature Attribution",
+  "title_norm": "ai driven physics informed neural network for daily temperature forecasting with",
+  "abstract": "The daily mean temperature prediction is essential to implement agricultural adaptation and disaster risk reduction strategies in countries with varied climatic regions like Pakistan. Traditional machine learning methods often had difficulty complying with thermodynamic constraints, limiting their practicality for temperature estimation. The study proposed a Physics-Informed Neural Network (PINN), which integrates data and governing thermal principles to overcome these limitations. Integrating thermal equilibrium conditions within the loss function inherently consolidates the thermodynamic coherence of the construction. The high-resolution meteorological data from the Badin, Dadu and Rohri observation networks are used to build domain-specific features. These include diurnal excursions of temperature and humidity, a cyclic year encoding and wind-humidity ratios that capture the nonlinear mesoscale thermodynamics of the system. The PINN shows strong predictive ability as compared to a benchmark linear regression, some ensemble algorithms, and feedforward networks (R2 = 0.9975 Badin, 0.9974 Dadu, 0.9949 Rohri). SHAP and LIME, used in feature importance quantification, help to identify temperature drivers. In Badin, wind regimes have the most influence, whereas in Dadu and Rohri, lingering time trends have the most impact. With a focus on physical plausibility and explainable AI, the proposed innovation pattern combines the probabilistic advantages of statistical learning with the constraint-based approach of atmospheric physics. This leads to resilient and spatially flexible predictions of temperature in data-scarce regions. As the study shows, PINNs could become a game-changing operational meteorological forecast technology when observational networks are weak or lacking altogether.",
+  "year": 2025,
+  "venue": "VFAST Transactions on Software Engineering",
+  "authors": [
+   "Syed Azeem Inam",
+   "Hassan Hashim",
+   "Syeda Nazia Ashraf",
+   "Syeda Wajiha Naim",
+   "Haider Rajput",
+   "Saddam Umer"
+  ],
+  "citations": 11,
+  "source": "openalex",
+  "source_id": "W4417003197",
+  "doi": "10.21015/vtse.v13i4.2231",
+  "paper_url": "https://vfast.org/journals/index.php/VTSE/article/download/2231/1781",
+  "published_iso": "2025-11-18",
+  "paper_id": "openalex:W4417003197"
+ },
+ {
+  "title": "Spatial Freedom Fields: A Rigorous Computational Framework for the Architecture of Freedom Intelligence (AFI)",
+  "title_norm": "spatial freedom fields a rigorous computational framework for the architecture o",
+  "abstract": "This paper presents a rigorous computational framework for evaluating spatial environments through the lens of path availability theory. Building upon the Architecture of Freedom Intelligence (AFI), we introduce a comprehensive mathematical apparatus including: (1) a Care Freedom Field equation Fcare(x,t) with proven dimensional consistency; (2) a Care Path Entropy metric Hcare for bottleneck detection; (3) a multiplicative Distortion Composition model Dext with rigorous limit analysis; and (4) a falsifiable Healing Gradient Law dS/dt. We conduct extensive stress-testing of all equations under boundary conditions (D→∞, P→1, D→0⁺), perform dimensional analysis, and verify mathematical consistency across passive, active, and intelligent regime formulations. A comparative analysis of five swarm intelligence algorithms (Physarum polycephalum, Particle Swarm Optimization, Artificial Bee Colony, Ant Colony Optimization, and Bacterial Foraging Optimization) demonstrates convergent principles with AFI's distortion-field navigation. We present contextual formula recommendations for six distinct application domains, a complete Python computational engine, and explicit falsification protocols. This framework bridges information theory, space syntax, evidence-based design, and swarm intelligence into a unified, testable architecture for evaluating healing environments.",
+  "year": 2026,
+  "venue": "Zenodo (CERN European Organization for Nuclear Research)",
+  "authors": [
+   "Gonçalo Melo de Magalhães"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7133316985",
+  "doi": "10.5281/zenodo.18845574",
+  "paper_url": "https://openalex.org/W7133316985",
+  "published_iso": "2026-03-03",
+  "paper_id": "openalex:W7133316985"
+ },
+ {
+  "title": "The Gravitational Memory Principle for Cosmological Dynamics: Why Spacetime Cannot Be Markovian in an Entropy-Bounded Universe",
+  "title_norm": "the gravitational memory principle for cosmological dynamics why spacetime canno",
+  "abstract": "Physical Context The standard cosmological model (ΛCDM) relies on a Markovian assumption where the vacuum energy density remains local and instantaneous. This framework examines the consequences of relaxing such an assumption. If the cosmological horizon is a boundary with finite entropy and finite information throughput, the gravitational response to expansion cannot be instantaneous. A retarded (non-Markovian) constitutive sector arises as a geometric necessity. Cosmic acceleration is then identified not as a dark energy field, but as the thermodynamic relaxation of the vacuum. Logic and Mechanism The principle of gravitational memory determines the vacuum evolution through a horizon admittance variable, η(t). This variable follows a driven relaxation equation where the forcing term is the kinematic expansion history. In the late-time regime, the dynamics are governed by a relaxation rate Γmem related to de Sitter quasinormal modes. Parameter-Free Prediction: The model determines the present-day vacuum density as ΩΛ,0=2π/9≈0.698. This value is a geometric consequence of the capacity of the horizon, requiring no fine-tuning or fitted constants. Causal Consistency: Environmental monitoring (Zeno suppression) ensures that the vacuum response remains negligible during the radiation-dominated era. This mechanism provides automatic compatibility with Big Bang Nucleosynthesis (BBN) and Cosmic Microwave Background (CMB) constraints. Observational Validation Validation against DESI DR1 Baryon Acoustic Oscillation (BAO) data yields a χ2/dof=0.28/7 (p-value ≈0.99) with zero adjusted parameters. The framework predicts a specific \"thawing\" equation of state, w(0)≃−0.92, and a mandatory correlation between the expansion history H(z) and the growth of structure fσ8(z). Falsification Criteria The framework is falsified if: The measurement of ΩΛ,0 deviates significantly from the 0.68−0.72 range. The equation of state is confirmed to be exactly −1 with sub-percent precision. The predicted geometry-growth correlation is absent in late-time surveys. The Gravitational Memory Principle replaces the ad hoc cosmological constant with a thermodynamic closure. It provides a minimalist, parameter-free description of the late-time universe, where acceleration is the inevitable macroscopic manifestation of horizon causality.",
+  "year": 2026,
+  "venue": "Zenodo (CERN European Organization for Nuclear Research)",
+  "authors": [
+   "NICOLA NESCATELLI"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7118467322",
+  "doi": "10.5281/zenodo.18154633",
+  "paper_url": "https://openalex.org/W7118467322",
+  "published_iso": "2026-01-05",
+  "paper_id": "openalex:W7118467322"
+ },
+ {
+  "title": "Roadmap on quantum thermodynamics",
+  "title_norm": "roadmap on quantum thermodynamics",
+  "abstract": "Abstract The last two decades have seen quantum thermodynamics become a well established field of research in its own right. In that time, it has demonstrated a remarkably broad applicability, ranging from providing foundational advances in the understanding of how thermodynamic principles apply at the nano-scale and in the presence of quantum coherence, to providing a guiding framework for the development of efficient quantum devices. Exquisite levels of control have allowed state-of-the-art experimental platforms to explore energetics and thermodynamics at the smallest scales which has in turn helped to drive theoretical advances. This Roadmap provides an overview of the recent developments across many of the field’s sub-disciplines, assessing the key challenges and future prospects, providing a guide for its near term progress.",
+  "year": 2025,
+  "venue": "Quantum Science and Technology",
+  "authors": [
+   "Steve Campbell",
+   "Irene D’Amico",
+   "Mario A. Ciampini",
+   "Janet Anders",
+   "Natalia Ares",
+   "Simone Artini"
+  ],
+  "citations": 11,
+  "source": "openalex",
+  "source_id": "W4416385805",
+  "doi": "10.1088/2058-9565/ae1e27",
+  "paper_url": "https://openalex.org/W4416385805",
+  "published_iso": "2025-11-11",
+  "paper_id": "openalex:W4416385805"
+ },
+ {
+  "title": "The Recovery Curve",
+  "title_norm": "the recovery curve",
+  "abstract": "Recovery, as an observable dynamical process, has intrinsic geometric structure. That structure is invisible in wall-clock time and becomes tractable only after transforming to intrinsic time κ–the compensator of the observed recovery event process under the Doob–Meyer decomposition. κ is not a modeling choice or fitted parameter; it is the unique monotone transformation under which the counting process has unit intensity, determined entirely by the observed event stream. In κ-space, single-phase exponential recovery defines a canonical geometry characterized by C = ω·T₉₅ = ln(20), an algebraic identity that describes what recovery looks like when nothing interferes. Real systems may lie on this geometry, deviate below it (impeded or multi-phase dynamics), or exceed it (externally amplified recovery); the pattern of deviation is itself the primary empirical signal. A second coordinate, the drift coefficient β, classifies feedback regimes across successive episodes: β < 0 identifies self-correcting dynamics, β > 0 identifies amplification. We show that three classical stability conditions queueing stability (ρ < 1), branching criticality (R < 1), and Lyapunov decay–each express the same geometric constraint in domain-specific notation; they are not independent results but the same boundary condition seen from different measurement frames. We validate the framework across 384,668 recovery episodes spanning 308 measurement domains and 12 focal systems including power grids, epidemics, earthquakes, labor markets, cardiac physiology, and ecological systems. Among 1,675 independent episodes permitting estimation, the pooled median C = 3.02 (95% CI: 2.96–3.08) is consistent with the canonical geometry. An external prediction test–using midrange decay rate ω estimated on interior data to predict tail completion time T₉₅ on disjoint data–achieves R² = 0.91 with median error 26%, confirming that C = ln(20) is not circular. System-level variation is substantial (IQR 2.43–3.97); we claim consistency of central tendency, not narrow concentration. Cross-domain comparison is a consequence of the geometry, not its purpose. All claims are restricted to the measurement process.",
+  "year": 2026,
+  "venue": "Open MIND",
+  "authors": [
+   "Harrison Fletcher"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7134522188",
+  "doi": "",
+  "paper_url": "https://openalex.org/W7134522188",
+  "published_iso": "2026-01-01",
+  "paper_id": "openalex:W7134522188"
+ },
+ {
+  "title": "A new parametric study of f(Q, B) gravity with modified Chaplygin gas and recent observations",
+  "title_norm": "a new parametric study of f q b gravity with modified chaplygin gas and recent o",
+  "abstract": "Abstract In this work, we explore the cosmological dynamics of a modified gravity framework based on the function $$f(Q,B)=\\delta Q^{2}+\\beta B$$ <mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\"> <mml:mrow> <mml:mi>f</mml:mi> <mml:mrow> <mml:mo>(</mml:mo> <mml:mi>Q</mml:mi> <mml:mo>,</mml:mo> <mml:mi>B</mml:mi> <mml:mo>)</mml:mo> </mml:mrow> <mml:mo>=</mml:mo> <mml:mi>δ</mml:mi> <mml:msup> <mml:mi>Q</mml:mi> <mml:mn>2</mml:mn> </mml:msup> <mml:mo>+</mml:mo> <mml:mi>β</mml:mi> <mml:mi>B</mml:mi> </mml:mrow> </mml:math> , where Q denotes the nonmetricity scalar and B is the boundary term that relates Q to the Ricci scalar. The matter sector is modeled using the Modified Chaplygin Gas (MCG) with the equation of state $$p=A\\rho -\\frac{D_{1}}{\\rho ^{\\alpha }}$$ <mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\"> <mml:mrow> <mml:mi>p</mml:mi> <mml:mo>=</mml:mo> <mml:mi>A</mml:mi> <mml:mi>ρ</mml:mi> <mml:mo>-</mml:mo> <mml:mfrac> <mml:msub> <mml:mi>D</mml:mi> <mml:mn>1</mml:mn> </mml:msub> <mml:msup> <mml:mi>ρ</mml:mi> <mml:mi>α</mml:mi> </mml:msup> </mml:mfrac> </mml:mrow> </mml:math> , allowing the model to interpolate between early-time matter behavior and late-time cosmic acceleration. By deriving an analytical expression for the Hubble parameter H ( z ), we perform a parameter estimation using Markov Chain Monte Carlo (MCMC) techniques in conjunction with the latest cosmological observations: 46 Hubble parameter measurements, 15 BAO data points, DESI DR2 BAO data and the Pantheon+ Type Ia supernovae compilation. The best-fit values are obtained as $$H_0=72.2814^{+3.4702}_{-4.5209}$$ <mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\"> <mml:mrow> <mml:msub> <mml:mi>H</mml:mi> <mml:mn>0</mml:mn> </mml:msub> <mml:mo>=</mml:mo> <mml:mn>72</mml:mn> <mml:mo>.</mml:mo> <mml:msubsup> <mml:mn>2814</mml:mn> <mml:mrow> <mml:mo>-</mml:mo> <mml:mn>4.5209</mml:mn> </mml:mrow> <mml:mrow> <mml:mo>+</mml:mo> <mml:mn>3.4702</mml:mn> </mml:mrow> </mml:msubsup> </mml:mrow> </mml:math> km/s/Mpc, $$A_s = 0.6964^{+0.0779}_{-0.1258}$$ <mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\"> <mml:mrow> <mml:msub> <mml:mi>A</mml:mi> <mml:mi>s</mml:mi> </mml:msub> <mml:mo>=</mml:mo> <mml:mn>0</mml:mn> <mml:mo>.</mml:mo> <mml:msubsup> <mml:mn>6964</mml:mn> <mml:mrow> <mml:mo>-</mml:mo> <mml:mn>0.1258</mml:mn> </mml:mrow> <mml:mrow> <mml:mo>+</mml:mo> <mml:mn>0.0779</mml:mn> </mml:mrow> </mml:msubsup> </mml:mrow> </mml:math> , $$\\alpha = 0.0027^{+0.0225}_{-0.0209}$$ <mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\"> <mml:mrow> <mml:mi>α</mml:mi> <mml:mo>=</mml:mo> <mml:mn>0</mml:mn> <mml:mo>.</mml:mo> <mml:msubsup> <mml:mn>0027</mml:mn> <mml:mrow> <mml:mo>-</mml:mo> <mml:mn>0.0209</mml:mn> </mml:mrow> <mml:mrow> <mml:mo>+</mml:mo> <mml:mn>0.0225</mml:mn> </mml:mrow> </mml:msubsup> </mml:mrow> </mml:math> and $$A = 0.0024^{+0.0702}_{-0.0464}$$ <mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\"> <mml:mrow> <mml:mi>A</mml:mi> <mml:mo>=</mml:mo> <mml:mn>0</mml:mn> <mml:mo>.</mml:mo> <mml:msubsup> <mml:mn>0024</mml:mn> <mml:mrow> <mml:mo>-</mml:mo> <mml:mn>0.0464</mml:mn> </mml:mrow> <mml:mrow> <mml:mo>+</mml:mo> <mml:mn>0.0702</mml:mn> </mml:mrow> </mml:msubsup> </mml:mrow> </mml:math> . The deceleration parameter transitions at redshift $$z_{tr} \\approx 0.946$$ <mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\"> <mml:mrow> <mml:msub> <mml:mi>z</mml:mi> <mml:mrow> <mml:mi>tr</mml:mi> </mml:mrow> </mml:msub> <mml:mo>≈</mml:mo> <mml:mn>0.946</mml:mn> </mml:mrow> </mml:math> , while the present-day value is $$q_0 = -0.789$$ <mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\"> <mml:mrow> <mml:msub> <mml:mi>q</mml:mi> <mml:mn>0</mml:mn> </mml:msub>",
+  "year": 2025,
+  "venue": "The European Physical Journal C",
+  "authors": [
+   "Amit Samaddar",
+   "S. Surendra Singh"
+  ],
+  "citations": 5,
+  "source": "openalex",
+  "source_id": "W4416664681",
+  "doi": "10.1140/epjc/s10052-025-15086-w",
+  "paper_url": "https://link.springer.com/content/pdf/10.1140/epjc/s10052-025-15086-w.pdf",
+  "published_iso": "2025-11-25",
+  "paper_id": "openalex:W4416664681"
+ },
+ {
+  "title": "Microscopic Analysis of Flow Resistance of Oil Displacement Fluid in Reservoir Fractures",
+  "title_norm": "microscopic analysis of flow resistance of oil displacement fluid in reservoir f",
+  "abstract": "The flow resistance of displacement fluids within reservoir fractures directly influences oil recovery efficiency and sweep efficiency, thereby exerting a substantial impact on reservoir recovery and overall oilfield production. To address the significant flow resistance of contemporary displacement fluids, this study developed a multi-performance evaluation apparatus capable of simultaneously measuring fluid viscosity, flow resistance, and displacement efficiency. The effects of various reservoir parameters and fluid compositions on flow resistance and sweep area were systematically analyzed. Elevated reservoir temperatures clearly reduce fluid flow resistance within fractures, allowing displacement fluids to penetrate more deeply into the reservoir. In contrast, an inverse relationship between reservoir pressure and flow resistance was observed, which poses a significant barrier to reducing flow resistance and achieving rapid fluid penetration. Moreover, through a micromolecular perspective and adsorption theory, this study identifies strategies to modify flow resistance, thereby substantially enhancing displacement efficiency and sweep area by lowering flow resistance. This study provides foundational data and a theoretical framework for mitigating fluid flow resistance within reservoir fractures during oil recovery, thereby facilitating enhanced oil recovery over a larger reservoir area.",
+  "year": 2026,
+  "venue": "Reservoir Science",
+  "authors": [
+   "Wusheng Li",
+   "Junying Liao"
+  ],
+  "citations": 16,
+  "source": "openalex",
+  "source_id": "W7124703231",
+  "doi": "10.62762/rs.2025.837826",
+  "paper_url": "https://www.icck.org/filebob/uploads/storage/RS_j2zIM6Hb21Ct9LBP6.pdf",
+  "published_iso": "2026-01-15",
+  "paper_id": "openalex:W7124703231"
+ },
+ {
+  "title": "Multi-scale theoretical modeling with molecular simulation framework for fly ash-based high-performance concrete",
+  "title_norm": "multi scale theoretical modeling with molecular simulation framework for fly ash",
+  "abstract": "Fly ash-based concrete models are currently largely empirical or homogenized and do not reflect the inherent properties of the materials, namely amorphous-crystalline heterogeneity, reactive interface dynamics, and defect evolution. Thus, the study leads to the advent of a complete multi-scale theoretical framework consisting of five unique approaches across structural and molecular scales. First and foremost, Hybrid Multiphase Microstructure Descriptor Modeling (HMMDM) reconstructs realistic 3D digital twins employing micro-CT, SEM/EDS, and PSD data for porosity prediction improvement by up to 15% by capturing interfacial topology. Second, the Quantum-Corrected Machine-Learned Interatomic Potential Mapping (QML IPM) develops system-specific force fields by coupling DFT data and Gaussian Approximation Potentials, reducing RMS force errors from 0.31 to 0.09 eV/Å, as well as improving the prediction of reactivity index by 22%. Third, the Topological Reaction Pathway Network Modeling (TRPNM) enables time-strength prediction with an error below 7% without being confined to the dynamics of graphs algorithms for modeling hydration and geopolymerization kinetics. Fourth, Fractal Defect Evolution Analysis using Molecular Simulation (FDEAMS) simulates stress induced crack development according to fractal mechanics, and an increase in tensile failure zone prediction capability by 20% is achieved. Finally, Dynamic Multi-Scale Simulation Coupling with Feedback Optimization (DMSCF) bridges a nano- and macro-scale design through iterative coupling of MD and FEM simulations, achieving real-time stiffness updates with a process lag of < 4% during analysis. The present study offers integrated approaches that would give unprecedented predictive fidelity on fly ash concrete and allow for optimal designs.",
+  "year": 2025,
+  "venue": "Scientific Reports",
+  "authors": [
+   "Vikrant S. Vairagade"
+  ],
+  "citations": 9,
+  "source": "openalex",
+  "source_id": "W7117481861",
+  "doi": "10.1038/s41598-025-28690-3",
+  "paper_url": "https://www.nature.com/articles/s41598-025-28690-3.pdf",
+  "published_iso": "2025-12-29",
+  "paper_id": "openalex:W7117481861"
+ },
+ {
+  "title": "Magnetic Barkhausen Noise Sensor: A Comprehensive Review of Recent Advances in Non-Destructive Testing and Material Characterization",
+  "title_norm": "magnetic barkhausen noise sensor a comprehensive review of recent advances in no",
+  "abstract": "Magnetic Barkhausen noise (MBN) represents a powerful non-destructive testing and material characterization innovation pattern enabling quantitative assessment of microstructural features, mechanical properties, and stress states in ferromagnetic materials. This comprehensive review synthesizes recent advances spanning theoretical foundations, sensor design, signal processing innovation patterns, and industrial applications. The physical basis rooted in domain wall dynamics and statistical mechanics provides rigorous frameworks for interpreting MBN signals in terms of grain structure, dislocation density, phase composition, and residual stress. Contemporary instrumentation innovations including miniaturized sensors, multi-parameter systems, and high-entropy alloy cores enable measurements in challenging environments. Advanced signal processing techniques-encompassing time-domain analysis, frequency-domain spectral methods, time-frequency transforms, and machine learning algorithms-extract comprehensive material information from raw Barkhausen signals. Deep learning approaches demonstrate superior performance for automated material classification and property prediction compared to traditional statistical methods. Industrial applications span manufacturing quality control, structural health monitoring, railway infrastructure assessment, and predictive maintenance strategies. Key achievements include establishing quantitative correlations between material properties and stress states, with measurement uncertainties of ±15-20 MPa for stress and ±20 HV for hardness. Emerging challenges include standardization imperatives, characterization of advanced materials, machine learning robustness, and autonomous system integration. Future developments prioritizing international standards, physics-informed neural networks, multimodal sensor fusion, and wireless monitoring networks will accelerate industrial adoption supporting safe, efficient engineering practice across diverse sectors.",
+  "year": 2025,
+  "venue": "Sensors",
+  "authors": [
+   "Polyxeni Vourna",
+   "Pinelopi P. Falara",
+   "Aphrodite Ktena",
+   "Evangelos Hristoforou",
+   "Nikolaos D. Papadopoulos"
+  ],
+  "citations": 7,
+  "source": "openalex",
+  "source_id": "W7117740234",
+  "doi": "10.3390/s26010258",
+  "paper_url": "https://www.mdpi.com/1424-8220/26/1/258/pdf?version=1767187659",
+  "published_iso": "2025-12-31",
+  "paper_id": "openalex:W7117740234"
+ },
+ {
+  "title": "Boundary Operator Construction and Horizon Entropy in the K-Functional Framework",
+  "title_norm": "boundary operator construction and horizon entropy in the k functional framework",
+  "abstract": "We construct the boundary operator R_BH that implements the K_bdry sector of the K-functional framework at a Schwarzschild black hole horizon. We show that the form of R_BH is uniquely determined by three independent constraints: (i) the null geometry of the horizon, which forces a gauge-invariant projection onto the spatial directions of the horizon; (ii) CPTP contractivity combined with diffeomorphism invariance on the horizon cross-section S², which forces a heat semigroup e^(-α L_perp) as the unique smoothing operation (a consequence of Schur's lemma applied to the SO(3) representation theory of operators on S²); and (iii) the Bekenstein bound combined with the boundary character of K_bdry, which forces an interior partial trace. The functional form R_BH = Tr_inside ∘ e^(-α L_perp) ∘ P_null is therefore not chosen but derived from the K-functional axioms together with horizon geometry. The smoothing coefficient α is then fixed by matching to the Bekenstein-Hawking area law, giving α = G/π in natural units. This matching is a consistency condition rather than an a priori derivation, parallel to how 't Hooft's brick wall position and Susskind-Uglum's conical deficit are both matched to reproduce S = A/(4G). We show that 't Hooft's brick wall is the sharp-cutoff limit of R_BH (replacing the smooth heat kernel with a Heaviside step function), and that Susskind-Uglum's conical deficit is the Euclidean partition-function dual of R_BH (computed via response of the Euclidean action to periodicity variations). The K-functional construction is therefore the unified framework underlying both techniques. We derive the entropy acceleration profile during gravitational collapse directly from S = 4πGM². The second time derivative d²S/dt² = 8πG[(dM/dt)² + M(d²M/dt²)] is positive during infall because (dM/dt)² is positive-definite. The profile has three regimes: acceleration during pre-formation infall, peak at horizon formation, exponential deceleration during ringdown. The qualitative shape is model-independent and testable against numerical general relativity simulations. We address whether the K-functional predicts a deviation from the standard Page curve. It does not. The Hartle-Hawking horizon state is the joint fixed point of all three K-sectors (K_ent = K_rec = K_bdry = 0 at equilibrium). The Bekenstein-Hawking entropy is not a partition of K-sectors but the von Neumann entropy of the equilibrium thermal state on the truncated mode spectrum produced by R_BH. Standard Page curve dynamics are reproduced with peak near S_BH/2. We reconcile this with the laboratory-scale prediction of Paper 4 (72% decoherence rate enhancement at low temperatures for transmon qubits under weak continuous drive). The laboratory prediction concerns the rate of approach to the K-functional fixed point when the qubit is held off-equilibrium by driving. The horizon prediction concerns dynamics at the equilibrium fixed point. The two regimes are physically distinct: rates versus equilibria, off-fixed-point versus on-fixed-point. The laboratory enhancement does not transfer to horizons. This paper is complementary to Paper 3 (information-theoretic constraints on black hole interiors: Layer Stripping, Monopole Convergence, and the evaluation of competing proposals). Paper 3 addresses the interior trajectory of infalling matter through the Bekenstein bound and the data processing inequality. Paper 17 constructs the boundary operator that defines the horizon's K-functional encoding. The two papers approach black hole physics from complementary directions. Claimed results: uniqueness of the form of R_BH, consistency of the K-functional with the Bekenstein-Hawking area law through a principled construction, identification of brick wall and conical deficit as special cases of R_BH, the entropy acceleration profile during collapse, and reproduction of the standard Page curve at S_peak ≈ S_BH/2. Not claimed: a new derivation of the area law from purely a priori inputs (the matching α = G/π uses the area law as input), a modified Page curve, or any specific deviation from standard horizon thermodynamics. All derived results follow from the three K-functional axioms together with standard geometric and field-theoretic inputs. Confidence assessment is included in the paper.",
+  "year": 2026,
+  "venue": "Zenodo (CERN European Organization for Nuclear Research)",
+  "authors": [
+   "J. Rosa"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7151411530",
+  "doi": "10.5281/zenodo.19440705",
+  "paper_url": "https://openalex.org/W7151411530",
+  "published_iso": "2026-04-06",
+  "paper_id": "openalex:W7151411530"
+ },
+ {
+  "title": "Systematic benchmarking of imaging spatial transcriptomics platforms in FFPE tissues",
+  "title_norm": "systematic benchmarking of imaging spatial transcriptomics platforms in ffpe tis",
+  "abstract": "Emerging imaging spatial transcriptomics (iST) platforms and coupled analytical methods can recover cell-to-cell interactions, groups of spatially covarying genes, and gene signatures associated with pathological features, and are thus particularly well-suited for applications in formalin fixed paraffin embedded (FFPE) tissues. Here, we benchmark the performance of three commercial iST platforms-10X Xenium, Vizgen MERSCOPE, and Nanostring CosMx-on serial sections from tissue microarrays (TMAs) containing 17 tumor and 16 normal tissue types for both relative technical and biological performance. On matched genes, we find that Xenium consistently generates higher transcript counts per gene without sacrificing specificity. Xenium and CosMx measure RNA transcripts in concordance with orthogonal single-cell transcriptomics. All three platforms can perform spatially resolved cell typing with varying degrees of sub-clustering capabilities, with Xenium and CosMx finding slightly more clusters than MERSCOPE, albeit with different false discovery rates and cell segmentation error frequencies. Taken together, our analyses provide a comprehensive benchmark to guide the choice of iST method as researchers design studies with precious samples in this rapidly evolving field.",
+  "year": 2025,
+  "venue": "Nature Communications",
+  "authors": [
+   "Huan Wang",
+   "Ruixu Huang",
+   "Jack Nelson",
+   "Ce Gao",
+   "Miles Tran",
+   "Anna Yeaton"
+  ],
+  "citations": 8,
+  "source": "openalex",
+  "source_id": "W4416410593",
+  "doi": "10.1038/s41467-025-64990-y",
+  "paper_url": "https://www.nature.com/articles/s41467-025-64990-y.pdf",
+  "published_iso": "2025-11-20",
+  "paper_id": "openalex:W4416410593"
+ },
+ {
+  "title": "Goldbach Flow Program v3.4b   Entropy–Spectral Closure, Predictive Goldbach Law, and Density–0 Rigidity",
+  "title_norm": "goldbach flow program v3 4b entropy spectral closure predictive goldbach law and",
+  "abstract": "# Goldbach Flow Program v3.4b Entropy–Spectral Closure, Predictive Goldbach Law, and Density–0 Rigidity ## Overview This record releases version v3.4b of the **Goldbach Flow Program**, an operator–spectral and entropy–based framework for the binary Goldbach problem. The central object is the **Goldbach kernel** \\(K_G\\), a symmetric nonnegative kernel on even integers whose diagonal is the Goldbach representation function\\[ W(2n) \\;=\\; \\#\\{\\,p+q=2n : p,q \\text{ primes}\\,\\}.\\]On short windows \\(I_T = [T, T+T^\\alpha]\\) we study the row–normalized reversible Markov chain \\(P_T\\) induced by \\(K_G\\), and the associated **Goldbach flow** \\((\\rho_T(t))_{t\\ge 0}\\) on the prime–pair space \\(\\Omega_T\\). On the analytic side we consider the Dirichlet series\\[ \\zeta_G(s) \\;=\\; \\sum_{n\\ge 1} \\frac{W(2n)}{(2n)^s},\\]and build a **Mellin–weighted operator** \\(\\mathsf{T}_s\\) whose trace encodes \\(\\zeta_G(s)\\) via a Mellin–trace identity. The program links: - analytic continuation and functional equations for \\(\\zeta_G(s)\\),- spectral gap and log–Sobolev constants for \\(P_T\\),- entropy decay and predictive structure on Goldbach fibers \\(P_{2n}\\), into a single quantitative framework. This record contains two main components: 1. **Main paper (Goldbach Conjecture Proof v3.4b)** Entropy–spectral framework, Mellin–trace bridge, uniform Doeblin / LSI bounds, and a predictive Goldbach law along fibers. 2. **Companion paper (Density–0 Closure for the Goldbach Flow v1.4)** A self–contained variational proof that macroscopically ill–mixed windows form a set of logarithmic density zero. We **do not claim a full, unconditional proof of the Goldbach conjecture**. Instead, v3.6 establishes a robust entropy–spectral closure on short windows and a density–0 elimination of weakly mixed regimes, together with a quantitative predictive law for almost all sums \\(2n\\). --- ## Closed results in v3.4b ### 1. Mellin–trace bridge and analytic continuation The main paper develops a rigorous **Mellin–trace bridge** between the Goldbach operator and \\(\\zeta_G(s)\\): - For \\(\\Re s > 2\\), a Mellin weight \\(\\mathsf{M}_s\\) is used to define \\[ \\mathsf{T}_s \\;=\\; \\mathsf{M}_s^{1/2}\\,\\mathsf{T}\\,\\mathsf{M}_s^{1/2}, \\quad \\mathsf{T}_{\\le Y,s} \\;=\\; \\mathsf{M}_s^{1/2}\\,\\mathsf{T}_{\\le Y}\\,\\mathsf{M}_s^{1/2}, \\] where \\(\\mathsf{T}_{\\le Y}\\) is the truncation to even integers \\(\\le Y\\). - One proves a **Mellin–trace correspondence** \\[ \\zeta_G(s) \\;=\\; \\sum_{n\\ge 1} \\frac{W(2n)}{(2n)^s} \\;=\\; \\lim_{Y\\to\\infty} \\operatorname{Tr}\\bigl(\\mathsf{T}_{\\le Y,s}\\bigr), \\] with full trace–class / Hilbert–Schmidt criteria and Tonelli–Fubini justification. - This identity is extended meromorphically to \\(\\Re s > 1\\), with a **functional equation** \\[ \\Gamma(s)\\,\\zeta_G(s) \\;=\\; \\Gamma(2-s)\\,\\mathcal{A}_G(s)\\,\\zeta_G(2-s), \\] for some analytic factor \\(\\mathcal{A}_G(s)\\), compatible with a leading \\(t^{-2}\\) heat–trace singularity and a pole of \\(\\zeta_G(s)\\) at \\(s=2\\). This component is fully analytic and self–contained: all trace–class bounds, contour manipulations, and boundary behaviors are proved directly in the main paper. --- ### 2. Uniform Doeblin gap and log–Sobolev bounds On short windows \\(I_T = [T, T+T^\\alpha]\\) with \\(0<\\alpha<1\\) and \\(T\\) large, the main paper proves **unconditional spectral and entropy–functional control** for the Goldbach chain \\(P_T\\): - A band–limited comparison chain \\(Q_T\\) is introduced, and **prime–band conductance** is bounded using Bombieri–Vinogradov and Barban–Davenport–Halberstam type estimates. - One obtains a uniform **conductance lower bound** \\[ \\Phi_T \\;\\gtrsim\\; \\frac{1}{\\log T}, \\] and hence, by Cheeger and log–Sobolev comparison, \\[ \\gamma(P_T) \\;\\gtrsim\\; \\frac{1}{\\log^2 T}, \\qquad \\alpha_{\\mathrm{LSI}}(P_T) \\;\\gtrsim\\; \\frac{1}{\\log^2 T}. \\] - As a consequence, the Goldbach flow \\((\\rho_T(t))_{t\\ge 0}\\) exhibits **exponential entropy decay**: \\[ \\mathrm{KL}\\bigl(\\rho_T(t)\\,\\Vert\\,\\pi_T\\bigr) \\;\\le\\; \\exp\\!\\Bigl(-\\frac{2c}{\\log^2 T}t\\Bigr)\\, \\mathrm{KL}\\bigl(\\rho_T(0)\\,\\Vert\\,\\pi_T\\bigr), \\] for some constant \\(c>0\\) and all large \\(T\\). This yields an **entropy–spectral closure** on every admissible window without RH/GRH–type assumptions. --- ### 3. Predictive Goldbach law along fibers The entropy–spectral structure is further resolved along the **Goldbach fibers**\\[ P_{2n} \\;=\\; \\{\\,p : p, 2n-p \\text{ prime}\\,\\}.\\] - The main paper defines a **fiber–wise entropy** \\[ \\mathrm{Ent}_T(t) := \\frac{1}{|I_T|} \\sum_{2n\\in I_T} \\mathrm{KL}\\bigl(\\mu_{T,2n}(t)\\,\\Vert\\,\\nu_{T,2n}\\bigr), \\] where \\(\\mu_{T,2n}(t)\\) and \\(\\nu_{T,2n}\\) are the conditional prime distributions on \\(P_{2n}\\) under the flow and under the stationary model \\(\\pi_T\\). - Under the entropy decay from the Doeblin / LSI bounds, one proves a **Predictive Goldbach law**: for any fixed \\(\\varepsilon>0\\) and sufficiently large \\(t\\), there exists a subset \\(I_T^{\\mathrm{good}} \\subset I_T\\) with \\[ \\frac{|I_T^{\\mathrm{good}}|}{|I_T|} \\;\\ge\\; 1-\\varepsilon \\] such that, for all \\(2n \\in I_T^{\\mathrm{good}}\\), \\[ \\mathrm{KL}\\bigl(\\mu_{T,2n}(t)\\,\\Vert\\,\\nu_{T,2n}\\bigr) \\;\\le\\; \\varepsilon, \\qquad \\|\\mu_{T,2n}(t)-\\nu_{T,2n}\\|_{\\mathrm{TV}} \\;\\le\\; \\sqrt{\\tfrac12\\,\\varepsilon}. \\] - In particular, for any bounded observable \\(f:P_{2n}\\to\\mathbb{R}\\) with \\(\\|f\\|_\\infty\\le 1\\), \\[ \\Bigl|\\mathbb{E}_{\\mu_{T,2n}(t)} f -\\mathbb{E}_{\\nu_{T,2n}} f\\Bigr| \\;\\le\\; \\sqrt{\\tfrac12\\,\\varepsilon} \\] for all such \\(2n\\). This promotes the **Hardy–Littlewood Goldbach heuristic** from a static asymptotic into a **dynamical prediction** about the long–time behaviour of the Goldbach flow on almost all sums \\(2n\\). --- ### 4. Density–0 rigidity (companion paper) The companion paper provides a **self–contained variational proof** of density–0 rigidity for ill–mixed windows: - A rigidity functional and variational minimization problem are set up on prime–pair configurations. - Using \\(\\Gamma\\)–convergence, equicoercivity, and a penalty mechanism for exceptional windows, one shows that the set of windows where the entropy–spectral bounds fail at a fixed macroscopic scale has **logarithmic density zero**. - The companion paper is deliberately **self–contained**: it does not assume RH/GRH and does not depend on external analytic lemmas from the main paper. It can be read as an independent density–0 result for the Goldbach flow. This ensures that **macroscopically ill–mixed windows are asymptotically negligible**, aligning the global picture with the local predictive law. --- ### 5. Numerical consistency The main paper includes a numerical component (documented in the appendices): - Simulations of the Goldbach flow up to \\(2n \\le 10^{12}\\) show: - exponential decay of \\(\\mathrm{KL}\\bigl(\\rho_T(t)\\,\\Vert\\,\\pi_T\\bigr)\\) with fitted slope \\(-2c_{\\mathrm{fit}}\\approx -0.44\\), - spectral gap / LSI scaling consistent with \\((\\log T)^{-A_\\ast}\\) for some \\(A_\\ast \\le 12\\), - a stabilized ratio \\(R(2n)\\to c_\\star \\approx 0.65\\) across windows. These observations are **consistent with the theoretical entropy–spectral bounds** and support the predictive Goldbach law empirically. --- ## What is new in v3.4b Relative to earlier versions (v3.4a and prior), v3.4b introduces the following closed upgrades: 1. **Mellin–trace module upgraded to a full analytic bridge** - Trace–class / Hilbert–Schmidt bounds made explicit. - Tonelli–Fubini justifications added. - Functional equation and boundary behaviour aligned with a \\(t^{-2}\\) heat–trace singularity. 2. **Uniform Doeblin / LSI bounds on all admissible windows** - Previous “polylog–uniform on most windows” results are strengthened to **window–uniform bounds**. - The conductance \\(\\Phi_T\\) and constants \\(\\gamma(P_T)\\), \\(\\alpha_{\\mathrm{LSI}}(P_T)\\) now satisfy explicit lower bounds \\( \\gtrsim (\\log T)^{-1} \\) and \\( \\gtrsim (\\log T)^{-2} \\) without RH/GRH calibration. 3. **Predictive Goldbach law stated and proved in a clean theorem form** - Fiber–wise statements are collected into a single predictive theorem with clear \\(\\varepsilon\\)–dependence. - The link from averaged fiber entropy to total–variation control is made quantitative via Pinsker’s inequality. 4. **Density–0 rigidity module made self–contained (companion paper)** - The density–0 argument is separated into an independent variational paper. - All references to previous heuristic or conditional arguments are removed; the proof stands on its own. 5. **Description and program structure clarified** - The role of each module (Mellin–trace, Doeblin/LSI, predictive law, density–0 rigidity, numerics) is clearly separated. - The status of the Goldbach conjecture is stated explicitly: **no full proof is claimed**; the work provides a strong entropy–spectral and density–0 closure. --- ## Scope and non–proof status This version v3.4b is **not** presented as a full, unconditional proof of the Goldbach conjecture. - The main paper establishes a **closed entropy–spectral framework**, a rigorous Mellin–trace bridge, uniform Doeblin / LSI bounds, and a predictive law for almost all sums \\(2n\\). - The companion paper establishes **density–0 rigidity** for macroscopically ill–mixed windows via a variational method. Taken together, these results argue that: - the Goldbach flow behaves like a slowly varying expander on short windows;- Goldbach fibers \\(P_{2n}\\) are tightly controlled for a density–1 set of even integers;- exceptional windows are asymptotically negligible in logarithmic density. However, a final step upgrading these structures to a fully unconditional statement “\\(W(2n)\\ge 1\\) for all sufficiently large even \\(2n\\)” is **not** claimed here and remains outside the scope of v3.4b. --- ## Files in this record - `Goldbach_Conjecture_Proof_v3.4B.pdf`",
+  "year": 2025,
+  "venue": "Zenodo (CERN European Organization for Nuclear Research)",
+  "authors": [
+   "Lee, Byoungwoo"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7109632900",
+  "doi": "10.5281/zenodo.17836952",
+  "paper_url": "https://openalex.org/W7109632900",
+  "published_iso": "2025-12-06",
+  "paper_id": "openalex:W7109632900"
+ },
+ {
+  "title": "PALEOS: Thermodynamic Equation of State Tables for Fe, MgSiO₃, and H₂O at Planetary Interior Conditions",
+  "title_norm": "paleos thermodynamic equation of state tables for fe mgsio₃ and h₂o at planetary",
+  "abstract": "PALEOS: Thermodynamic Equation of State Tables for Fe, MgSiO₃, and H₂O at Planetary Interior Conditions Precomputed thermodynamic property tables for three key planetary materials—iron (Fe), magnesium silicate (MgSiO₃), and water (H₂O)—generated with the open-source Python package PALEOS (Planetary Assemblage Layers: Equations Of State). These tables are designed for direct use in planetary interior structure and thermal evolution models, spanning the pressure–temperature conditions encountered from terrestrial to giant planets. Scope and motivation Interior modelling of rocky and water-rich exoplanets requires thermodynamic properties of core, mantle, and volatile-layer materials over many orders of magnitude in pressure and temperature. PALEOS provides a centralized, validated equation-of-state toolkit that consolidates published EoS for each material, implements full phase diagrams with automatic phase selection, and derives all seven thermodynamic quantities analytically from the underlying P(V,T) relations via Maxwell relations and fundamental thermodynamic identities. The tables released here are the primary data product of PALEOS: they encode the analytically computed properties on regular grids that can be loaded and interpolated with minimal effort. Tables included File Material P range T range Resolution paleos_iron_tables_pt.dat Fe 1 bar – 100 TPa 300 – 10⁵ K 150 ppd paleos_iron_tables_pt_highres.dat Fe 1 bar – 100 TPa 300 – 10⁵ K 600 ppd paleos_mgsio3_tables_pt.dat MgSiO₃ 1 bar – 100 TPa 300 – 10⁵ K 150 ppd paleos_mgsio3_tables_pt_highres.dat MgSiO₃ 1 bar – 100 TPa 300 – 10⁵ K 600 ppd paleos_water_tables_pt.dat H₂O 1 μbar – 100 TPa 100 – 10⁵ K 150 ppd All grids are log-uniform in both P and T. The standard 150 points-per-decade (ppd) variants are chosen so that bilinear interpolation in (log₁₀P, log₁₀T) space achieves a relative density error below 10⁻⁴ at the 99th percentile, and are the intended default for most interior-structure and mass–radius workflows. The high-resolution 600 ppd variants for Fe and MgSiO₃ are provided for applications where thermodynamic derivatives (α, C_P, ∇_ad) need tighter accuracy than bilinear interpolation of the 150 ppd grid can deliver. The Jupyter notebooks used to generate these tables are available in the tables/ directory of the PALEOS repository. Columns Each table contains the same ten columns: P — Pressure [Pa] T — Temperature [K] rho — Density [kg/m³] u — Specific internal energy [J/kg] s — Specific entropy [J/(kg·K)] cp — Isobaric heat capacity [J/(kg·K)] cv — Isochoric heat capacity [J/(kg·K)] alpha — Thermal expansion coefficient [K⁻¹] nabla_ad — Adiabatic gradient (d ln T / d ln P)_S [dimensionless] phase — Stable phase identifier (string) Fe The iron table covers the complete planetary core phase diagram with five phases: α-bcc, δ-bcc, γ-fcc (Dorogokupets et al. 2017), ε-hcp (Miozzi et al. 2020 blended with Hakim et al. 2018 via a smoothstep transition for pressures above ~310 GPa), and liquid (Luo et al. 2024). Solid–solid phase boundaries follow Dorogokupets et al. (2017) and the melting curve follows Anzellini et al. (2013). Internal energy and entropy are referenced to the fcc–hcp–liquid triple point (98.5 GPa, 3712 K), pinning the anchor on the three phases that dominate planetary cores. Per-phase constants (U₀, S₀) are set by decoupling: S₀ is fixed on thermodynamic grounds—ensuring ΔS > 0 across every heating-accessible solid–solid boundary and ΔS_fusion > 0 on every branch of the Anzellini et al. (2013) melting curve—and U₀ is then fixed per phase by enforcing Gibbs-energy continuity at the triple point. MgSiO₃ The MgSiO₃ table covers the complete planetary mantle phase diagram with six phases: three pyroxene polymorphs—low-pressure clinoenstatite, orthoenstatite, and high-pressure clinoenstatite from Sokolova et al. (2022)—bridgmanite (Wolf et al. 2015, pure Mg end-member), postperovskite (Sakai et al. 2016), and liquid (Wolf & Bower 2018 with parameters from Luo & Deng 2025). The pyroxene boundaries follow Sokolova et al. (2022), the bridgmanite–postperovskite boundary follows Ono & Oganov (2005), and the melting curve combines Belonoshko et al. (2005) below ~2.55 GPa with Fei et al. (2021) above. Internal energy and entropy are referenced to the brg–ppv–liquid triple point (155.7 GPa, 6168 K), computed numerically as the intersection of the Ono & Oganov brg↔ppv boundary with the Fei et al. (2021) melting branch. Per-phase constants (U₀, S₀) are set by decoupling: S₀ is fixed on thermodynamic grounds—ensuring ΔS > 0 across every heating-accessible solid–solid boundary and matching the Stebbins et al. (1984) calorimetric anchor ΔS_fusion(1 bar, 1831 K) = 41.99 J/(mol·K) exactly—and U₀ is then fixed per phase by enforcing Gibbs-energy continuity at the triple point. Grid points where the EoS failed to converge (primarily in the low-P, high-T liquid regime, reflecting vapor/supercritical phase uncaptured by PALEOS) are omitted; users should reconstruct the full rectangular grid with NaN fill before interpolation (see usage example below). H₂O The water table is regridded from the AQUA equation of state (Haldemann et al. 2020), a composite description assembled from seven underlying EoS covering ice polymorphs (Ih through X), liquid, vapor, and supercritical/superionic water. Two corrections are applied to the entropy and internal energy to fix bugs in the Mazevet et al. (2019) Helmholtz free-energy parametrization used in AQUA's Region 7 (supercritical/superionic): a sign error on the first two terms of F_T, and a revision of the reference entropy from S₀ = 4.9 k_B n_at to 9.8 k_B n_at. Both corrections are gated analytically to the Region 7 blend bands AQUA uses to stitch Mazevet et al. (2019) with its neighbors, so ice polymorphs, liquid, Brown (2018) supercritical fluid, and the CEA ideal gas are unaffected. Heat capacities and thermal expansion are derived from the tabulated AQUA quantities using standard thermodynamic relations. Usage Tables are plain-text, whitespace-delimited files with comment headers (lines starting with #). Grid points where the EoS did not converge are omitted, so a table may contain fewer rows than the full rectangular grid (in this current implementation, only the MgSiO₃ table has an irregular structure). The following Python snippet reconstructs the full grid with NaN fill and builds an interpolator: import numpy as np from scipy.interpolate import RegularGridInterpolator # Grid parameters (adjust per table; see file headers) n_P, n_T = 1351, 380 P_min, P_max = 1e5, 1e14 # Pa T_min, T_max = 300.0, 1e5 # K # Load data cols = ['P','T','rho','u','s','cp','cv','alpha','nabla_ad','phase'] data = np.genfromtxt('paleos_iron_tables_pt.dat', names=cols, dtype=None, encoding='utf-8') # Reconstruct full regular grid log_P = np.linspace(np.log10(P_min), np.log10(P_max), n_P) log_T = np.linspace(np.log10(T_min), np.log10(T_max), n_T) rho = np.full((n_P, n_T), np.nan) for row in data: i = np.searchsorted(log_P, np.log10(row['P'])) j = np.searchsorted(log_T, np.log10(row['T'])) if i < n_P and j < n_T: rho[i, j] = row['rho'] # Interpolate (NaN propagates near missing points) interp = RegularGridInterpolator((log_P, log_T), rho) rho_query = interp([[np.log10(100e9), np.log10(4000)]])[0] Alternatively, PALEOS can be used directly as a Python package for on-the-fly EoS evaluation with automatic phase selection: from paleos import iron_eos as fe eos, phase = fe.get_iron_eos_for_PT(P=100e9, T=4000) rho = eos.density(100e9, 4000) Thermodynamic consistency All EoS implementations have been validated against the Maxwell-relation consistency parameter Δ ≡ 1 − ρ²(∂S/∂P)_T / (∂ρ/∂T)_P, which vanishes for a perfectly self-consistent equation of state. Across the iron phase diagram, 98.2% of the P–T domain satisfies |Δ| < 0.01 (median |Δ| ≈ 1.4 × 10⁻⁷). Across the MgSiO₃ phase diagram, 100% of the valid domain satisfies |Δ| < 0.01 (median |Δ| ≈ 3.5 × 10⁻⁸). See the PALEOS documentation and benchmark notebooks for detailed consistency reports. License and citation These tables are released under the Creative Commons Attribution 4.0 International (CC BY 4.0) license. If you use these tables, please cite the forthcoming PALEOS paper (Attia et al., in prep.). * * * Version log (1.2.0): implemented consistent U₀/S₀ per-phase shifts to ensure dS/dT > 0 everywhere and Gibbs-energy continuity at triple points, and generated high-resolution (600 ppd) tables.",
+  "year": 2026,
+  "venue": "Zenodo (CERN European Organization for Nuclear Research)",
+  "authors": [
+   "Mara Attia",
+   "Tim Lichtenberg",
+   "Ema Jungová",
+   "Mariana Sastre"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7135227358",
+  "doi": "10.5281/zenodo.19000315",
+  "paper_url": "https://openalex.org/W7135227358",
+  "published_iso": "2026-04-20",
+  "paper_id": "openalex:W7135227358"
+ },
+ {
+  "title": "Asymptotic safety, quantum gravity, and the swampland: A conceptual assessment",
+  "title_norm": "asymptotic safety quantum gravity and the swampland a conceptual assessment",
+  "abstract": "We provide a conceptual assessment of some aspects of fundamental quantum field theories of gravity in light of foundational aspects of the swampland program. On the one hand, asymptotically safe quantum gravity may provide a simple and predictive framework, thanks to a finite number of relevant parameters. On the other hand, a (sub-)set of intertwined swampland conjectures on the consistency of quantum gravity can be argued to be universal via effective field theory considerations. We answer whether some foundational features of these frameworks are compatible. This involves revisiting and refining several arguments (and loopholes) concerning the relation between field-theoretic descriptions of gravity and general swampland ideas. We identify the thermodynamics of black holes, spacetime topology change, and holography as the core aspects of this relation. We draw lessons on the features that a field theoretic description of gravity must (not) have to be consistent with fundamental principles underlying the swampland program, and on the universality of the latter.",
+  "year": 2026,
+  "venue": "SciPost Physics",
+  "authors": [
+   "Ivano Basile",
+   "Benjamin Knorr",
+   "Alessia Platania",
+   "Marc Schiffer"
+  ],
+  "citations": 4,
+  "source": "openalex",
+  "source_id": "W4407759298",
+  "doi": "10.21468/scipostphys.20.2.027",
+  "paper_url": "https://scipost.org/10.21468/SciPostPhys.20.2.027/pdf",
+  "published_iso": "2026-02-02",
+  "paper_id": "openalex:W4407759298"
+ },
+ {
+  "title": "Lagged Soil Moisture Controls on the Persistence of Drought and Heatwaves in the United States",
+  "title_norm": "lagged soil moisture controls on the persistence of drought and heatwaves in the",
+  "abstract": "Abstract Surface soil moisture (SSM) and root‐zone soil moisture (RZSM) play critical roles in shaping heatwaves and droughts, yet their distinct controls remain unclear. Using 46 years of North American Land Data Assimilation System Phase 2 data and event coincidence analysis across the contiguous United States, we demonstrate that SSM primarily drives heatwaves in semiarid and sub‐humid regions (median MaxTCR ≈ 0.63) through rapid surface drying, which shifts energy from latent to sensible heat. During droughts, RZSM has stronger influence in the central Great Plains (MaxTCR ≈ 0.64–0.71) with 3–5 months lags, indicating prolonged control over transpiration, compared with shorter lags (0–1 month; MaxTCR ≈ 0.44) in the Southwest. Analysis of three major events indicates that RZSM depletion intensified extremes in sub‐humid and humid regions by suppressing transpiration and evaporative cooling, whereas sparse vegetation limited these feedbacks in arid regions. Incorporating lagged RZSM data can improve early warning systems for extreme events.",
+  "year": 2025,
+  "venue": "Geophysical Research Letters",
+  "authors": [
+   "Kumar Puran Tripathy",
+   "Ashok K. Mishra",
+   "Sujay V. Kumar",
+   "Diego G. Miralles"
+  ],
+  "citations": 8,
+  "source": "openalex",
+  "source_id": "W4416226683",
+  "doi": "10.1029/2025gl115811",
+  "paper_url": "https://onlinelibrary.wiley.com/doi/pdfdirect/10.1029/2025GL115811",
+  "published_iso": "2025-11-14",
+  "paper_id": "openalex:W4416226683"
+ },
+ {
+  "title": "Generative AI for Text-to-Video Generation: Recent Advances and Future Directions",
+  "title_norm": "generative ai for text to video generation recent advances and future directions",
+  "abstract": "Text-to-video (T2V) generation has recently emerged as a transformative technology within the field of generative AI, enabling the creation of realistic, temporally coherent videos based on natural language descriptions. This paradigm provides significant added value in many domains such as creative media, human-computer interaction, immersive learning, and simulation. Despite its growing importance, systematic discussion of T2V is still limited compared with adjacent modalities such as text-to-image and image-to-video. To alleviate the scarcity of discussions in the T2V field, this paper provides a systematic review of works published from 2024 onward, consolidating fragmented contributions across the field. We survey and categorize the selected literature into three principal areas, namely, T2V methods, datasets, and evaluation practices, and further subdivide each area into subcategories that reflect recurring themes and methodological patterns in the literature. Emphasis will then be placed on identifying key research opportunities and open challenges that need further investigation.",
+  "year": 2025,
+  "venue": "Preprints.org",
+  "authors": [
+   "Kadhim Hayawi",
+   "Sakib Shahriar"
+  ],
+  "citations": 1,
+  "source": "openalex",
+  "source_id": "W4417445619",
+  "doi": "10.20944/preprints202512.1476.v1",
+  "paper_url": "https://www.preprints.org/frontend/manuscript/89fb4c4e18b2dbfa7db090815d5bd16e/download_pub",
+  "published_iso": "2025-12-17",
+  "paper_id": "openalex:W4417445619"
+ },
+ {
+  "title": "On the Memorization of Consistency Distillation for Diffusion Models",
+  "title_norm": "on the memorization of consistency distillation for diffusion models",
+  "abstract": "Diffusion models are central to modern generative modeling, and understanding how they balance memorization and generalization is critical for reliable deployment. Recent work has shown that memorization in diffusion models is shaped by training dynamics, with generalization and memorization emerging at different stages of training. However, deployed diffusion models are often further distilled, introducing an additional training phase whose impact on memorization is not well understood. In this work, we analyze how distillation reshapes memorization behavior in diffusion models, taking consistency distillation as a representative framework. Empirically, we show that when applied to a teacher model that has memorized data, consistency distillation significantly reduces transferred memorization in the student while preserving, and sometimes improving, sample quality. To explain this behavior, we provide a theoretical analysis using a random feature neural network model [Bonnaire et al., 2025], showing that consistency distillation suppresses unstable feature directions associated with memorization while preserving stable, generalizable modes. Our findings suggest that distillation can serve not only as an acceleration tool, but also as a mechanism for improving the memorization-generalization trade-off.",
+  "year": 2026,
+  "venue": "ArXiv.org",
+  "authors": [
+   "Bingqing Jiang",
+   "Difan Zou"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7158422389",
+  "doi": "",
+  "paper_url": "https://arxiv.org/pdf/2604.23552",
+  "published_iso": "2026-04-26",
+  "paper_id": "openalex:W7158422389"
+ },
+ {
+  "title": "Persistent Robot World Models: Stabilizing Multi-Step Rollouts via Reinforcement Learning",
+  "title_norm": "persistent robot world models stabilizing multi step rollouts via reinforcement ",
+  "abstract": "Action-conditioned robot world models generate future video frames of the manipulated scene given a robot action sequence, offering a promising alternative for simulating tasks that are difficult to model with traditional physics engines. However, these models are optimized for short-term prediction and break down when deployed autoregressively: each predicted clip feeds back as context for the next, causing errors to compound and visual quality to rapidly degrade. We address this through the following contributions. First, we introduce a reinforcement learning (RL) post-training scheme that trains the world model on its own autoregressive rollouts rather than on ground-truth histories. We achieve this by adapting a recent contrastive RL objective for diffusion models to our setting and show that its convergence guarantees carry over exactly. Second, we design a training protocol that generates and compares multiple candidate variable-length futures from the same rollout state, reinforcing higher-fidelity predictions over lower-fidelity ones. Third, we develop efficient, multi-view visual fidelity rewards that combine complementary perceptual metrics across camera views and are aggregated at the clip level for dense, low-variance training signal. Fourth, we show that our approach establishes a new state-of-the-art for rollout fidelity on the DROID dataset, outperforming the strongest baseline on all metrics (e.g., LPIPS reduced by 14% on external cameras, SSIM improved by 9.1% on the wrist camera), winning 98% of paired comparisons, and achieving an 80% preference rate in a blind human study.",
+  "year": 2026,
+  "venue": "ArXiv.org",
+  "authors": [
+   "Jai Bardhan",
+   "Patrik Drozdik",
+   "Josef Sivic",
+   "Vladimír Petrík"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7142557117",
+  "doi": "",
+  "paper_url": "https://arxiv.org/pdf/2603.25685",
+  "published_iso": "2026-03-26",
+  "paper_id": "openalex:W7142557117"
+ },
+ {
+  "title": "HyperDet: 3D Object Detection with Hyper 4D Radar Point Clouds",
+  "title_norm": "hyperdet 3d object detection with hyper 4d radar point clouds",
+  "abstract": "4D mmWave radar provides weather-robust, velocity-aware measurements and is more cost-effective than LiDAR. However, radar-only 3D detection still trails LiDAR-based systems because radar point clouds are sparse, irregular, and often corrupted by multipath noise, yielding weak and unstable geometry. We present HyperDet, a detector-agnostic radar-only 3D detection framework that constructs a task-aware hyper 4D radar point cloud for standard LiDAR-oriented detectors. HyperDet aggregates returns from multiple surround-view 4D radars over consecutive frames to improve coverage and density, then applies geometry-aware cross-sensor consensus validation with a lightweight self-consistency check outside overlap regions to suppress inconsistent returns. It further integrates a foreground-focused diffusion module with training-time mixed radar-LiDAR supervision to densify object structures while lifting radar attributes (e.g., Doppler, RCS); the model is distilled into a consistency model for single-step inference. On MAN TruckScenes, HyperDet consistently improves over raw radar inputs with VoxelNeXt and CenterPoint, partially narrowing the radar-LiDAR gap. These results show that input-level refinement enables radar to better leverage LiDAR-oriented detectors without architectural modifications.",
+  "year": 2026,
+  "venue": "ArXiv.org",
+  "authors": [
+   "Yichun Xiao",
+   "Runwei Guan",
+   "Fangqiang Ding"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7128864548",
+  "doi": "",
+  "paper_url": "https://arxiv.org/pdf/2602.11554",
+  "published_iso": "2026-02-12",
+  "paper_id": "openalex:W7128864548"
+ },
+ {
+  "title": "Bias-Constrained Diffusion Schedules for PDE Emulations: Reconstruction Error Minimization and Efficient Unrolled Training",
+  "title_norm": "bias constrained diffusion schedules for pde emulations reconstruction error min",
+  "abstract": "Conditional Diffusion Models are powerful surrogates for emulating complex spatiotemporal dynamics, yet they often fail to match the accuracy of deterministic neural emulators for high-precision tasks. In this work, we address two critical limitations of autoregressive PDE diffusion models: their sub-optimal single-step accuracy and the prohibitive computational cost of unrolled training. First, we characterize the relationship between the noise schedule, the reconstruction error reduction rate and the diffusion exposure bias, demonstrating that standard schedules lead to suboptimal reconstruction error. Leveraging this insight, we propose an \\textit{Adaptive Noise Schedule} framework that minimizes inference reconstruction error by dynamically constraining the model's exposure bias. We further show that this optimized schedule enables a fast \\textit{Proxy Unrolled Training} method to stabilize long-term rollouts without the cost of full Markov Chain sampling. Both proposed methods enable significant improvements in short-term accuracy and long-term stability over diffusion and deterministic baselines on diverse benchmarks, including forced Navier-Stokes, Kuramoto-Sivashinsky and Transonic Flow.",
+  "year": 2026,
+  "venue": "ArXiv.org",
+  "authors": [
+   "Constantin Le Cleï",
+   "Thuerey, Nils",
+   "Xiaoxiang Zhu"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7153671294",
+  "doi": "",
+  "paper_url": "https://arxiv.org/pdf/2604.08357",
+  "published_iso": "2026-04-09",
+  "paper_id": "openalex:W7153671294"
+ },
+ {
+  "title": "Argumentative essay assessment with LLMs: A critical scoping review",
+  "title_norm": "argumentative essay assessment with llms a critical scoping review",
+  "abstract": "",
+  "year": 2026,
+  "venue": "Research Square",
+  "authors": [
+   "Lucile Favero",
+   "Gabrielle Gaudeau",
+   "Juan Antonio Pérez-Ortiz",
+   "Tanja Käser",
+   "Nuria Oliver"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7127055305",
+  "doi": "10.21203/rs.3.rs-8632843/v1",
+  "paper_url": "https://www.researchsquare.com/article/rs-8632843/latest.pdf",
+  "published_iso": "2026-02-02",
+  "paper_id": "openalex:W7127055305"
+ },
+ {
+  "title": "Debiased Dual-Invariant Defense for Adversarially Robust Person Re-Identification",
+  "title_norm": "debiased dual invariant defense for adversarially robust person re identificatio",
+  "abstract": "Person re-identification (ReID) is a fundamental task in many real-world applications such as pedestrian trajectory tracking. However, advanced deep learning-based ReID models are highly susceptible to adversarial attacks, where imperceptible perturbations to pedestrian images can cause entirely incorrect predictions, posing significant security threats. Although numerous adversarial defense strategies have been proposed for classification tasks, their extension to metric learning tasks such as person ReID remains relatively unexplored. Moreover, the several existing defenses for person ReID fail to address the inherent unique challenges of adversarially robust ReID. In this paper, we systematically identify the challenges of adversarial defense in person ReID into two key issues: model bias and composite generalization requirements. To address them, we propose a debiased dual-invariant defense framework composed of two main phases. In the data balancing phase, we mitigate model bias using a diffusion-model-based data resampling strategy that promotes fairness and diversity in training data. In the bi-adversarial self-meta defense phase, we introduce a novel metric adversarial training approach incorporating farthest negative extension softening to overcome the robustness degradation caused by the absence of classifier. Additionally, we introduce an adversarially-enhanced self-meta mechanism to achieve dual-generalization for both unseen identities and unseen attack types. Experiments demonstrate that our method significantly outperforms existing state-of-the-art defenses.",
+  "year": 2025,
+  "venue": "ArXiv.org",
+  "authors": [
+   "Yuhang Zhou",
+   "Yanxiang Zhao",
+   "Zhongyun Hua",
+   "Liu, Zhipu",
+   "Zhaoquan Gu",
+   "Qing Liao"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W4416414647",
+  "doi": "10.48550/arxiv.2511.09933",
+  "paper_url": "https://arxiv.org/pdf/2511.09933",
+  "published_iso": "2025-11-13",
+  "paper_id": "openalex:W4416414647"
+ },
+ {
+  "title": "Neural-Symbolic Knowledge Tracing: Injecting Educational Knowledge into Deep Learning for Responsible Learner Modelling",
+  "title_norm": "neural symbolic knowledge tracing injecting educational knowledge into deep lear",
+  "abstract": "The growing use of artificial intelligence (AI) in education, particularly large language models (LLMs), has increased interest in intelligent tutoring systems. However, LLMs often show limited adaptivity and struggle to model learners' evolving knowledge over time, highlighting the need for dedicated learner modelling approaches. Although deep knowledge tracing methods achieve strong predictive performance, their opacity and susceptibility to bias can limit alignment with pedagogical principles. To address this, we propose Responsible-DKT, a neural-symbolic deep knowledge tracing approach that integrates symbolic educational knowledge (e.g., mastery and non-mastery rules) into sequential neural models for responsible learner modelling. Experiments on a real-world dataset of students' math interactions show that Responsible-DKT outperforms both a neural-symbolic baseline and a fully data-driven PyTorch DKT model across training settings. The model achieves over 0.80 AUC with only 10% of training data and up to 0.90 AUC, improving performance by up to 13%. It also demonstrates improved temporal reliability, producing lower early- and mid-sequence prediction errors and the lowest prediction inconsistency rates across sequence lengths, indicating that prediction updates remain directionally aligned with observed student responses over time. Furthermore, the neural-symbolic approach offers intrinsic interpretability via a grounded computation graph that exposes the logic behind each prediction, enabling both local and global explanations. It also allows empirical evaluation of pedagogical assumptions, revealing that repeated incorrect responses (non-mastery) strongly influence prediction updates. These results indicate that neural-symbolic approaches enhance both performance and interpretability, mitigate data limitations, and support more responsible, human-centered AI in education.",
+  "year": 2026,
+  "venue": "arXiv (Cornell University)",
+  "authors": [
+   "Danial Hooshyar",
+   "Gustav Šír",
+   "Yeongwook Yang",
+   "Tommi Kärkkäinen",
+   "Raija Hämäläinen",
+   "Ekaterina Krivich"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W7153670940",
+  "doi": "",
+  "paper_url": "https://arxiv.org/pdf/2604.08263",
+  "published_iso": "2026-04-09",
+  "paper_id": "openalex:W7153670940"
+ }
+]

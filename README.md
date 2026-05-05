@@ -1,323 +1,142 @@
 # NoveltySkill
 
-A data-driven innovation engine for generating Oral-level ML research ideas. Built from 1,370 papers (ICLR, NeurIPS, ICML 2020-2025) with three-way contrastive analysis (Oral vs High-Cited vs Rejected).
+A data-driven research-idea generator for ML, built on a 1947-paper corpus of ICLR / ICML / NeurIPS submissions (2020-2025). Two deliverables:
 
-## What It Does
+- **The dataset + analyses** — 13 induced **innovation patterns**, 47 **innovation sub-patterns**, 28 induced research domains, paper-level multi-label pattern assignments, plus seven figure-grade analyses (acceptance bias, pattern adjacency, per-domain temporal trends, multi-label *k* distributions, top compositions, etc.). Documented in [`paper/technical_report.pdf`](paper/technical_report.pdf) (~130 pages).
+- **The skill** — a model-agnostic Claude / GPT / Gemini skill that converts an under-specified research direction into one reviewer-defensible Oral-grade research proposal in **5 phases**. Lives in [`skills/novelty-skill/`](skills/novelty-skill/) with literature grounding via [`skills/novelty-lit-search/`](skills/novelty-lit-search/).
 
-Given a research problem description, NoveltySkill guides any LLM through a structured 5-phase workflow:
+Key naming: in the paper and this README we say **innovation pattern** (13) and **innovation sub-pattern** (47); the codebase still uses field names like `pattern_id` / `sub_pattern_id` and file paths like `references/innovation-patterns/` / `references/innovation-sub-patterns/`.
 
-1. **Problem Understanding** - identify the essential bottleneck
-2. **Hierarchical Lens Reasoning** - scan 9 meta-categories, drill into 18 specific innovation lenses, explore proven combinations
-3. **Idea Generation** - produce a concrete, implementable research idea
-4. **Quality Audit** - check against failure modes, reviewer expectations, combination coherence
-5. **Framing** - craft hook, scope, narrative arc, and abstract draft
+## Quick navigation
 
-**Output**: Title, Research Question, Core Approach, Differentiation from Related Work, Experiment Plan, Reviewer Response Strategy, Abstract Draft.
+| Path | Contents |
+|---|---|
+| `skills/novelty-skill/` | Parent skill: 5-phase ideation workflow with corpus-anchored audit. |
+| `skills/novelty-lit-search/` | Sub-skill: 4-source literature retrieval (DBLP / OpenAlex / OpenReview / arXiv). |
+| `paper/technical_report.pdf` | The empirical analysis behind the cards (~130 pages). |
+| `data/dataset/all_records_full.json` | The cleaned dataset: 1947 papers with abstract, reviews, meta-reviews, pattern assignments. |
+| `data/clustering/` | Analysis scripts and JSON outputs (cards, sub_pattern cards, domains, multilabel). |
+| `docs/USAGE.md` | End-to-end usage for Claude Code / Claude Desktop / OpenAI / Gemini / open-weights. |
 
-## 18 Innovation Lenses (organized in 9 Meta-Categories)
+## What the skill does (one paragraph)
 
-| Meta-Category | Lenses | Core Question |
-|--------------|--------|--------------|
-| Cross-Domain Transfer | C03 + C10 | Has another domain solved this? |
-| Theoretical Formalization | C01 + C14 + C17 | Can we prove formal properties? |
-| Structural Diagnosis | C12 + C16 | Is the objective/parameterization flawed? |
-| Sequential Decision & Game Theory | C04 + C13 | Can we reframe what to optimize? |
-| Symmetry & Domain Structure | C05 + C06 | What structural constraint is missing? |
-| Compositional & Process | C08 + C09 | Can we decompose and supervise steps? |
-| Mathematical Reformulation | C07 + C15 | Does a different math language help? |
-| Assumption & Role Inversion | C00 + C11 | What assumption can we challenge? |
-| Causal Identification | C02 | Does causal structure give guarantees? |
+Given a research direction (e.g., *"distill an EDM diffusion teacher to 4 NFE via consistency loss"*), the skill (a) retrieves real recent literature via 4 connectors, (b) writes a literature-grounded bottleneck statement, (c) selects 1-3 of 13 innovation patterns by structural fit and generates one candidate idea, (d) runs a corpus-anchored audit (3 checks against tactical-card Reject lessons, anti-pattern compositions, and lit_table ∪ collision_hits paper-pointed threats), (e) optionally applies revisions when audit verdict is `revise`, (f) expands into a structured idea card and renders it as PDF + Markdown.
 
-Each lens includes: step-by-step procedure, success conditions (from Oral papers), failure modes (from Rejected papers), impact drivers (from High-Cited papers), cognitive barriers, and reviewer expectations.
+Three possible outcomes per run: an L3 idea card (advance / revise→3.3 paths), a `do_not_generate.md` (Phase 1 OOD), or a `phase_3_failed.md` (audit abandons). One user input → one outcome. The skill never asks the user mid-flow.
 
----
-
-## Installation & Usage
-
-### Quickest: interactive installer
+## Quick start (Claude Code)
 
 ```bash
-cd /path/to/your/project
-bash /path/to/novelty-skill-release/install.sh
+# 1. Install both skills
+ln -s "$(pwd)/skills/novelty-skill"      ~/.claude/skills/novelty-skill
+ln -s "$(pwd)/skills/novelty-lit-search" ~/.claude/skills/novelty-lit-search
+
+# 2. Set environment for the lit-search sub-skill
+export OPENALEX_MAILTO=<your-email>     # optional but recommended (polite-pool: 10 req/s vs 1)
+export OPENALEX_API_KEY=<your-key>      # optional, premium rate (https://openalex.org/about)
+export OPENREVIEW_USER=<your-user>      # required for OpenReview connector
+export OPENREVIEW_PASS=<your-pass>
+
+# 3. Install Python deps for the connectors
+pip install feedparser openreview-py
 ```
 
-`install.sh` walks you through:
-
-1. Installing the skill (Markdown) into `.claude/skills/novelty-skill/` for Claude Code.
-2. Optionally installing the Phase 1.5 **literature-search** Python module and wiring it to **whichever LLM backend you already have** (OpenAI / Anthropic / Gemini / local Ollama). It detects `*_API_KEY` env vars and a running Ollama automatically, writes `.novelty_skill.env` pinning the choice, and offers to `pip install` the matching SDK.
-
-Once installed:
+For dev workflow, copy `.env.template` to `.env`, fill in your values, and source it (`.env` is in `.gitignore`):
 
 ```bash
-source .novelty_skill.env
-python examples/lit_search.py "GRPO rollout efficiency"
+cp .env.template .env
+$EDITOR .env                  # fill in your values
+set -a; source .env; set +a   # load into current shell
 ```
 
-The CLI prints papers from arXiv + Google Scholar over `[today-24mo, today]`, each tagged with its primary innovation lens (C00-C17) via the backend you selected. Saturated / under-used lenses feed directly into Phase 2 of the skill.
+**Never commit `.env`**, embed keys in `config.yaml` / `SKILL.md` / any tracked file, or share keys in issues. `.env.template` is the canonical list of env vars the skill reads.
 
----
-
-### Option A: Claude Code (Recommended)
-
-The native, highest-quality mode. Claude Code reads supporting files on-demand for detailed methodologies.
-
-**Install:**
-
-```bash
-# In your project root directory:
-cd /path/to/your/project
-bash /path/to/novelty-skill-release/install_claude_code.sh
-```
-
-Or manually:
-
-```bash
-mkdir -p .claude/skills/novelty-skill
-cp skill/SKILL.md .claude/skills/novelty-skill/
-cp skill/methodologies.md .claude/skills/novelty-skill/
-cp skill/pitfalls.md .claude/skills/novelty-skill/
-cp skill/domain-analysis.md .claude/skills/novelty-skill/
-```
-
-**Use:**
-
-Open Claude Code in your project directory, then type:
+In Claude Code, ask in natural language:
 
 ```
-/novelty-skill "How to improve LLM reasoning without additional training data"
+I'm working on speeding up diffusion sampling by distilling
+an EDM teacher (50 NFE) to a 4-NFE consistency-loss student.
+I have 4×A100×3 weeks. Generate one Oral-grade idea.
 ```
 
-Claude will automatically follow the 5-phase workflow, read methodologies on-demand, and generate a complete research idea.
+The skill drives the 5 phases and writes outputs under `outputs/`. End-to-end takes ~5-15 minutes with frontier reasoning model.
 
----
+## What you get back
 
-### Option B: OpenAI GPT-4o / GPT-4.1
+For a successful run:
 
-Uses the self-contained system prompt (~19K tokens). Works with any model that has 20K+ context window.
-
-**Install:**
-
-```bash
-pip install openai
-export OPENAI_API_KEY="sk-..."
-```
-
-**Use:**
-
-```bash
-python examples/use_openai.py "How to improve LLM reasoning without more training data"
-```
-
-Or in your own code:
-
-```python
-from openai import OpenAI
-
-client = OpenAI()
-system = open("skill/system_prompt.txt").read()
-
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[
-        {"role": "system", "content": system},
-        {"role": "user", "content": "How to improve LLM reasoning?"}
-    ],
-    temperature=0.7,
-)
-print(response.choices[0].message.content)
-```
-
----
-
-### Option C: Anthropic Claude API (without Claude Code)
-
-```bash
-pip install anthropic
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-```bash
-python examples/use_anthropic.py "How to improve LLM reasoning without more training data"
-```
-
-Or in your own code:
-
-```python
-import anthropic
-
-client = anthropic.Anthropic()
-system = open("skill/system_prompt.txt").read()
-
-response = client.messages.create(
-    model="claude-sonnet-4-6",
-    max_tokens=4096,
-    system=system,
-    messages=[{"role": "user", "content": "How to improve LLM reasoning?"}],
-)
-print(response.content[0].text)
-```
-
----
-
-### Option D: Google Gemini
-
-```bash
-pip install google-genai
-export GOOGLE_API_KEY="..."
-```
-
-```bash
-python examples/use_gemini.py "How to improve LLM reasoning without more training data"
-```
-
----
-
-### Option E: Local Models via Ollama (Llama, Qwen, DeepSeek)
-
-Works with any local model that has 32K+ context. The system prompt is ~19K tokens.
-
-**Install:**
-
-```bash
-# Install Ollama: https://ollama.com
-ollama pull qwen2.5:72b   # or llama3.1:70b, deepseek-v3, etc.
-```
-
-**Use:**
-
-```bash
-python examples/use_ollama.py "How to improve LLM reasoning without more training data"
-
-# Use a different model:
-OLLAMA_MODEL=llama3.1:70b python examples/use_ollama.py "your problem"
-```
-
-**Recommended local models** (need 32K+ context):
-- `qwen2.5:72b` - best quality/speed balance
-- `llama3.1:70b` - strong general capability
-- `deepseek-v3` - strong on research tasks
-- `qwen2.5:32b` - smaller but still capable
-
----
-
-### Option F: Any OpenAI-Compatible API
-
-Any service that supports the OpenAI chat completions format (vLLM, Together AI, Fireworks, etc.):
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="https://api.together.xyz/v1",  # or your endpoint
-    api_key="your-key",
-)
-system = open("skill/system_prompt.txt").read()
-
-response = client.chat.completions.create(
-    model="meta-llama/Llama-3.1-70B-Instruct",
-    messages=[
-        {"role": "system", "content": system},
-        {"role": "user", "content": "your research problem"},
-    ],
-)
-print(response.choices[0].message.content)
-```
-
----
-
-## File Structure
-
-```
-novelty-skill-release/
-├── README.md                          # This file
-├── install.sh                         # Interactive installer (skill + lit_search + LLM wiring)
-├── install_claude_code.sh             # Legacy: skill-only Claude Code installer
-│
-├── skill/                             # Core skill files
-│   ├── SKILL.md                       # Main entry - hierarchy, workflow, Phase 1.5, output format
-│   ├── methodologies.md               # 18 complete methodologies
-│   ├── pitfalls.md                    # Failure mode checklist
-│   ├── domain-analysis.md             # Domain mapping, trends, PC bias
-│   └── system_prompt.txt              # Self-contained prompt for any LLM (~19K tokens)
-│
-├── claude-code-install/               # Pre-structured for Claude Code
-│   └── .claude/skills/novelty-skill/
-│
-├── lit_search/                        # Phase 1.5 Python module (multi-LLM)
-│   ├── __init__.py
-│   ├── literature_search.py           # arXiv + Google Scholar + dedup + lens classify
-│   ├── backends.py                    # auto-detect OpenAI/Anthropic/Gemini/Ollama
-│   └── clusters.py                    # 18 lens names + 9 meta-categories
-│
-└── examples/                          # Usage examples
-    ├── lit_search.py                  # Phase 1.5 CLI (auto-picks your LLM)
-    ├── use_openai.py                  # Idea generation: GPT-4o / GPT-4.1
-    ├── use_anthropic.py               # Idea generation: Claude API
-    ├── use_gemini.py                  # Idea generation: Google Gemini
-    └── use_ollama.py                  # Idea generation: local models
-```
-
-### Literature search — backend selection
-
-The Phase 1.5 module picks a backend with this priority:
-
-1. `NOVELTY_LLM_BACKEND` env var (explicit override: `openai` / `anthropic` / `gemini` / `ollama` / `none`)
-2. `OPENAI_API_KEY` → OpenAI
-3. `ANTHROPIC_API_KEY` → Anthropic
-4. `GOOGLE_API_KEY` → Gemini
-5. A running Ollama on `$OLLAMA_URL` (default `http://localhost:11434`)
-6. `none` — skip classification, still return papers
-
-Per-backend model defaults (override via env):
-
-| Backend | Env var | Default model |
+| File | Type | Use |
 |---|---|---|
-| openai | `NOVELTY_OPENAI_MODEL` | `gpt-4o-mini` |
-| anthropic | `NOVELTY_ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` |
-| gemini | `NOVELTY_GEMINI_MODEL` | `gemini-2.5-flash` |
-| ollama | `NOVELTY_OLLAMA_MODEL` | `qwen2.5:7b` |
+| `idea_<timestamp>.pdf` | PDF | Reading / sharing |
+| `idea_<timestamp>.md`  | Markdown | AI context / docs / GitHub |
+| `idea_<timestamp>.tex` | LaTeX | Diagnostics / further editing |
+| `phase4_expansion.json` | JSON | Machine-readable, all data |
+| `phase{0,1,2,3,4}_*.json` | JSON | Per-phase intermediate outputs |
 
-Programmatic usage:
+The idea card contains: title + hook, 250-word abstract, motivation (with ≥ 2 cited prior papers explaining why they stopped), core claim + sub-claims, method flow (numbered steps each linked to a leg + falsification mode), theorem/algorithm/system-design statement, theoretical + engineering legs, falsification block (what we run / success / failure_a numerical / failure_b mechanistic / compute budget / decision rule), mechanism probe, 5-axis feasibility validation (compute / data / theoretical / engineering / falsification + overall), differentiation from ≥ 2 specific recent papers, reviewer concerns + responses anchored in candidate fields, and an **innovation pattern landscape** showing the area's pattern saturation alongside which patterns this candidate uses.
 
-```python
-from lit_search import search_recent_literature
+## How phases run
 
-res = search_recent_literature(
-    "LLM reasoning token efficiency",
-    months_back=24,
-    top_k=15,
-    backend=None,        # None = auto-detect
-)
-print(res["lens_distribution"])   # e.g. {"C12": 8, "C11": 3, ...}
-print(res["saturated_lenses"])    # lenses that already dominate this topic
-print(res["under_used_lenses"])   # open opportunities to feed Phase 2
-if res["warning"]:
-    print("[!]", res["warning"])  # load-bearing: never silently ignore
+| Phase | Type | Purpose |
+|---|---|---|
+| 0. Literature retrieval | orchestrator (no LLM call) | 4-connector role-based retrieval, ~30-40 deduped papers + tagging |
+| 1. Bottleneck identification | 1 LLM call | Multi-paper-grounded bottleneck statement + closest_adjacent + state {proceed, do_not_generate} + domain pattern distribution |
+| 2.1 Pattern selection | 1 LLM call | Top-3 ranked compositions by structural fit; anti-pattern flag |
+| 2.2 Candidate generation | 1 LLM call | Single candidate (K=1) with full schema + signature_terms |
+| 3.1 Collision retrieval | orchestrator (no LLM call) | Mechanism-specific real retrieval over 6mo, dedup |
+| 3.2 Audit | 1 LLM call | 3 corpus-anchored checks + 2-layer verdict {advance, revise, abandon} |
+| 3.3 Revise (if verdict=revise) | 1 LLM call | Apply revision targets, kill-switch byte-identical preserved |
+| 4.1 Expansion | 1 LLM call | Idea-card content (motivation, method_flow, feasibility, etc.) |
+| 4.2 PDF/MD render | orchestrator (no LLM call) | Templating only, deterministic |
+| Validators | orchestrator (no LLM call) | `kill_switch_integrity` (hard) + `expansion_completeness` (soft) |
+
+LLM calls per run: **5** (advance path) or **6** (revise path).
+
+## Reproducing the analysis
+
+```bash
+# 1. Build the dataset (assumes you have OpenReview credentials)
+python data_pipeline/fetch_openreview.py --all
+# 2. Run the extraction + clustering pipeline
+python data/clustering/embed.py
+python data/clustering/cluster.py
+python data/clustering/label.py
+python data/clustering/taxonomy.py
+# 3. Build the pattern + sub-pattern + domain + multilabel cards
+python data/clustering/cards/step1_build_input.py
+python data/clustering/cards/step2_run_cli.py
+python data/clustering/cards/step3_merge.py
+# (similar for sub_pattern_cards/, domains/, multilabel/)
+# 4. Render figures + tech report
+python paper/make_figures.py
+python paper/render_cards.py
+python paper/render_tactical.py        # renders sub-pattern excerpts
+python paper/render_methodologies_app.py
+cd paper && tectonic technical_report.tex
+# 5. Refresh the skill's reference cards from the corpus data
+python skills/novelty-skill/scripts/render_references.py
 ```
-
-## How It Works
-
-The skill is built from:
-- **1,370 papers** from ICLR, NeurIPS, ICML (2020-2025)
-- **Three paper types**: 1,024 Oral + 239 High-Cited + 132 Rejected
-- **SPECTER2 embeddings** of domain-abstracted innovation strategy descriptions
-- **HDBSCAN clustering** discovering 18 innovation patterns
-- **Three-way contrastive analysis** producing success conditions, failure modes, and impact drivers for each pattern
-
-For the full methodology, see our paper: *"Can Frontier ML Innovation Be Modeled, Predicted, and Operationalized?"*
-
-## Requirements
-
-- **Claude Code**: No additional dependencies (native skill)
-- **API usage**: `pip install openai` / `pip install anthropic` / `pip install google-genai`
-- **Local models**: Ollama + a model with 32K+ context window
-- **Minimum context window**: 20K tokens (for system_prompt.txt)
 
 ## Citation
 
+If you use NoveltySkill in your research, please cite the technical report.
+
 ```bibtex
-@article{noveskill2026,
-  title={Can Frontier ML Innovation Be Modeled, Predicted, and Operationalized?},
+@misc{noveltyskill2026,
+  title={NoveltySkill: Innovation Patterns and Idea Generation in Top-Tier ML Research},
+  author={...},
   year={2026},
+  url={https://github.com/...}
 }
 ```
+
+## License
+
+Code: MIT.
+Data: each paper's metadata is owned by its publisher; we redistribute only what is permissible under OpenReview / arXiv terms of use.
+
+## Status
+
+- Dataset: 1947 papers, ICLR / ICML / NeurIPS, 2020-2025.
+- Skill: end-to-end runs validated on diffusion-sampling and RLHF-overoptimization queries; both produce L3 idea cards passing both validators (`kill_switch_integrity` + `expansion_completeness`).
+- See `paper/technical_report.pdf` §12 for design rationale of every choice.

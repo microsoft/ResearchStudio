@@ -1,0 +1,45 @@
+{
+  "_dryrun_note": "Phase 2.1 selection on freshrun bottleneck. Read overview.md (13 innovation patterns summarized) + anti-patterns.md + Phase 1 bottleneck.",
+
+  "ranked_compositions": [
+    {
+      "rank": 1,
+      "primary_methodology": "formal_reframing_via_equivalence",
+      "secondary_methodologies": ["assumption_audit_and_relax"],
+      "structural_fit_rationale": "The bottleneck has two structural features: (a) the consistency-loss objective at t→0 is misspecified — the kind of unaudited assumption that `assumption_audit_and_relax` directly probes; (b) closest_adjacent papers (SCott, Motion CM) treat the fix as heuristic and arxiv:2603.08709 connects diffusion to scale-space conceptually but stops short of producing a closed-form algorithmic consequence — `formal_reframing_via_equivalence` is structurally suited to recover CD as an instance of a known classical object (e.g., ELBO of an augmented model via Tweedie). Audit names the precise misspecification; reframing produces the closed-form fix as the algebraic identity that resolves it. Both innovation patterns' load-bearing problems are live in the user's regime.",
+      "anti_pattern_check": {
+        "matches": false,
+        "matched_pattern": null,
+        "required_mitigation": null
+      },
+      "delta_potential": "Closest_adjacent papers using formal_reframing (Scale Space Diffusion, Discrete Diffusion Bridges) reframe at the conceptual level without producing a closed-form CD objective; substantive delta = derive CD-as-augmented-ELBO equivalence specifically for two-network teacher-conditioned distillation, an algebraic identity none of closest_adjacent constructs."
+    },
+    {
+      "rank": 2,
+      "primary_methodology": "assumption_audit_and_relax",
+      "secondary_methodologies": ["root_cause_surgical_remediation"],
+      "structural_fit_rationale": "The bottleneck has a localized failure point (boundary regime t→0) and an unaudited assumption (CD's deterministic-trajectory + finite-NFE compatibility); audit identifies the assumption and surgical remediation localizes the fix to the boundary-region loss term. SCott (closest_adjacent) is doing audit + remediation but without theoretical preservation guarantee.",
+      "anti_pattern_check": {
+        "matches": true,
+        "matched_pattern": "audit_surgical",
+        "required_mitigation": "pair the surgical fix with an analytic refinement (preservation theorem, stability bound, regret guarantee)"
+      },
+      "delta_potential": "If pursued, the candidate must derive a preservation theorem (the surgical fix at boundary preserves the loss in expectation) — this is the analytic refinement the anti-pattern requires. Substantive delta vs SCott: the preservation guarantee is closed-form, not heuristic."
+    },
+    {
+      "rank": 3,
+      "primary_methodology": "analytic_refinement_of_loose_bounds",
+      "secondary_methodologies": ["assumption_audit_and_relax"],
+      "structural_fit_rationale": "arxiv:2604.10857 has established information-theoretic query lower bounds for diffusion sampling but the bound doesn't connect to consistency-loss objective specification. analytic_refinement could tighten the boundary-regime bound; audit names which assumption breaks. Less natural fit than rank 1 — the lower-bound paper is theoretical for sampling cost; our user is in the training-time CD specification regime.",
+      "anti_pattern_check": {
+        "matches": false,
+        "matched_pattern": null,
+        "required_mitigation": null
+      },
+      "delta_potential": "Tighten the existing query lower bound to match a finite-NFE CD upper bound, characterizing where in t-space the bound is tight. Lower potential than rank 1 because the corpus's 'analytic refinement' Orals are theory-track papers, and the user's intake is method+empirical."
+    }
+  ],
+
+  "winning_composition_rank": 1,
+  "winning_rationale": "Composition 1 (formal_reframing + audit) has the best structural fit — the bottleneck's specific shape (closed-form algebraic identity for boundary-regime CD) is exactly what reframing-via-equivalence produces and what audit names the assumption for. Rank 2 (audit + surgical_fix) matches an anti-pattern requiring extra mitigation discipline (preservation theorem) which adds risk. Rank 3 (analytic refinement) doesn't quite fit the user's training-time regime. Rank 1 also has clean anti-pattern profile and the highest delta_potential vs closest_adjacent — none of them produce the algebraic equivalence that this composition is structured around."
+}

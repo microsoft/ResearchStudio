@@ -1,0 +1,157 @@
+You are running Phase 4 — Expansion + Packaging — of NoveltySkill.
+
+Phase 4 takes the Phase 2.2 candidate (canonical source — Phase 3.2 audits but does not modify it) and produces structured content for the idea-card PDF. This is the only model call in Phase 4; PDF rendering is templating only.
+
+**Scope contract**: Phase 4 produces the IDEA — motivation, method flow, claims, falsification, feasibility validation. It does NOT design experiments (no experiment matrix, ablation plan, baseline table, expected figures), does NOT project calendars (no week N plans, go/no-go windows, completion timelines). The user designs experiments with their own dataset / compute context. Phase 4's job is a defensible IDEA card + an honest feasibility judgment — not a ghostwritten empirical section.
+
+Inputs (canonical content source depends on Phase 3 outcome):
+
+- **Candidate source** — pick whichever of these exists:
+  - If Phase 3.3 ran (Phase 3.2 verdict was `revise`): `outputs/phase3_revise/phase3_revise_output.json` → read `final_candidate`. This is the candidate with audit revisions applied.
+  - Otherwise (Phase 3.2 verdict was `advance`, no Phase 3.3): `outputs/phase2_generate/phase2_generate_output.json` → the original Phase 2.2 candidate.
+  - Either way, Phase 4 reads kill-switch fields VERBATIM and elaborates other fields for prose flow.
+- Phase 3.2 audit report — the three corpus-anchored checks (`composition_reject_check`, `anti_pattern_check`, `paper_pointed_threat`). Used to populate `reviewer_concerns_and_responses[]`.
+- Phase 3.3 `applied_revisions[]` (when present) — describes what fields were changed and why. Used to populate `reviewer_concerns_and_responses[].fields_changed_to_address`.
+- Phase 3.1 `collision_hits.json` (deduped recent retrieval — Phase 4 uses for the idea-card PDF lit appendix only).
+- Phase 1 bottleneck_statement, closest_adjacent[], intake, **domain_pattern_distribution** (echoed into the idea card as informational landscape).
+- Phase 0 lit_table.md, lit_results.json (for citing in motivation.why_now and motivation.why_prior_stopped).
+
+**Anti-substitution echo**: `falsification_prediction.what_we_run`, `falsification_prediction.compute_budget`, and `mechanism_probe_proposal` MUST be byte-identical to the Phase 2.2 candidate (NOT the Phase 3.3 revise output's final_candidate, even if revise ran — Phase 3.3 itself is forbidden from touching the kill-switch). The kill_switch_integrity validator chain:
+- If Phase 3.3 ran: Phase 2.2 → Phase 3.3 final_candidate → Phase 4. All three byte-identical for kill-switch fields.
+- If Phase 3.2 verdict=advance (no 3.3): Phase 2.2 → Phase 4 directly.
+Drift in any of the three fields is rejected.
+
+Output (JSON):
+
+{
+  "title": "<final paper title; may refine input>",
+  "hook": "<echoed from final_candidate, possibly tightened>",
+  "abstract_draft": "<150-250 words. Order: problem → bottleneck (cite ≥ 1 Phase 0 paper) → contribution (one sentence) → falsification prediction → expected outcome.>",
+
+  "motivation": {
+    "problem_framing": "<2-3 paragraphs framing the user's problem. Reference the bottleneck_statement from Phase 1 and the closest_adjacent papers. NOT a category label — write a concrete structural framing.>",
+    "why_now": "<one paragraph on what makes this gap timely. Cite the most recent Phase 0 papers (within last 4-12 months) that get close but stop short. Explain what newly-available data / compute / method-class / theoretical tool makes the gap solvable now.>",
+    "why_prior_stopped": [
+      {
+        "paper_id": "<closest_adjacent paper_id>",
+        "what_they_did": "<one sentence>",
+        "what_they_did_not_do": "<one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<one sentence — was it a missing tool / missing assumption-relaxation / missing mechanism / missing measurement?>"
+      }
+    ],
+    "what_changes_when_gap_closes": "<2-3 sentences naming downstream consequences. NOT 'better numbers' — name the specific capability or theoretical statement that becomes available, and cite Phase 0 papers that would directly benefit / be subsumed.>"
+  },
+
+  "core_claim": "<one sentence>",
+  "sub_claims": [
+    {"id": "c1", "statement": "...", "supports_which_aspect": "<conceptual reference to a specific aspect of the bottleneck this sub-claim closes; NOT mapped to an experiment id>"}
+  ],
+
+  "method_flow": {
+    "high_level_pipeline": "<3-5 sentences narrating the method end-to-end as a story: input → key transformation → output>",
+    "steps": [
+      {
+        "step_id": "S1",
+        "title": "<short imperative>",
+        "what_changes": "<concrete operation: which line of the loss / which layer of the architecture / which estimator / which proof step>",
+        "why_this_step": "<reference the innovation pattern card's success conditions OR the bottleneck aspect this step closes>",
+        "linked_component": "theoretical_leg | engineering_leg | both",
+        "linked_falsification": "failure_a_numerical | failure_b_mechanistic | both",
+        "input": "<from previous step or external>",
+        "output": "<used by next step or final>"
+      }
+    ],
+    "preservation_argument": "<if the method modifies an existing baseline: the structural argument that other components are not broken — typically a preservation theorem, an ablation chain, or a known invariant. null otherwise.>"
+  },
+
+  "theorem_or_algorithm_or_system_design": "<the specific formal statement / pseudocode / system spec — referenced by step IDs from method_flow>",
+
+  "theoretical_leg": "<echoed from final_candidate.theoretical_leg; may be elaborated for prose flow but not redesigned>",
+  "engineering_leg": "<echoed from final_candidate.engineering_leg; may be elaborated for prose flow but not redesigned>",
+
+  "falsification_prediction": {
+    "what_we_run": "<echoed VERBATIM from final_candidate (anti-substitution)>",
+    "success": "<echoed; may be reformatted slightly for prose>",
+    "failure_a_numerical": "<echoed>",
+    "failure_b_mechanistic": "<echoed>",
+    "compute_budget": "<echoed VERBATIM (anti-substitution)>",
+    "decision_rule": "if failure_a or failure_b → kill"
+  },
+
+  "mechanism_probe_proposal": "<echoed VERBATIM from final_candidate (anti-substitution)>",
+
+  "feasibility_validation": {
+    "compute": {
+      "verdict": "feasible | tight | infeasible",
+      "rationale": "<one sentence: required compute (from falsification_prediction.compute_budget) vs intake.compute. If user did not specify intake.compute, note 'inferred' and pick a defensible default. Examples: intake.compute=4×A100×3wk (~84 A100-day) AND budget=5 GPU-day → feasible; AND budget=60 → tight; AND budget=200 → infeasible.>"
+    },
+    "data": {
+      "verdict": "feasible | tight | infeasible",
+      "rationale": "<one sentence: required data sources accessible. If any closed/private, name a public substitute the user can use.>"
+    },
+    "theoretical": {
+      "verdict": "feasible | tight | infeasible | n/a",
+      "rationale": "<one sentence: theoretical_leg derivable by the user given stated expertise; if tight, name the missing prerequisite. n/a only when engineering_leg is null too (impossible) or when theoretical_leg is null.>"
+    },
+    "engineering": {
+      "verdict": "feasible | tight | infeasible | n/a",
+      "rationale": "<one sentence: engineering_leg implementable in user's stated tech stack; if tight, name the binding implementation cost. n/a only when engineering_leg is null.>"
+    },
+    "falsification": {
+      "verdict": "feasible | tight | infeasible",
+      "rationale": "<one sentence: minimal what_we_run is concrete enough to run; mechanism_probe_proposal can actually be executed with available tooling.>"
+    },
+    "overall": "feasible | tight | infeasible"
+  },
+
+  "differentiation_from_lit": [
+    {"paper_id": "...", "delta": "<echoed from final_candidate, may be elaborated>"}
+  ],
+
+  "reviewer_concerns_and_responses": [
+    // Derive entries from the Phase 3.2 audit report. Each entry corresponds to one anchored concern:
+    //   - if Phase 3.2 paper_pointed_threat.threat_paper_id != "no_threat_found" → emit one entry with attack=subsumption_argument, severity=blocking-equivalent
+    //   - if Phase 3.2 sub_pattern_reject_check.verdict = borderline → emit one entry with attack=triggered lesson, severity=non_blocking
+    //   - if Phase 3.2 anti_pattern_check.matched_pattern_id != null → emit one entry naming the anti-pattern + how the candidate's mitigation responds
+    //   - if all four Phase 3.2 checks are clean (clear / holds / null / no_threat_found) → emit a single entry naming the strongest anticipated reviewer question (paper-pointed when possible) + the candidate's defense anchored in a specific field
+    {
+      "attack": "<one paragraph: the corpus-anchored concern from Phase 3.2 OR the strongest anticipated reviewer question if all checks were clean>",
+      "severity": "<blocking (paper_pointed_threat hit / anti_pattern unmitigated) | non_blocking (tactical_cluster borderline / addressable threat / clean-with-anticipated-question)>",
+      "response": "<2-3 sentences: explain where in the candidate (which field) the defense is anchored. Reference the Phase 3.2 verdict_rationale when relevant.>",
+      "fields_changed_to_address": ["<empty list expected: Phase 3.2 does not auto-revise. If user re-ran Phase 2.2 between phases, name fields user changed.>"]
+    }
+  ],
+
+  "domain_landscape": {
+    // Echoed from Phase 1's domain_pattern_distribution + a one-sentence interpretation positioning the candidate.
+    // Informational only — used by PDF/markdown rendering to show the user where this candidate sits in the area's pattern usage.
+    "n_papers": <int>,                                  // = phase1.domain_pattern_distribution.n_on_topic
+    "pattern_distribution": [
+      {"pattern_id": "...", "count": <int>, "share": <float>, "saturation": "high | medium | low"}
+    ],                                                  // echoed verbatim from phase1.domain_pattern_distribution.patterns
+    "candidate_uses": [
+      {"pattern_id": "...", "role": "primary | secondary", "saturation_in_domain": "high | medium | low"}
+    ],                                                  // echoed from candidate.pattern_composition with saturation joined from distribution
+    "position_note": "<one sentence: how the candidate's chosen patterns sit relative to the area's pattern usage. Examples: 'primary uses an under-saturated pattern (analytic_refinement at medium); secondary shares the saturated audit class but targets the shared limitation of audit-class papers in this area (heuristic schedule).' OR 'all chosen patterns are under-saturated in this area, which is consistent with the bottleneck targeting an unexplored angle.' OR 'primary is saturated; the contribution differentiates from existing audit-class work via the substantive deltas in differentiation_from_lit.'>"
+  }
+}
+
+Hard rules:
+
+1. `motivation.why_prior_stopped` MUST cite ≥ 2 specific Phase 0 paper_ids with all four sub-fields populated. Generic "prior work didn't do X" without paper attributions is a process error.
+
+2. `method_flow.steps` MUST be numbered (S1, S2, ...) with `linked_component` AND `linked_falsification` per step. A step that is "linked_component: both" AND "linked_falsification: both" is suspicious — most steps have a clean assignment.
+
+3. `falsification_prediction.what_we_run`, `falsification_prediction.compute_budget`, and `mechanism_probe_proposal` are echoed VERBATIM from the Phase 2.2 candidate (or Phase 3.3 final_candidate when revise ran — both equal to Phase 2.2 by anti-substitution rule). Phase 4 cannot quietly substitute a friendlier procedure. The kill_switch_integrity validator rejects drift.
+
+4. `abstract_draft` must contain (in order): problem → bottleneck (cite ≥ 1 Phase 0 paper) → contribution (one sentence) → falsification prediction → expected outcome.
+
+5. `feasibility_validation` is the canonical feasibility judgment. Its verdicts compare candidate against `intake` user-relative — there is NO absolute compute cap. If the candidate's compute_budget genuinely needs 100 GPU-days for a scaling-law experiment AND `intake.compute` is a large cluster, that's `compute = feasible`. If intake.compute is unspecified, pick a defensible default and note in rationale.
+
+6. **Echo vs reference policy**: the idea-card PDF template renders the following from earlier-phase outputs DIRECTLY (do NOT echo into Phase 4 output): `closest_adjacent` from Phase 1, `collision_report.classified_hits` from Phase 3.1, `lit_grounding_mode` from Phase 0 sentinel. Echo into Phase 4 output ONLY: anti-substitution-guarded fields (falsification + mechanism_probe + theoretical_leg + engineering_leg + differentiation_from_lit) and structurally-rearranged content (reviewer_concerns_and_responses, motivation sections).
+
+7. **No calendar projections anywhere**. NO "by week N", "in the first month", "two-week plan". Sequencing is in dependencies ("step S2 must complete before S3 can run") not weeks.
+
+8. **No experiment matrix, ablation plan, baseline table, expected figures**. The skill produces the IDEA + falsifiability + honest feasibility — experimental engineering is the user's design responsibility.
+
+9. **`domain_landscape` is informational, not generative**. Phase 4 echoes Phase 1's `domain_pattern_distribution` verbatim into `domain_landscape.pattern_distribution` and joins it with the candidate's `pattern_composition` to show saturation per chosen pattern. The `position_note` is one descriptive sentence — NOT prescriptive ("you should/shouldn't use X because saturated"), just descriptive ("primary X is at saturation level Y in this area"). Selection of patterns happened upstream by structural fit; this block just makes the position transparent to the reader.

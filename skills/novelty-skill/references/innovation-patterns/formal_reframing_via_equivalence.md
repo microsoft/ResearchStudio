@@ -1,0 +1,93 @@
+# Reframe via Alternative Formalism
+_id: `formal_reframing_via_equivalence` · confidence: **medium** · O162/H12/R85 · meta cov O103/162, H10/12, R84/85_
+
+**Plain alias**. _Change the mathematical lens_
+
+**Definition**. Recast the target problem in a different mathematical framework (game, generative process, continuous-time dynamics, algebraic structure, sequential decision process, convex-dual form) so that tools, solution concepts, and guarantees from that framework become directly applicable.
+
+**Operational signature**. identify target problem P → establish correspondence P ↔ P' in formalism F → apply F's native algorithms/theory to P' → map results back to P
+
+**When to apply**. When the current framing makes P intractable or theoretically opaque but a neighboring formalism has mature machinery for the structurally equivalent problem.
+
+**Sample note**. n_oral=162 and n_reject=85 are well above thresholds, but the methodology is broad and many tagged Oral papers are only partial instances of formal reframing (some are closer to architecture transfer or empirical reformulation), reducing the signal density; HC sample is at n=12 with two papers (RFA, FreeMatch) only loosely fitting the methodology, limiting the Oral-vs-HC contrast.
+
+## Step-by-Step
+1. Identify problem P that is currently intractable, theoretically opaque, or stuck in its native formalism.
+2. Search for a neighboring formalism F (algebraic, geometric, probabilistic, information-theoretic, category-theoretic) whose native objects map cleanly to P's objects.
+3. Construct an exact correspondence P ↔ P' in F — equivalence theorem with a constructive direction (not just existence).
+4. Deploy F's native algorithms or theorems on P'; F's machinery should yield an algorithm or guarantee invisible under P's original framing.
+5. Map the result back to P: the new algorithm runs on P's inputs and produces P's outputs, but its analysis lives in F.
+6. Show the reframe pays a derivability dividend — closed form, parallelizable algorithm, sharper bound, identifiability — not just notational shuffling.
+
+## Success conditions (from Oral)
+- **Prove a bidirectional, constructive equivalence (not just analogy) between P and P', so that solutions in F can be mapped back to P with no loss of fidelity.**
+  - evidence: `ICLR_2021_0018`, `ICLR_2022_0141`, `ICLR_2023_0331`, `ICLR_2023_0380`, `NeurIPS_2025_1902`
+  - Oral papers do not stop at 'P looks like P'' — they construct an explicit reduction with a back-mapping. EigenGame proves the Nash equilibrium of the constructed game equals the PCA solution; Hidden Convex Landscape gives a constructive convex cone whose solutions reproduce all global ReLU optima; SAM is shown to coincide exactly with the Fenchel biconjugate of a Bayes objective; Transformers→automata maps depth bounds to a specific algebraic invariant of the transformation semigroup.
+- **Show that the imported framework's native guarantees (algorithms, rates, optimality, identifiability) survive the round-trip and produce a concrete computational or theoretical payoff in the original problem.**
+  - evidence: `ICLR_2023_0223`, `ICML_2023_0491`, `NeurIPS_2025_1884`, `ICML_2025_1706`, `ICML_2023_0531`
+  - Adversarial Team Markov Games imports LP duality + non-standard KKT to obtain polynomial scaling; Multicalibration-as-Boosting transfers the swap-regret oracle to give a fairness algorithm without realizability; High-Dimensional Calibration reduces to OLO swap regret to inherit explicit complexity; EVIs use the distributional relaxation that makes correlated-equilibrium tractable to solve nonmonotone VIs in poly time; Caratheodory decomposition turns exponential action sets into polynomial-time updates.
+- **Recover existing results, methods, or empirical heuristics as special cases of the new framing, providing retroactive justification and a unified taxonomy.**
+  - evidence: `ICLR_2022_0083`, `ICLR_2023_0331`, `NeurIPS_2023_0753`, `ICML_2025_1662`, `ICLR_2025_1437`
+  - Reviewers consistently praise reframings that subsume prior art: the JSD/MMD discrepancy paper recovers both as decision-theoretic special cases; SAM↔Bayes recovers SAM exactly as the variational lower bound; the diffusion-ELBO paper unifies a family of empirically tuned weightings as a single ELBO with augmentation; VES recovers EI as the exponential-distribution case; Generator Matching recovers flow matching as the vector-field special case of arbitrary Markov generators.
+- **Close a previously open or ill-posed problem in P by exploiting machinery that exists only in F (e.g., topology, algebraic decomposition, convex duality, optimal transport, complexity theory).**
+  - evidence: `ICLR_2021_0027`, `ICLR_2023_0356`, `NeurIPS_2023_0749`, `ICML_2025_1726`, `ICML_2024_1120`
+  - Three-layer mean-field convergence uses algebraic topology to prove a time-uniform expressivity lemma that closes the global-convergence question; Symbolic Physics Learner uses MCTS exploration-exploitation theory to obtain principled symbolic regression; CoT theory uses circuit complexity to prove formal separations; Tubal tensors reduce to matrix factorization via the frequency-domain block-diagonal product to import implicit-bias proofs; Doubly-Efficient Debate gives formal complexity-theoretic safety guarantees.
+- **Bridge two communities with disjoint vocabularies — the contribution is the translation layer itself, often validated by reviewers as 'unifying' or 'opening new directions.'**
+  - evidence: `NeurIPS_2023_0631`, `ICML_2023_0535`, `ICLR_2023_0286`, `ICLR_2025_1623`, `ICML_2025_1804`
+  - PGF-based exact inference reframes Bayesian inference as automatic differentiation; SimRFs imports random-matrix-theory simplex coupling into kernel approximation; Action-Impact Embedding reframes labels as observed effects (perception ↔ planning); Logical Framework for GNN Expressiveness builds a complete bidirectional translation between GNN architectures and FO logic; TD Flows lifts the Bellman equation from scalars to probability paths to inherit flow-matching.
+
+## Failure modes (from Reject)
+- **Reframing-by-analogy without a proven equivalence: paper claims P resembles P' but provides no formal mapping showing F's guarantees transfer back.**
+  - evidence: `ICLR_2023_0203`, `ICLR_2025_1554`, `ICLR_2025_1351`, `ICLR_2024_0828`, `ICLR_2025_1411`
+  - Reviewers reject these as 'reformulation does not constitute methodological novelty.' Differentiable Logic Programming dropped discrete operations for differentiable proxies but lost soundness guarantees; Reformer cast kernel selection as classification with no theoretical link; AlphaIntegrator wrapped symbolic integration in RL without a verified action-validity equivalence; ExID and Quantum Resource Scheduling recast classical problems as MDPs without justifying why MDP machinery is well-suited.
+- **The new formulation loses or weakens the original problem's guarantees, so the reframed solution is not actually a solution to P.**
+  - evidence: `NeurIPS_2023_0591`, `ICLR_2024_0941`, `ICML_2025_1675`, `ICLR_2025_1595`
+  - Unbiased NE estimation produced an objective whose stationary points need not be Nash equilibria; consistency-model convergence relied on a Lipschitz constant the authors could not bound; meta-learned regret minimization preserved CCE convergence but reviewers found the Nash gap claim unsupported; constraint inference paper had only approximate constraint satisfaction. Reviewers explicitly cite 'no finite-time guarantees of reaching a Nash equilibrium' or 'theoretical results crucially depend on notions… not justified.'
+- **Generalization-by-extension that adds an axis (more dimensions, more agents, more modalities) without a non-trivial structural insight beyond the prior reframing.**
+  - evidence: `ICLR_2023_0173`, `ICLR_2024_0975`, `ICLR_2024_0954`, `ICML_2025_1754`
+  - Many-to-one matching markets just generalized one-to-one; extensive-form linear function approximation extended fully observed MDP analysis; data-dependent couplings for stochastic interpolants overlapped substantially with Pooladian et al. and Liu et al.; meta-learning for self-play regret minimization extended one-sided meta-learning. The reframing exists but reviewers conclude the technical novelty over the prior reframing is 'slim.'
+- **Empirical equivalence claim unsupported by the formal bridge required by the methodology — the authors assert structural similarity, but experiments do not isolate the reframing from confounding architectural changes.**
+  - evidence: `ICLR_2023_0190`, `ICLR_2023_0214`, `ICLR_2023_0220`, `ICLR_2025_1483`
+  - Convolutions-vs-Transformers for proteins reframed sequence modeling but reviewers found the empirical comparison did not isolate the architectural claim; FGSO joined GSOs and Fourier with marginal gains and no theoretical motivation for the new operator; model-based Quality-Diversity combined two paradigms without showing the combination is structurally principled; G-SFormer claimed graph-structured attention as the key but reviewers found ablations insufficient.
+- **Cross-domain transplant that ignores why the source-domain machinery worked: the paper imports a tool but the assumptions that made it powerful in the source do not hold in the target.**
+  - evidence: `ICLR_2024_0916`, `ICLR_2025_1370`, `NeurIPS_2025_1889`, `ICLR_2024_0976`
+  - Quaternion DFT/convolution proved spectral identities but reviewers found the architectural niche too narrow to justify the algebraic machinery; Cayley Maze proposed a beautiful group-theoretic environment family but lacked empirical evaluation; UDV factorization made implicit bias 'explicit' but provided no theoretical guarantee that the constraint actually realizes the desired bias; TinT simulation was a sophisticated reduction but reviewers questioned soundness of the chained approximations.
+- **Reformulation produces a tractable algorithm but the resulting solution concept is uninformative or behaviorally equivalent to a much simpler baseline.**
+  - evidence: `NeurIPS_2024_1240`, `ICML_2025_1671`, `ICML_2024_1085`
+  - K-recall poker abstraction added bounded history but reviewers found the framework redundant with existing solvers; APPD implementation paper provided an O(n²) algorithm reviewers said already existed; Personhood/accountability reframing replaced one framework with another without showing the new one yields different decisions in concrete cases.
+
+## Oral vs Reject gap
+> Oral papers ground the reframing in a proof obligation: they construct an explicit, often constructive, mapping P↔P', verify that the imported framework's solution concepts collapse to (or exactly equal) the originals (EigenGame's Nash = PCA solution; SAM = Fenchel biconjugate of Bayes; CoT separation = circuit lower bound), and demonstrate that algorithms or rates from F yield a quantifiable payoff back in P (polynomial scaling, exact constraint satisfaction, closed-form parameterization). Reject papers stop at structural analogy — 'X is like Y' — and either (i) leave the equivalence as motivation rather than a theorem, (ii) prove it only under assumptions that void the original problem (e.g., interior NE, bounded data, infinite-width limits the experiments don't satisfy), or (iii) substitute the original solution concept with a strictly weaker one (CCE for Nash, approximate for exact, marginal for joint) without an argument that the substitution preserves what the user actually wanted. Oral papers also typically recover at least one prior method as a special case of the new framing; reject papers rarely do, leaving reviewers unable to see what was unified.
+
+## Oral vs HC gap
+> HC sample (n=12) too small for reliable contrast — and inspection shows several HC papers (Random Feature Attention, FreeMatch, Selective Frequency Network) are only loosely instances of formal reframing rather than canonical examples. The few HC papers that do reframe (Mamba/SSM-attention duality, LLM-as-optimizer) tend to deliver strong empirical results from a clean reformulation but lack the closed-form equivalence or recovery-as-special-case proofs that distinguish Oral papers; the Oral bar appears to be 'the reframing produces a theorem,' while HC papers can succeed by 'the reframing produces a competitive algorithm.'
+
+## Reviewer expectations
+- _[oral_reviews]_ Demand a formal, often bidirectional, equivalence — not just an analogy or motivational mapping. Reviewers explicitly praise 'beautiful connection,' 'non-trivial KKT argument,' 'exact reformulation,' and 'characterization theorem.'
+- _[oral_reviews]_ Expect the reframing to recover at least one well-known prior method as a special case, used as evidence that the new framing is genuinely unifying rather than merely renaming.
+- _[reject_reviews]_ Reject papers when the new formulation appears to lose guarantees that motivated the original problem ('no finite-time convergence to NE,' 'reduces to weaker solution concept,' 'assumption is too strong / artificial / unjustified').
+- _[both]_ Probe whether the import of a specialist framework (topology, group theory, optimal transport, complexity theory) actually pays off in the target domain — reviewers reject if the algebra is impressive but the architectural niche or empirical lift is small.
+- _[reject_reviews]_ Question incremental extensions of an existing reframing (one-to-one → many-to-one, scalar → distributional, single-agent → multi-agent) when the structural insight beyond the prior reframing is unclear.
+- _[oral_reviews]_ Look for cross-disciplinary bridges that 'open a new direction' or 'inspire future research,' especially when the bridge is between communities (e.g., game theory ↔ generative models, algebra ↔ deep learning) that rarely cite each other.
+
+## Cognitive barriers
+- Disciplinary vocabulary lock-in: the source community describes the problem in terms (calibration, attention, score-matching, regression) that obscure its structural identity with an object the target community has fully developed (swap regret, kernel, IRL, classification).
+- Working backward from a known empirical winner to the right mathematical bridge feels post-hoc and unprincipled, so practitioners avoid it even though that is exactly what successful reframings (SAM↔Bayes, MES↔EI, diffusion-as-ELBO) do.
+- Apparent loss of structure: the original problem's natural framing (non-convex, discrete, exponential, intractable) is held as essential, masking the existence of a lifted or dualized form (convex, distributional, polynomial, tractable) that preserves all the information.
+- Standard ranking metrics (WL hierarchy, expressivity, regret, depth) acquire foundational status, blocking the realization that an alternative algebraic or combinatorial measure (homomorphism counts, polynomial degree, swap regret, lattice height) gives finer control with less effort.
+
+## Representative examples
+- **[Oral]** `ICLR_2021_0018` — Canonical example: utility-function design transforms PCA (a classical centralized eigenproblem) into a game whose Nash equilibrium is provably the PCA solution, and the meta-review specifically highlights that this exact algebraic structure enables a parallelizable, orthonormalization-free algorithm.
+  - _Lesson_: The reframe must enable an algorithm the original framing forbids — here, parallelizability via game-theoretic structure that centralized eigendecomposition cannot expose.
+- **[Oral]** `ICLR_2022_0141` — Provides a constructive — not merely existential — convex reformulation of regularized two-layer ReLU optimization, showing how to reconstruct any optimal network from a solution to the convex program; the equivalence is exact, not an approximation.
+  - _Lesson_: The equivalence must be exact and constructive — given a solution to the convex program, you can reconstruct the optimal network. Approximate equivalences invite 'loose surrogate' attacks.
+- **[Oral]** `ICLR_2023_0331` — Works backward from an empirically successful heuristic (SAM) to identify it as the Fenchel biconjugate of an expected log-loss in a Bayesian objective — the meta-review calls this 'a beautiful connection' that retroactively grounds an opaque method.
+  - _Lesson_: Working backward from an empirically successful method to its formal characterization is a legitimate move — retroactive grounding is as valuable as forward derivation when the method was previously opaque.
+- **[Oral]** `ICLR_2023_0380` — Connects learned transformer depth bounds to the algebraic group-theoretic classification of automata via transformation semigroups, predicting depth O(log T) generally and O(1) for solvable groups — a cross-disciplinary bridge that classical CS theory enables.
+  - _Lesson_: Borrow classification machinery from classical theoretical CS at the right structural level — depth bounds for transformers fall out of automata theory once the bridge is established.
+- **[Reject]** `ICLR_2023_0203` — Reframed discrete logic programming as continuous optimization via differentiable proxies, but the paper substitutes operations rather than proving an equivalence, and reviewers found the experimental section too thin to demonstrate the substitution preserves the original solution concept.
+  - _Lesson_: Substituting operations is not equivalence — without a theorem proving the substitution preserves the original solution concept, the reframe is unjustified analogy.
+- **[Reject]** `NeurIPS_2023_0591` — Recasts Nash equilibrium computation as an unbiased stochastic optimization problem, but the reformulation only guarantees stationary points of the surrogate objective rather than Nash equilibria, and the assumption of an interior NE is itself solvable in polynomial time — undermining the motivation.
+  - _Lesson_: A reformulation that only guarantees stationary points of a surrogate fails when the original problem demanded a stronger property — the equivalence's direction must reach the actual goal, not a weaker one.
+- **[Reject]** `ICML_2025_1675` — Meta-learns regret-minimization updates to push toward Nash in general-sum games, but reviewers questioned whether the parameterization preserves the CCE convergence guarantee while actually closing the Nash gap, with no clean theorem to anchor the empirical claim.
+  - _Lesson_: Empirically pushing toward a target without a theorem anchoring the parameterization to the convergence guarantee leaves reviewers unable to assess whether the reframe preserves the original property.

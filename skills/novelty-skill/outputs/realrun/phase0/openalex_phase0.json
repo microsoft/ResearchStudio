@@ -1,0 +1,306 @@
+[
+ {
+  "title": "Can Open Large Language Models Catch Vulnerabilities?",
+  "title_norm": "can open large language models catch vulnerabilities",
+  "abstract": "As Large Language Models (LLMs) become increasingly integrated into secure software development workflows, a critical question remains unanswered: can these models not only detect insecure code but also reliably classify vulnerabilities according to standardized taxonomies? In this work, we conduct a systematic evaluation of three state-of-the-art LLMs - Llama3, Codestral, and Deepseek R1 - using a carefully filtered subset of the Big-Vul dataset annotated with eight representative Common Weakness Enumeration categories. Adopting a closed-world classification setup, we assess each model’s performance in both identifying the presence of vulnerabilities and mapping them to the correct CWE label. Our findings reveal a sharp contrast between high detection rates and markedly poor classification accuracy, with frequent overgeneralization and misclassification. Moreover, we analyze model-specific biases and common failure modes, shedding light on the limitations of current LLMs in performing fine-grained security reasoning.These insights are especially relevant in educational contexts, where LLMs are being adopted as learning aids despite their limitations. A nuanced understanding of their behaviour is essential to prevent the propagation of misconceptions among students. Our results expose key challenges that must be addressed before LLMs can be reliably deployed in security-sensitive environments.",
+  "year": 2025,
+  "venue": "ArXiv.org",
+  "authors": [
+   "DeepSeek-AI"
+  ],
+  "citations": 476,
+  "source": "openalex",
+  "source_id": "W4406779522",
+  "doi": "10.4230/oasics.icpec.2025.4",
+  "paper_url": "https://arxiv.org/pdf/2501.12948",
+  "published_iso": "2025-01-01"
+ },
+ {
+  "title": "🧜Siren’s Song in the AI Ocean: A Survey on Hallucination in Large Language Models",
+  "title_norm": "siren s song in the ai ocean a survey on hallucination in large language models",
+  "abstract": "Abstract While large language models (LLMs) have demonstrated remarkable capabilities across a range of downstream tasks, a significant concern revolves around their propensity to exhibit hallucinations: LLMs occasionally generate content that diverges from the user input, contradicts previously generated context, or misaligns with established world knowledge. This phenomenon poses a substantial challenge to the reliability of LLMs in real-world scenarios. In this article, we survey recent efforts on the detection, explanation, and mitigation of hallucination, with an emphasis on the unique challenges posed by LLMs. We present taxonomies of the LLM hallucination phenomena and evaluation benchmarks, analyze existing approaches aiming at mitigating LLM hallucination, and discuss potential directions for future research.",
+  "year": 2025,
+  "venue": "Computational Linguistics",
+  "authors": [
+   "Yue Zhang",
+   "Yafu Li",
+   "Leyang Cui",
+   "Cai Deng",
+   "Lemao Liu",
+   "Tingchen Fu"
+  ],
+  "citations": 126,
+  "source": "openalex",
+  "source_id": "W4412158322",
+  "doi": "10.1162/coli.a.16",
+  "paper_url": "https://direct.mit.edu/coli/article-pdf/doi/10.1162/coli.a.16/2535477/coli.a.16.pdf",
+  "published_iso": "2025-01-01"
+ },
+ {
+  "title": "Towards trustworthy LLMs: a review on debiasing and dehallucinating in large language models",
+  "title_norm": "towards trustworthy llms a review on debiasing and dehallucinating in large lang",
+  "abstract": "Recently, large language models (LLMs) have attracted considerable attention due to their remarkable capabilities. However, LLMs’ generation of biased or hallucinatory content raised significant concerns, posing major challenges for their practical application. Many studies have dedicated efforts to address these critical issues, adopting various approaches to mitigate bias and hallucinations in LLM-generated content. Remarkably, no review papers have synthesized insights on these two primary problems. Addressing this gap, this paper aims to conduct a simultaneous and dual-focused review of the current landscape of research. The discussions encompass widely used and newly proposed benchmarks and evaluation methods on bias and hallucination in LLMs. This paper also investigates advanced mitigation methods and present a taxonomy based on different mitigation strategies. Moreover, a comparative analysis of the sources, mitigation methods, and evaluation methods for bias and hallucination is included. In the end, this paper provides a synthesis of current research trends and suggests potential directions for future research to address bias and hallucination in LLMs, considering the ongoing challenges in this field.",
+  "year": 2024,
+  "venue": "Artificial Intelligence Review",
+  "authors": [
+   "Zichao Lin",
+   "Shuyan Guan",
+   "Wending Zhang",
+   "Huiyan Zhang",
+   "Yugang Li",
+   "Huaping Zhang"
+  ],
+  "citations": 96,
+  "source": "openalex",
+  "source_id": "W4401484139",
+  "doi": "10.1007/s10462-024-10896-y",
+  "paper_url": "https://link.springer.com/content/pdf/10.1007/s10462-024-10896-y.pdf",
+  "published_iso": "2024-08-10"
+ },
+ {
+  "title": "Large language models for disease diagnosis: a scoping review",
+  "title_norm": "large language models for disease diagnosis a scoping review",
+  "abstract": "Automatic disease diagnosis has become increasingly valuable in clinical practice. The advent of large language models (LLMs) has catalyzed a paradigm shift in artificial intelligence, with growing evidence supporting the efficacy of LLMs in diagnostic tasks. Despite the increasing attention in this field, a holistic view is still lacking. Many critical aspects remain unclear, such as the diseases and clinical data to which LLMs have been applied, the LLM techniques employed, and the evaluation methods used. In this article, we perform a comprehensive review of LLM-based methods for disease diagnosis. Our review examines the existing literature across various dimensions, including disease types and associated clinical specialties, clinical data, LLM techniques, and evaluation methods. Additionally, we offer recommendations for applying and evaluating LLMs for diagnostic tasks. Furthermore, we assess the limitations of current research and discuss future directions. To our knowledge, this is the first comprehensive review for LLM-based disease diagnosis.",
+  "year": 2025,
+  "venue": "npj Artificial Intelligence",
+  "authors": [
+   "Shuang Zhou",
+   "Zidu Xu",
+   "Mian Zhang",
+   "Chunpu Xu",
+   "Yawen Guo",
+   "Zaifu Zhan"
+  ],
+  "citations": 67,
+  "source": "openalex",
+  "source_id": "W4411147644",
+  "doi": "10.1038/s44387-025-00011-z",
+  "paper_url": "https://www.nature.com/articles/s44387-025-00011-z.pdf",
+  "published_iso": "2025-06-09"
+ },
+ {
+  "title": "Qwen2.5 Technical Report",
+  "title_norm": "qwen2 5 technical report",
+  "abstract": "In this report, we introduce Qwen2.5, a comprehensive series of large language models (LLMs) designed to meet diverse needs. Compared to previous iterations, Qwen 2.5 has been significantly improved during both the pre-training and post-training stages. In terms of pre-training, we have scaled the high-quality pre-training datasets from the previous 7 trillion tokens to 18 trillion tokens. This provides a strong foundation for common sense, expert knowledge, and reasoning capabilities. In terms of post-training, we implement intricate supervised finetuning with over 1 million samples, as well as multistage reinforcement learning. Post-training techniques enhance human preference, and notably improve long text generation, structural data analysis, and instruction following. To handle diverse and varied use cases effectively, we present Qwen2.5 LLM series in rich sizes. Open-weight offerings include base and instruction-tuned models, with quantized versions available. In addition, for hosted solutions, the proprietary models currently include two mixture-of-experts (MoE) variants: Qwen2.5-Turbo and Qwen2.5-Plus, both available from Alibaba Cloud Model Studio. Qwen2.5 has demonstrated top-tier performance on a wide range of benchmarks evaluating language understanding, reasoning, mathematics, coding, human preference alignment, etc. Specifically, the open-weight flagship Qwen2.5-72B-Instruct outperforms a number of open and proprietary models and demonstrates competitive performance to the state-of-the-art open-weight model, Llama-3-405B-Instruct, which is around 5 times larger. Qwen2.5-Turbo and Qwen2.5-Plus offer superior cost-effectiveness while performing competitively against GPT-4o-mini and GPT-4o respectively. Additionally, as the foundation, Qwen2.5 models have been instrumental in training specialized models such as Qwen2.5-Math, Qwen2.5-Coder, QwQ, and multimodal models.",
+  "year": 2024,
+  "venue": "arXiv (Cornell University)",
+  "authors": [
+   "Qwen",
+   ":",
+   "Yang An",
+   "Baosong Yang",
+   "Beichen Zhang",
+   "Binyuan Hui"
+  ],
+  "citations": 66,
+  "source": "openalex",
+  "source_id": "W4405655184",
+  "doi": "10.48550/arxiv.2412.15115",
+  "paper_url": "https://arxiv.org/pdf/2412.15115",
+  "published_iso": "2024-12-19"
+ },
+ {
+  "title": "A survey on LoRA of large language models",
+  "title_norm": "a survey on lora of large language models",
+  "abstract": "Abstract Low-Rank Adaptation (LoRA), which updates the dense neural network layers with pluggable low-rank matrices, is one of the best performed parameter efficient fine-tuning paradigms. Furthermore, it has significant advantages in cross-task generalization and privacy-preserving. Hence, LoRA has gained much attention recently, and the number of related literature demonstrates exponential growth. It is necessary to conduct a comprehensive overview of the current progress on LoRA. This survey categorizes and reviews the progress from the perspectives of (1) downstream adaptation improving variants that improve LoRA’s performance on downstream tasks; (2) cross-task generalization methods that mix multiple LoRA plugins to achieve cross-task generalization; (3) efficiency-improving methods that boost the computation-efficiency of LoRA; (4) data privacy-preserving methods that use LoRA in federated learning; (5) application. Besides, this survey also discusses the future directions in this field.",
+  "year": 2024,
+  "venue": "Frontiers of Computer Science",
+  "authors": [
+   "Yuren Mao",
+   "Yuhang Ge",
+   "Yijiang Fan",
+   "Wenyi Xu",
+   "Yu Mi",
+   "Zhonghao Hu"
+  ],
+  "citations": 73,
+  "source": "openalex",
+  "source_id": "W4403753254",
+  "doi": "10.1007/s11704-024-40663-9",
+  "paper_url": "https://link.springer.com/content/pdf/10.1007/s11704-024-40663-9.pdf",
+  "published_iso": "2024-12-14"
+ },
+ {
+  "title": "Beyond Preferences in AI Alignment",
+  "title_norm": "beyond preferences in ai alignment",
+  "abstract": "Abstract The dominant practice of AI alignment assumes (1) that preferences are an adequate representation of human values, (2) that human rationality can be understood in terms of maximizing the satisfaction of preferences, and (3) that AI systems should be aligned with the preferences of one or more humans to ensure that they behave safely and in accordance with our values. Whether implicitly followed or explicitly endorsed, these commitments constitute what we term a preferentist approach to AI alignment. In this paper, we characterize and challenge the preferentist approach, describing conceptual and technical alternatives that are ripe for further research. We first survey the limits of rational choice theory as a descriptive model, explaining how preferences fail to capture the thick semantic content of human values, and how utility representations neglect the possible incommensurability of those values. We then critique the normativity of expected utility theory (EUT) for humans and AI, drawing upon arguments showing how rational agents need not comply with EUT, while highlighting how EUT is silent on which preferences are normatively acceptable. Finally, we argue that these limitations motivate a reframing of the targets of AI alignment: Instead of alignment with the preferences of a human user, developer, or humanity-writ-large, AI systems should be aligned with normative standards appropriate to their social roles, such as the role of a general-purpose assistant. Furthermore, these standards should be negotiated and agreed upon by all relevant stakeholders. On this alternative conception of alignment, a multiplicity of AI systems will be able to serve diverse ends, aligned with normative standards that promote mutual benefit and limit harm despite our plural and divergent values.",
+  "year": 2024,
+  "venue": "Philosophical Studies",
+  "authors": [
+   "Tan Zhi‐Xuan",
+   "Micah Carroll",
+   "Matija Franklin",
+   "Hal Ashton"
+  ],
+  "citations": 19,
+  "source": "openalex",
+  "source_id": "W4404200702",
+  "doi": "10.1007/s11098-024-02249-w",
+  "paper_url": "https://link.springer.com/content/pdf/10.1007/s11098-024-02249-w.pdf",
+  "published_iso": "2024-11-09"
+ },
+ {
+  "title": "Rethinking Reward Model Evaluation Through the Lens of Reward Overoptimization",
+  "title_norm": "rethinking reward model evaluation through the lens of reward overoptimization",
+  "abstract": "Reward models (RMs) play a crucial role in reinforcement learning from human feedback (RLHF), aligning model behavior with human preferences. However, existing benchmarks for reward models show a weak correlation with the performance of optimized policies, suggesting that they fail to accurately assess the true capabilities of RMs. To bridge this gap, we explore several evaluation designs through the lens of reward overoptimization\\textemdash a phenomenon that captures both how well the reward model aligns with human preferences and the dynamics of the learning signal it provides to the policy. The results highlight three key findings on how to construct a reliable benchmark: (i) it is important to minimize differences between chosen and rejected responses beyond correctness, (ii) evaluating reward models requires multiple comparisons across a wide range of chosen and rejected responses, and (iii) given that reward models encounter responses with diverse representations, responses should be sourced from a variety of models. However, we also observe that a extremely high correlation with degree of overoptimization leads to comparatively lower correlation with certain downstream performance. Thus, when designing a benchmark, it is desirable to use the degree of overoptimization as a useful tool, rather than the end goal.",
+  "year": 2025,
+  "venue": "ArXiv.org",
+  "authors": [
+   "Sunghwan Kim",
+   "Dongjin Kang",
+   "Taeyoon Kwon",
+   "Hyungjoo Chae",
+   "Dongha Lee",
+   "Jinyoung Yeo"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W4417302132",
+  "doi": "10.48550/arxiv.2505.12763",
+  "paper_url": "https://arxiv.org/pdf/2505.12763",
+  "published_iso": "2025-05-19"
+ },
+ {
+  "title": "A Survey on LLM-as-a-Judge",
+  "title_norm": "a survey on llm as a judge",
+  "abstract": "Accurate and consistent evaluation is crucial for decision-making across numerous fields, yet it remains a challenging task due to inherent subjectivity, variability, and scale. Large Language Models (LLMs) have achieved remarkable success across diverse domains, leading to the emergence of \"LLM-as-a-Judge,\" where LLMs are employed as evaluators for complex tasks. With their ability to process diverse data types and provide scalable, cost-effective, and consistent assessments, LLMs present a compelling alternative to traditional expert-driven evaluations. However, ensuring the reliability of LLM-as-a-Judge systems remains a significant challenge that requires careful design and standardization. This paper provides a comprehensive survey of LLM-as-a-Judge, addressing the core question: How can reliable LLM-as-a-Judge systems be built? We explore strategies to enhance reliability, including improving consistency, mitigating biases, and adapting to diverse assessment scenarios. Additionally, we propose methodologies for evaluating the reliability of LLM-as-a-Judge systems, supported by a novel benchmark designed for this purpose. To advance the development and real-world deployment of LLM-as-a-Judge systems, we also discussed practical applications, challenges, and future directions. This survey serves as a foundational reference for researchers and practitioners in this rapidly evolving field.",
+  "year": 2024,
+  "venue": "arXiv (Cornell University)",
+  "authors": [
+   "Jiawei Gu",
+   "Jiang, Xuhui",
+   "Zhichao Shi",
+   "Hexiang Tan",
+   "Zhai, Xuehao",
+   "Chengjin Xu"
+  ],
+  "citations": 22,
+  "source": "openalex",
+  "source_id": "W4404986534",
+  "doi": "10.48550/arxiv.2411.15594",
+  "paper_url": "https://arxiv.org/pdf/2411.15594",
+  "published_iso": "2024-11-23"
+ },
+ {
+  "title": "A Critical Review of Methods and Challenges in Large Language Models",
+  "title_norm": "a critical review of methods and challenges in large language models",
+  "abstract": "This critical review provides an in-depth analysis of Large Language Models (LLMs), encompassing their foundational principles, diverse applications, and advanced training methodologies. We critically examine the evolution fr... | Find, read and cite all the research you need on Tech Science Press",
+  "year": 2025,
+  "venue": "Computers, materials & continua/Computers, materials & continua (Print)",
+  "authors": [
+   "Rhona Asgari",
+   "Milad Moradi",
+   "Ke Yan",
+   "David B. Colwell",
+   "Matthias Samwald"
+  ],
+  "citations": 10,
+  "source": "openalex",
+  "source_id": "W4407048461",
+  "doi": "10.32604/cmc.2025.061263",
+  "paper_url": "https://cdn.techscience.press/files/cmc/2025/TSP_CMC-82-2/TSP_CMC_61263/TSP_CMC_61263.pdf",
+  "published_iso": "2025-01-01"
+ },
+ {
+  "title": "Provably Mitigating Overoptimization in RLHF: Your SFT Loss is Implicitly an Adversarial Regularizer",
+  "title_norm": "provably mitigating overoptimization in rlhf your sft loss is implicitly an adve",
+  "abstract": "Aligning generative models with human preference via RLHF typically suffers from overoptimization, where an imperfectly learned reward model can misguide the generative model to output undesired responses. We investigate this problem in a principled manner by identifying the source of the misalignment as a form of distributional shift and uncertainty in learning human preferences. To mitigate overoptimization, we first propose a theoretical algorithm that chooses the best policy for an adversarially chosen reward model; one that simultaneously minimizes the maximum likelihood estimation of the loss and a reward penalty term. Here, the reward penalty term is introduced to prevent the policy from choosing actions with spurious high proxy rewards, resulting in provable sample efficiency of the algorithm under a partial coverage style condition. Moving from theory to practice, the proposed algorithm further enjoys an equivalent but surprisingly easy-to-implement reformulation. Using the equivalence between reward models and the corresponding optimal policy, the algorithm features a simple objective that combines: (i) a preference optimization loss that directly aligns the policy with human preference, and (ii) a supervised learning loss that explicitly imitates the policy with a (suitable) baseline distribution. In the context of aligning large language models (LLM), this objective fuses the direct preference optimization (DPO) loss with the supervised fine-tuning (SFT) loss to help mitigate the overoptimization towards undesired responses, for which we name the algorithm Regularized Preference Optimization (RPO). Experiments of aligning LLMs demonstrate the improved performance of RPO compared with DPO baselines. Our work sheds light on the interplay between preference optimization and SFT in tuning LLMs with both theoretical guarantees and empirical evidence.",
+  "year": 2024,
+  "venue": "arXiv (Cornell University)",
+  "authors": [
+   "Zhihan Liu",
+   "Miao Lu",
+   "Shenao Zhang",
+   "Boyi Liu",
+   "Hongyi Guo",
+   "Yingxiang Yang"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W4399115631",
+  "doi": "10.48550/arxiv.2405.16436",
+  "paper_url": "https://arxiv.org/pdf/2405.16436",
+  "published_iso": "2024-05-26"
+ },
+ {
+  "title": "Uncertainty-penalized reinforcement learning from human feedback with diversified reward LoRA ensembles",
+  "title_norm": "uncertainty penalized reinforcement learning from human feedback with diversifie",
+  "abstract": "",
+  "year": 2025,
+  "venue": "Information Processing & Management",
+  "authors": [
+   "Yuanzhao Zhai",
+   "Yu Lei",
+   "Han Zhang",
+   "Yue Yu",
+   "Kele Xu",
+   "Dawei Feng"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W4417212154",
+  "doi": "10.1016/j.ipm.2025.104548",
+  "paper_url": "https://openalex.org/W4417212154",
+  "published_iso": "2025-12-11"
+ },
+ {
+  "title": "LLM Critics Help Catch LLM Bugs",
+  "title_norm": "llm critics help catch llm bugs",
+  "abstract": "Reinforcement learning from human feedback (RLHF) is fundamentally limited by the capacity of humans to correctly evaluate model output. To improve human evaluation ability and overcome that limitation this work trains \"critic\" models that help humans to more accurately evaluate model-written code. These critics are themselves LLMs trained with RLHF to write natural language feedback highlighting problems in code from real-world assistant tasks. On code containing naturally occurring LLM errors model-written critiques are preferred over human critiques in 63% of cases, and human evaluation finds that models catch more bugs than human contractors paid for code review. We further confirm that our fine-tuned LLM critics can successfully identify hundreds of errors in ChatGPT training data rated as \"flawless\", even though the majority of those tasks are non-code tasks and thus out-of-distribution for the critic model. Critics can have limitations of their own, including hallucinated bugs that could mislead humans into making mistakes they might have otherwise avoided, but human-machine teams of critics and contractors catch similar numbers of bugs to LLM critics while hallucinating less than LLMs alone.",
+  "year": 2024,
+  "venue": "arXiv (Cornell University)",
+  "authors": [
+   "Nat McAleese",
+   "Rai Michael Pokorny",
+   "Juan Felipe Ceron Uribe",
+   "Evgenia Nitishinskaya",
+   "Maja Trębacz",
+   "Jan Leike"
+  ],
+  "citations": 8,
+  "source": "openalex",
+  "source_id": "W4400267192",
+  "doi": "10.48550/arxiv.2407.00215",
+  "paper_url": "https://arxiv.org/pdf/2407.00215",
+  "published_iso": "2024-06-28"
+ },
+ {
+  "title": "Correcting the Mythos of KL-Regularization: Direct Alignment without Overoptimization via Chi-Squared Preference Optimization",
+  "title_norm": "correcting the mythos of kl regularization direct alignment without overoptimiza",
+  "abstract": "Language model alignment methods such as reinforcement learning from human feedback (RLHF) have led to impressive advances in language model capabilities, but are limited by a widely observed phenomenon known as overoptimization, where the quality of the language model degrades over the course of the alignment process. As the model optimizes performance with respect to an offline reward model, it overfits to inaccuracies and drifts away from preferred responses covered by the data. To discourage such distribution shift, KL-regularization is widely employed in existing offline alignment methods, but overoptimization continues to harm performance. Lending theoretical insight into the source of these empirical observations, we first show that the KL-regularization is too weak to prevent overfitting, then raise the following question: is it possible to design an efficient algorithm that is provably robust to overoptimization? We address this question with a new algorithm for offline alignment, $χ^2$-Preference Optimization ($χ$PO). $χ$PO is a one-line change to Direct Preference Optimization (DPO; Rafailov et al., 2023), which only involves modifying the logarithmic link function in the DPO objective. Despite this minimal change, $χ$PO implicitly implements the principle of pessimism in the face of uncertainty via regularization with the $χ^2$-divergence -- which quantifies uncertainty more effectively than KL-regularization -- and provably alleviates overoptimization, achieving sample-complexity guarantees based on single-policy concentrability -- the gold standard in offline reinforcement learning. $χ$PO's simplicity and strong guarantees make it the first practical and general-purpose offline alignment algorithm that is provably robust to overoptimization.",
+  "year": 2024,
+  "venue": "arXiv (Cornell University)",
+  "authors": [
+   "Audrey Huang",
+   "Wenhao Zhan",
+   "Tengyang Xie",
+   "Jason D. Lee",
+   "Wen Sun",
+   "Akshay Krishnamurthy"
+  ],
+  "citations": 0,
+  "source": "openalex",
+  "source_id": "W4406071657",
+  "doi": "10.48550/arxiv.2407.13399",
+  "paper_url": "https://arxiv.org/pdf/2407.13399",
+  "published_iso": "2024-07-18"
+ },
+ {
+  "title": "SimPO: Simple Preference Optimization with a Reference-Free Reward",
+  "title_norm": "simpo simple preference optimization with a reference free reward",
+  "abstract": "Direct Preference Optimization (DPO) is a widely used offline preference optimization algorithm that reparameterizes reward functions in reinforcement learning from human feedback (RLHF) to enhance simplicity and training stability. In this work, we propose SimPO, a simpler yet more effective approach. The effectiveness of SimPO is attributed to a key design: using the average log probability of a sequence as the implicit reward. This reward formulation better aligns with model generation and eliminates the need for a reference model, making it more compute and memory efficient. Additionally, we introduce a target reward margin to the Bradley-Terry objective to encourage a larger margin between the winning and losing responses, further improving the algorithm's performance. We compare SimPO to DPO and its latest variants across various state-of-the-art training setups, including both base and instruction-tuned models such as Mistral, Llama 3, and Gemma 2. We evaluate on extensive chat-based evaluation benchmarks, including AlpacaEval 2, MT-Bench, and Arena-Hard. Our results demonstrate that SimPO consistently and significantly outperforms existing approaches without substantially increasing response length. Specifically, SimPO outperforms DPO by up to 6.4 points on AlpacaEval 2 and by up to 7.5 points on Arena-Hard. Our top-performing model, built on Gemma-2-9B-it, achieves a 72.4% length-controlled win rate on AlpacaEval 2, a 59.1% win rate on Arena-Hard, and ranks 1st on Chatbot Arena among &lt;10B models with real user votes.",
+  "year": 2024,
+  "venue": "arXiv (Cornell University)",
+  "authors": [
+   "Yu Meng",
+   "Mengzhou Xia",
+   "Danqi Chen"
+  ],
+  "citations": 8,
+  "source": "openalex",
+  "source_id": "W4398859186",
+  "doi": "10.48550/arxiv.2405.14734",
+  "paper_url": "https://arxiv.org/pdf/2405.14734",
+  "published_iso": "2024-05-23"
+ }
+]

@@ -1,0 +1,53 @@
+{
+  "_dryrun_note": "Phase 1 freshrun on diffusion sampling query, using new bottleneck_identify.txt prompt (single LLM call, no 13 lens probes).",
+  "_lit_grounding_mode": "real",
+
+  "intake": {
+    "domain": "diffusion model sampling acceleration",
+    "venue": "ICLR 2026",
+    "time": "3 weeks",
+    "data": ["EDM teacher checkpoint", "CIFAR-10 / ImageNet (standard)"],
+    "compute": "4 × A100 for 3 weeks (~84 A100-day)",
+    "expertise": "diffusion modeling + PyTorch (theory leg accessible via collaborator if needed)",
+    "preference": "both",
+    "baseline": "EDM teacher (50 NFE) → consistency-loss student (4 NFE)",
+    "limitation": "consistency-loss student lags teacher significantly at 4 NFE",
+    "contribution_type": "method",
+    "_inferred_fields": ["data", "expertise", "preference"]
+  },
+
+  "bottleneck_statement": "The user's consistency-loss EDM-to-4NFE distillation produces a student that lags the teacher precisely at the boundary regime t→0 where the score function's Lipschitz constant blows up; recent work (dblp:conf/aaai/LiuXYDCTFLZ25 SCott) addresses this by introducing stochasticity into consistency distillation but treats the fix as a heuristic rather than as a derived consequence of the boundary regime. dblp:conf/nips/0001LYLWLD0W24 (Motion Consistency Model) addresses the related problem of disentangling motion vs appearance trajectories in video CD, but neither paper derives the finite-NFE objective from first principles. arxiv:2604.10857v1 establishes information-theoretic query lower bounds for diffusion sampling but does not connect the bound to the concrete consistency-distillation objective at the boundary, leaving an unaddressed gap between 'how few queries are achievable in principle' and 'how the consistency-loss objective should be specified at finite NFE'.",
+
+  "closest_adjacent": [
+    {
+      "paper_id": "dblp:conf/aaai/LiuXYDCTFLZ25",
+      "what_they_did": "SCott introduces stochastic consistency distillation as a fix for vanilla CD's brittleness in low-step regimes.",
+      "where_they_stopped": "treats stochasticity as a heuristic relaxation of the deterministic-trajectory assumption, not as a derived consequence of the boundary-regime misspecification — no closed-form characterization of when SCD is well-specified."
+    },
+    {
+      "paper_id": "dblp:conf/nips/0001LYLWLD0W24",
+      "what_they_did": "Motion Consistency Model accelerates video diffusion with disentangled motion-appearance distillation.",
+      "where_they_stopped": "the disentanglement is empirical; no derived theoretical foundation for why disentangling motion vs appearance is sufficient (rather than necessary) for stable few-step CD."
+    },
+    {
+      "paper_id": "arxiv:2604.10857v1",
+      "what_they_did": "Establishes information-theoretic query lower bounds for diffusion sampling — minimum number of score evaluations.",
+      "where_they_stopped": "lower bound is for sampling cost in terms of score queries; does not address how the consistency-loss objective should be specified to actually hit the lower-bound regime — leaves a gap between 'few queries possible' and 'CD loss makes the few-NFE student well-specified'."
+    },
+    {
+      "paper_id": "arxiv:2603.08709v1",
+      "what_they_did": "Scale Space Diffusion connects diffusion timestep semantics to scale-space theory.",
+      "where_they_stopped": "establishes the connection at the conceptual level but does not produce a closed-form CD-equivalent objective from scale-space machinery — the structural reframing stops short of an algorithmic consequence."
+    }
+  ],
+
+  "what_phase_0_did_not_address": [
+    "a derivable finite-NFE consistency-loss objective from first principles that is well-specified at the boundary t→0",
+    "a closed-form algebraic identity tying the boundary-regime misspecification to the consistency-loss assumption (e.g., recovering CD as an instance of a known classical object via Tweedie / ELBO under augmentation)",
+    "a falsification-ready mechanism probe that distinguishes 'metric improves because the student fits the teacher' from 'metric improves but the underlying mechanism violates the consistency assumption'"
+  ],
+
+  "state": "proceed",
+  "ood_reasons": [],
+  "remedial_steps": []
+}

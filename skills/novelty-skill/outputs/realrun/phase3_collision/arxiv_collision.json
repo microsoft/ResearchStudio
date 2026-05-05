@@ -1,0 +1,373 @@
+[
+ {
+  "title": "SED-SFT: Selectively Encouraging Diversity in Supervised Fine-Tuning",
+  "title_norm": "sed sft selectively encouraging diversity in supervised fine tuning",
+  "abstract": "Supervised Fine-Tuning (SFT) followed by Reinforcement Learning (RL) has emerged as the standard post-training paradigm for large language models (LLMs). However, the conventional SFT process, driven by Cross-Entropy (CE) loss, often induces mode collapse, where models over-concentrate on specific response patterns. This lack of distributional diversity severely restricts the exploration efficiency required for subsequent RL. While recent studies have attempted to improve SFT by replacing the CE loss, aiming to preserve diversity or refine the update policy, they fail to adequately balance diversity and accuracy, thereby yielding suboptimal performance after RL. To address the mode collapse problem, we propose SED-SFT, which adaptively encourages diversity based on the token exploration space. This framework introduces a selective entropy regularization term with a selective masking mechanism into the optimization objective. Extensive experiments across eight mathematical benchmarks demonstrate that SED-SFT significantly enhances generation diversity with a negligible computational overhead increase compared with CE loss, yielding average improvements of 2.06 and 1.20 points in subsequent RL performance over standard CE-based baselines on Llama-3.2-3B-Instruct and Qwen2.5-Math-7B-Instruct, respectively. The code is publicly available at https://github.com/pppa2019/SED-SFT",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Yijie Chen",
+   "Yijin Liu",
+   "Fandong Meng"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.07464v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.07464v1",
+  "published_iso": "2026-02-07T09:39:21Z"
+ },
+ {
+  "title": "Robust Post-Training for Generative Recommenders: Why Exponential Reward-Weighted SFT Outperforms RLHF",
+  "title_norm": "robust post training for generative recommenders why exponential reward weighted",
+  "abstract": "Aligning generative recommender systems to user preferences via post-training is critical for closing the gap between next-item prediction and actual recommendation quality. Existing post-training methods are ill-suited for production-scale systems: RLHF methods reward hack due to noisy user feedback and unreliable reward models, offline RL alternatives require propensity scores that are unavailable, and online interaction is infeasible. We identify exponential reward-weighted SFT with weights $w = \\exp(r/λ)$ as uniquely suited to this setting, and provide the theoretical and empirical foundations that explain why. By optimizing directly on observed rewards without querying a learned reward model, the method is immune to reward hacking, requires no propensity scores, and is fully offline. We prove the first policy improvement guarantees for this setting under noisy rewards, showing that the gap scales only logarithmically with catalog size and remains informative even for large item catalogs. Crucially, we show that temperature $λ$ explicitly and quantifiably controls the robustness-improvement tradeoff, providing practitioners with a single interpretable regularization hyperparameter with theoretical grounding. Experiments on three open-source and one proprietary dataset against four baselines confirm that exponential reward weighting is simple, scalable, and consistently outperforms RLHF-based alternatives.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Keertana Chidambaram",
+   "Sanath Kumar Krishnamurthy",
+   "Qiuling Xu",
+   "Ko-Jen Hsiao",
+   "Moumita Bhattacharya"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.10279v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.10279v1",
+  "published_iso": "2026-03-10T23:48:25Z"
+ },
+ {
+  "title": "Regularized Online RLHF with Generalized Bilinear Preferences",
+  "title_norm": "regularized online rlhf with generalized bilinear preferences",
+  "abstract": "We consider the problem of contextual online RLHF with general preferences, where the goal is to identify the Nash Equilibrium. We adopt the Generalized Bilinear Preference Model (GBPM) to capture potentially intransitive preferences via low-rank, skew-symmetric matrices. We investigate general preference learning with any strongly convex regularizer and regularization strength $η^{-1}$, generalizing beyond prior work limited to reverse KL-regularization. Central to our analysis is proving that the dual gap of the greedy policy is bounded by the square of the estimation error, a result derived solely from strong convexity and the skew-symmetry of GBPM. Building on this insight and a feature diversity assumption, we establish two regret bounds via two simple algorithms: (1) Greedy Sampling achieves polylogarithmic, $e^{\\mathcal{O}(η)}$-free regret $\\tilde{\\mathcal{O}}(ηd^4 (\\log T)^2)$. (2) Explore-Then-Commit achieves $\\mathrm{poly}(d)$-free regret $\\tilde{\\mathcal{O}}(\\sqrt{ηr T})$ by exploiting the low-rank structure; this is the first statistically efficient guarantee for online RLHF in high-dimensions.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Junghyun Lee",
+   "Minju Hong",
+   "Kwang-Sung Jun",
+   "Chulhee Yun",
+   "Se-Young Yun"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.23116v2",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.23116v2",
+  "published_iso": "2026-02-26T15:27:53Z"
+ },
+ {
+  "title": "Monitoring Limits in DAO Governance: Capacity Breakpoints and Endogenous Concentration",
+  "title_norm": "monitoring limits in dao governance capacity breakpoints and endogenous concentr",
+  "abstract": "Decentralized autonomous organizations (DAOs) are designed to disperse control, yet recent evidence shows that effective governance is often concentrated in a small number of participants. This note studies one simple mechanism behind that pattern. Because decentralized governance is monitor-intensive, rising proposal flow may eventually outpace the capacity of broad-based participation. Using a DAO--quarter panel, I estimate a fixed-effects kink model with DAO and quarter fixed effects and find a statistically significant decline in the marginal responsiveness of active voters once proposal activity crosses an interior threshold. I then study realized voting concentration using kink specifications with data-driven cutoffs. Across specifications, decentralization gains do not persist indefinitely once governance workload becomes sufficiently high, and load-based measures show especially clear evidence of a transition toward more concentrated realized control. The results provide reduced-form evidence consistent with a ``too big to monitor'' mechanism in DAO governance: when proposal flow grows faster than broad participation can keep up, effective control may drift toward a smaller set of highly active participants.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Guy Tchuente"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.11222v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.11222v1",
+  "published_iso": "2026-03-11T18:37:35Z"
+ },
+ {
+  "title": "KL Divergence Between Gaussians: A Step-by-Step Derivation for the Variational Autoencoder Objective",
+  "title_norm": "kl divergence between gaussians a step by step derivation for the variational au",
+  "abstract": "Kullback-Leibler (KL) divergence is a fundamental concept in information theory that quantifies the discrepancy between two probability distributions. In the context of Variational Autoencoders (VAEs), it serves as a central regularization term, imposing structure on the latent space and thereby enabling the model to exhibit generative capabilities. In this work, we present a detailed derivation of the closed-form expression for the KL divergence between Gaussian distributions, a case of particular importance in practical VAE implementations. Starting from the general definition for continuous random variables, we derive the expression for the univariate case and extend it to the multivariate setting under the assumption of diagonal covariance. Finally, we discuss the interpretation of each term in the resulting expression and its impact on the training dynamics of the model.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Andrés Muñoz",
+   "Rodrigo Ramele"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.11744v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.11744v1",
+  "published_iso": "2026-04-13T17:18:20Z"
+ },
+ {
+  "title": "EMA Policy Gradient: Taming Reinforcement Learning for LLMs with EMA Anchor and Top-k KL",
+  "title_norm": "ema policy gradient taming reinforcement learning for llms with ema anchor and t",
+  "abstract": "Reinforcement Learning (RL) has enabled Large Language Models (LLMs) to acquire increasingly complex reasoning and agentic behaviors. In this work, we propose two simple techniques to improve policy gradient algorithms for LLMs. First, we replace the fixed anchor policy during RL with an Exponential Moving Average (EMA), similar to a target network in deep Q-learning. Second, we introduce Top-k KL estimator, which allows for flexible interpolation between exact KL and sampled KL. We derive the stability conditions for using EMA anchor; moreover, we show that our Top-k KL estimator yields both unbiased KL values and unbiased gradients at any k, while bringing the benefits of exact KL. When combined with GRPO, the two techniques (EMA-PG) lead to a significant performance boost. On math reasoning, it allows R1-distilled Qwen-1.5B to reach 53.9% on OlympiadBench compared to 50.8% by GRPO. On agentic RL domains, with Qwen-3B base, EMA-PG improves GRPO by an average of 33.3% across 7 datasets of Q&A with search engines, including 29.7% $\\rightarrow$ 44.1% on HotpotQA, 27.4% $\\rightarrow$ 40.1% on 2WikiMultiHopQA. Overall, we show that EMA-PG is a simple, principled, and powerful approach to scaling RL for LLMs. Code: https://github.com/LunjunZhang/ema-pg",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Lunjun Zhang",
+   "Jimmy Ba"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.04417v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.04417v1",
+  "published_iso": "2026-02-04T10:50:17Z"
+ },
+ {
+  "title": "ANCHOR: Adaptive Network based on Cascaded Harmonic Offset Routing",
+  "title_norm": "anchor adaptive network based on cascaded harmonic offset routing",
+  "abstract": "Time series analysis plays a foundational role in a wide range of real-world applications, yet accurately modeling complex non-stationary signals remains a shared challenge across downstream tasks. Existing methods attempt to extract features directly from one-dimensional sequences, making it difficult to handle the widely observed dynamic phase drift and discrete quantization error. To address this issue, we decouple temporal evolution into macroscopic physical periods and microscopic phase perturbations, and inject frequency-domain priors derived from the Real Fast Fourier Transform (RFFT) into the underlying spatial sampling process. Based on this idea, we propose a Frequency-Guided Deformable Module (FGDM) to adaptively compensate for microscopic phase deviations. Built upon FGDM, we further develop an Adaptive Network based on Cascaded Harmonic Offset Routing (ANCHOR) as a general-purpose backbone for time-series modeling. Through orthogonal channel partitioning and a progressive residual architecture, ANCHOR efficiently decouples multi-scale harmonic features while substantially suppressing the computational redundancy of multi-branch networks. Extensive experiments demonstrate that ANCHOR achieves the best performance in most short-term forecasting sub-tasks and exhibits strong competitiveness on several specific sub-tasks in anomaly detection and time-series classification, validating its effectiveness as a universal time-series foundation backbone.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Wangye Jiang",
+   "Haoming Yang",
+   "Jingya Zhang"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.21718v2",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.21718v2",
+  "published_iso": "2026-03-23T09:01:17Z"
+ },
+ {
+  "title": "LocDreamer: World Model-Based Learning for Joint Indoor Tracking and Anchor Scheduling",
+  "title_norm": "locdreamer world model based learning for joint indoor tracking and anchor sched",
+  "abstract": "Accurate, resource-efficient localization and tracking enables numerous location-aware services in next-generation wireless networks. However, existing machine learning-based methods often require large labeled datasets while overlooking spectrum and energy efficiencies. To fill this gap, we propose LocDreamer, a world model (WM)-based framework for joint target tracking and scheduling of localization anchors. LocDreamer learns a WM that captures the latent representation of the target motion and localization environment, thereby generating synthetic measurements to imagine arbitrary anchor deployments. These measurements enable imagination-driven training of both the tracking model and the reinforcement learning (RL)-based anchor scheduler that activates only the most informative anchors, which significantly reduce energy and signaling costs while preserving high tracking accuracy. Experiments on a real-world indoor dataset demonstrate that LocDreamer substantially improves data efficiency and generalization, outperforming conventional Bayesian filter with random scheduling by 37% in tracking accuracy, and achieving 86% of the accuracy of same model trained directly on real data.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Geng Wang",
+   "Zhouyou Gu",
+   "Shenghong Li",
+   "Peng Cheng",
+   "Jihong Park",
+   "Branka Vucetic",
+   "Yonghui Li"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.08204v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.08204v1",
+  "published_iso": "2026-02-09T02:07:32Z"
+ },
+ {
+  "title": "On the Time Derivative of the KL Divergence for a Generalized Langevin Annealing Scheme",
+  "title_norm": "on the time derivative of the kl divergence for a generalized langevin annealing",
+  "abstract": "Consider the Langevin diffusion process $\\mathrm{d} X_t = \\nabla \\log p_t(X_t) + \\sqrt{2}\\mathrm{d} W_t$ guided by the time-dependent probability density $p_t(x)$. Let $q_t$ be the density of $X_t$. Recently, in order to analyze convergence in the Kullback-Leibler divergence, the time derivative of $t\\mapsto \\mathrm{KL}(q_t|p_t)$ has been used in several works without investigating in detail when such a derivative exists. In this short manuscript we provide a rigorous derivation of the quantity $\\frac{\\mathrm{d}}{\\mathrm{d} t}\\mathrm{KL}(q_t|p_t)$.",
+  "year": 2025,
+  "venue": "arXiv",
+  "authors": [
+   "Andreas Habring"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2511.11956v2",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2511.11956v2",
+  "published_iso": "2025-11-15T00:09:04Z"
+ },
+ {
+  "title": "Well-Posed KL-Regularized Control via Wasserstein and Kalman-Wasserstein KL Divergences",
+  "title_norm": "well posed kl regularized control via wasserstein and kalman wasserstein kl dive",
+  "abstract": "Kullback-Leibler divergence (KL) regularization is widely used in reinforcement learning, but it becomes infinite under support mismatch and can degenerate in low-noise limits. Utilizing a unified information-geometric framework, we introduce (Kalman)-Wasserstein-based KL analogues by replacing the Fisher-Rao geometry in the dynamical formulation of the KL with transport-based geometries, and we derive closed-form values for common distribution families. These divergences remain finite under support mismatch and yield a geometric interpretation of regularization heuristics used in Kalman ensemble methods. We demonstrate the utility of these divergences in KL-regularized optimal control. In the fully tractable setting of linear time-invariant systems with Gaussian process noise, the classical KL reduces to a quadratic control penalty that becomes singular as process noise vanishes. Our variants remove this singularity, yielding well-posed problems. On a double integrator and a cart-pole example, the resulting controls outperform KL-based regularization.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Viktor Stein",
+   "Adwait Datar",
+   "Nihat Ay"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.02250v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.02250v1",
+  "published_iso": "2026-02-02T15:57:32Z"
+ },
+ {
+  "title": "Exponential families from a single KL identity",
+  "title_norm": "exponential families from a single kl identity",
+  "abstract": "Exponential families encompass the distributions central to modern machine learning -- softmax, Gaussians, and Boltzmann distributions -- and underlie the theory of variational inference, entropy-regularized reinforcement learning, and RLHF. We isolate a simple identity for exponential families that expresses the KL difference $\\mathrm{KL}(q \\| p_{λ_2}) - \\mathrm{KL}(q \\| p_{λ_1})$ in terms of the log-partition function $A(λ)$ and the moment $μ_q$. Remarkably, this identity together with the single fact that $\\mathrm{KL} \\geq 0$ (with equality iff $p = q$) suffices, by direct substitution and rearrangement, to derive a cluster of results that are classically obtained by separate, heavier arguments: a generalized three-point identity for arbitrary reference distributions, Pythagorean theorems for I-projections and reverse I-projections, convexity of the log-partition function, identification of its Legendre dual in KL terms, the Gibbs variational principle, and the explicit optimizer in KL-regularized reward maximization, including the exponential tilting formula underlying entropy-regularized control and RLHF. Beyond these purely algebraic consequences, standard analytic arguments recover the gradient formula for the log-partition function, the Bregman representation of within-family KL divergence, and the surjectivity of the moment map. The note is self-contained.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Marc Dymetman"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.28036v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.28036v1",
+  "published_iso": "2026-04-30T15:48:03Z"
+ },
+ {
+  "title": "reward-lens: A Mechanistic Interpretability Library for Reward Models",
+  "title_norm": "reward lens a mechanistic interpretability library for reward models",
+  "abstract": "Every RLHF-trained language model is shaped by a reward model, yet the mechanistic interpretability toolkit -- logit lens, direct logit attribution, activation patching, sparse autoencoders -- was built for generative LLMs whose primitives all project onto a vocabulary unembedding. Reward models replace that with a scalar regression head, breaking each tool. We present reward-lens, an open-source library that ports this toolkit to reward models, organised around one observation: the reward head's weight vector $w_r$ is the natural axis for every interpretability question. The library provides a Reward Lens, component attribution, three-mode activation patching, a reward-hacking probe suite, TopK SAE feature attribution, cross-model comparison, and five theory-grounded extensions (distortion index, divergence-aware patching, misalignment cascade detection, reward-term conflict analysis, concept-vector analysis). A ten-method adapter protocol covers Llama, Mistral, Gemma-2, and ArmoRM multi-objective heads, with a generic adapter for any HuggingFace sequence classification model. We validate on two production reward models across ~695 RewardBench pairs. The central empirical finding is negative: linear attribution does not predict causal patching effects (mean Spearman $ρ= -0.256$ on Skywork, $-0.027$ on ArmoRM). The framework treats this disagreement as a property to expose, not a bug -- motivating a design that keeps observational and causal views first-class and directly comparable.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Mohammed Suhail B Nadaf"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.26130v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.26130v1",
+  "published_iso": "2026-04-28T21:38:10Z"
+ },
+ {
+  "title": "Generalisation of RLHF under Reward Shift and Clipped KL Regularisation",
+  "title_norm": "generalisation of rlhf under reward shift and clipped kl regularisation",
+  "abstract": "Alignment and adaptation in large language models heavily rely on reinforcement learning from human feedback (RLHF); yet, theoretical understanding of its generalisability remains premature, especially when the learned reward could shift, and the KL control is estimated and clipped. To address this issue, we develop generalisation theory for RLHF that explicitly accounts for (1) \\emph{reward shift}: reward models are trained on preference data from earlier or mixed behaviour policies while RLHF optimises the current policy on its own rollouts; and (2) \\emph{clipped KL regularisation}: the KL regulariser is estimated from sampled log-probability ratios and then clipped for stabilisation, resulting in an error to RLHF. We present generalisation bounds for RLHF, suggesting that the generalisation error stems from a sampling error from prompts and rollouts, a reward shift error, and a KL clipping error. We also discuss special cases of (1) initialising RLHF parameters with a uniform prior over a finite space, and (2) training RLHF by stochastic gradient descent, as an Ornstein-Uhlenbeck process. The theory yields practical implications in (1) optimal KL clipping threshold, and (2) budget allocation in prompts, rollouts, and preference data.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Kenton Tang",
+   "Yuzhu Chen",
+   "Fengxiang He"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.21765v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.21765v1",
+  "published_iso": "2026-02-25T10:36:17Z"
+ },
+ {
+  "title": "Factored Causal Representation Learning for Robust Reward Modeling in RLHF",
+  "title_norm": "factored causal representation learning for robust reward modeling in rlhf",
+  "abstract": "A reliable reward model is essential for aligning large language models with human preferences through reinforcement learning from human feedback. However, standard reward models are susceptible to spurious features that are not causally related to human labels. This can lead to reward hacking, where high predicted reward does not translate into better behavior. In this work, we address this problem from a causal perspective by proposing a factored representation learning framework that decomposes the model's contextual embedding into (1) causal factors that are sufficient for reward prediction and (2) non-causal factors that capture reward-irrelevant attributes such as length or sycophantic bias. The reward head is then constrained to depend only on the causal component. In addition, we introduce an adversarial head trained to predict reward from the non-causal factors, while applying gradient reversal to discourage them from encoding reward-relevant information. Experiments on both mathematical and dialogue tasks demonstrate that our method learns more robust reward models and consistently improves downstream RLHF performance over state-of-the-art baselines. Analyses on length and sycophantic bias further validate the effectiveness of our method in mitigating reward hacking behaviors.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Yupei Yang",
+   "Lin Yang",
+   "Wanxi Deng",
+   "Lin Qu",
+   "Fan Feng",
+   "Biwei Huang",
+   "Shikui Tu",
+   "Lei Xu"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2601.21350v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2601.21350v1",
+  "published_iso": "2026-01-29T07:18:45Z"
+ },
+ {
+  "title": "CausalRM: Causal-Theoretic Reward Modeling for RLHF from Observational User Feedbacks",
+  "title_norm": "causalrm causal theoretic reward modeling for rlhf from observational user feedb",
+  "abstract": "Despite the success of reinforcement learning from human feedback (RLHF) in aligning language models, current reward modeling heavily relies on experimental feedback data collected from human annotators under controlled and costly conditions. In this work, we introduce observational reward modeling -- learning reward models with observational user feedback (e.g., clicks, copies, and upvotes) -- as a scalable and cost-effective alternative. We identify two fundamental challenges in this setting: (1) observational feedback is noisy due to annotation errors, which deviates it from true user preference; (2) observational feedback is biased by user preference, where users preferentially provide feedback on responses they feel strongly about, which creats a distribution shift between training and inference data. To address these challenges, we propose CausalRM, a causal-theoretic reward modeling framework that aims to learn unbiased reward models from observational feedback. To tackle challenge (1), CausalRM introduces a noise-aware surrogate loss term that is provably equivalent to the primal loss under noise-free conditions by explicitly modeling the annotation error generation process. To tackle challenge (2), CausalRM uses propensity scores -- the probability of a user providing feedback for a given response -- to reweight training samples, yielding a loss function that eliminates user preference bias. Extensive experiments across diverse LLM backbones and benchmark datasets validate that CausalRM effectively learns accurate reward signals from noisy and biased observational feedback and delivers substantial performance improvements on downstream RLHF tasks -- including a 49.2% gain on WildGuardMix and a 32.7% improvement on HarmBench. Code is available on our project website.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Hao Wang",
+   "Licheng Pan",
+   "Zhichao Chen",
+   "Chunyuan Zheng",
+   "Zhixuan Chu",
+   "Xiaoxi Li",
+   "Yuan Lu",
+   "Xinggao Liu",
+   "Haoxuan Li",
+   "Zhouchen Lin"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.18736v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.18736v1",
+  "published_iso": "2026-03-19T10:37:34Z"
+ },
+ {
+  "title": "A First-Order Logic-Based Alternative to Reward Models in RLHF",
+  "title_norm": "a first order logic based alternative to reward models in rlhf",
+  "abstract": "Reinforcement Learning from Human Feedback (RLHF) plays a crucial role in aligning large language models (LLMs) with human values and preferences. However, the quality and stability of the trained reward model largely determine the final alignment performance. Existing approaches such as Proximal Policy Optimization (PPO) rely heavily on reward models to guide LLMs toward human-aligned behaviors.\n  In this work, we propose a logic-similarity-based reward mechanism as an alternative to conventional reward modeling. Instead of relying on heuristic reward estimation, our method leverages formal logical consistency to steer model alignment with human preferences. Since real-world questions can be interpreted from multiple perspectives, to ensure that logic-based reinforcement learning does not cause model collapse, we introduce S-GRPO, a supervised variant of the GRPO framework. S-GRPO incorporates an additional supervised component and jointly optimizes the generation term, KL-divergence regularization, and label-based objective during training.\n  Experimental results demonstrate that S-GRPO consistently outperforms standard supervised fine-tuning (SFT) in both performance and robustness. Furthermore, it extends existing preference-learning frameworks such as GRPO and DPO, offering a more flexible and task-adaptive approach to alignment training. Our code is available at https://github.com/ChunjinJiang/sgrpo.",
+  "year": 2025,
+  "venue": "arXiv",
+  "authors": [
+   "Chunjin Jian",
+   "Xinhua Zhu"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2512.14100v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2512.14100v1",
+  "published_iso": "2025-12-16T05:15:17Z"
+ },
+ {
+  "title": "Robust Optimization for Mitigating Reward Hacking with Correlated Proxies",
+  "title_norm": "robust optimization for mitigating reward hacking with correlated proxies",
+  "abstract": "Designing robust reinforcement learning (RL) agents in the presence of imperfect reward signals remains a core challenge. In practice, agents are often trained with proxy rewards that only approximate the true objective, leaving them vulnerable to reward hacking, where high proxy returns arise from unintended or exploitative behaviors. Recent work formalizes this issue using r-correlation between proxy and true rewards, but existing methods like occupancy-regularized policy optimization (ORPO) optimize against a fixed proxy and do not provide strong guarantees against broader classes of correlated proxies. In this work, we formulate reward hacking as a robust policy optimization problem over the space of all r-correlated proxy rewards. We derive a tractable max-min formulation, where the agent maximizes performance under the worst-case proxy consistent with the correlation constraint. We further show that when the reward is a linear function of known features, our approach can be adapted to incorporate this prior knowledge, yielding both improved policies and interpretable worst-case rewards. Experiments across several environments show that our algorithms consistently outperform ORPO in worst-case returns, and offer improved robustness and stability across different levels of proxy-true reward correlation. These results show that our approach provides both robustness and transparency in settings where reward design is inherently uncertain. The code is available at https://github.com/ZixuanLiu4869/reward_hacking.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Zixuan Liu",
+   "Xiaolin Sun",
+   "Zizhan Zheng"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.12086v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.12086v1",
+  "published_iso": "2026-04-13T21:47:49Z"
+ },
+ {
+  "title": "Mitigating Multimodal Hallucination via Phase-wise Self-reward",
+  "title_norm": "mitigating multimodal hallucination via phase wise self reward",
+  "abstract": "Large Vision-Language Models (LVLMs) still struggle with vision hallucination, where generated responses are inconsistent with the visual input. Existing methods either rely on large-scale annotated data for fine-tuning, which incurs massive computational overhead, or employ static post-hoc strategies that overlook the dynamic nature of hallucination emergence. To address these, we introduce a new self-rewarding framework, enabling dynamic hallucination mitigation at inference time without external supervision. On the empirical side, we reveal that visual hallucination exhibits phase-wise dynamic patterns, peaking at the onset of each semantic phase. Drawing on these insights, we propose \\textbf{PSRD} (\\textbf{Phase-wise \\textbf{S}elf-\\textbf{R}eward \\textbf{D}ecoding) for online hallucination correction guided by phase-wise self-reward signals. To reduce the cost of repeated self-evaluation during decoding, we distill the hallucination guidance signal from LVLMs into a lightweight reward model. The reward model subsequently provides on-the-fly guidance for targeted intervention during the decoding process, enabling precise hallucination suppression. The proposed PSRD significantly reduces the hallucination rate of LLaVA-1.5-7B by 50.0% and consistently outperforms existing post-hoc methods across five hallucination evaluation benchmarks for four LVLMs. Further analysis confirms that PSRD effectively mitigates hallucination propagation and achieves a highly controllable trade-off between strong performance and inference efficiency.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Yu Zhang",
+   "Chuyang Sun",
+   "Kehai Chen",
+   "Xuefeng Bai",
+   "Yang Xiang",
+   "Min Zhang"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2604.17982v1",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2604.17982v1",
+  "published_iso": "2026-04-20T09:04:49Z"
+ },
+ {
+  "title": "The Art of Efficient Reasoning: Data, Reward, and Optimization",
+  "title_norm": "the art of efficient reasoning data reward and optimization",
+  "abstract": "Large Language Models (LLMs) consistently benefit from scaled Chain-of-Thought (CoT) reasoning, but also suffer from heavy computational overhead. To address this issue, efficient reasoning aims to incentivize short yet accurate thinking trajectories, typically through reward shaping with Reinforcement Learning (RL). In this paper, we systematically investigate the mechanics of efficient reasoning for LLMs. For comprehensive evaluation, we advocate for more fine-grained metrics, including length distribution conditioned on correctness and performance across a wide spectrum of token budgets ranging from 2k to 32k. First, we reveal that the training process follows a two-stage paradigm: length adaptation and reasoning refinement. Through extensive experiments (about 0.2 million GPU hours) in a unified protocol, we deconstruct training prompts and rollouts, reward shaping, and optimization strategies. A central finding is to maintain a sufficient density of positive reward signals and avoid the short-is-correct trap. Moreover, the learned length bias generalizes across domains and difficulty levels. We distill these findings into valuable insights and practical guidelines, and validate them across the Qwen3 models ranging from 0.6B to 30B, demonstrating the robustness and generalization. Weights are available at https://wutaiqiang.github.io/project/Art",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Taiqiang Wu",
+   "Zenan Xu",
+   "Bo Zhou",
+   "Ngai Wong"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2602.20945v3",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2602.20945v3",
+  "published_iso": "2026-02-24T14:28:16Z"
+ },
+ {
+  "title": "The Unit Gap: How Sharing Works in Boolean Circuits",
+  "title_norm": "the unit gap how sharing works in boolean circuits",
+  "abstract": "We study the gap between the minimum size of a Boolean circuit (DAG) and the minimum size of a formula (tree circuit) over the And-Inverter Graph (AIG) basis {AND, NOT} with free inversions. We prove that this gap is always 0 or 1 (Unit Gap Theorem), that sharing requires opt(f) >= n essential variables (Threshold Theorem), and that no sharing is needed when opt(f) <= 3 (Tree Theorem). Gate counts in optimal circuits satisfy an exact decomposition formula with a binary sharing term. When the gap equals 1, it arises from exactly one gate with fan-out 2, employing either dual-polarity or same-polarity reuse; we prove that no other sharing structure can produce a unit gap.",
+  "year": 2026,
+  "venue": "arXiv",
+  "authors": [
+   "Kirill Krinkin"
+  ],
+  "citations": null,
+  "source": "arxiv",
+  "source_id": "2603.08033v2",
+  "doi": "",
+  "paper_url": "https://arxiv.org/abs/2603.08033v2",
+  "published_iso": "2026-03-09T07:12:48Z"
+ }
+]

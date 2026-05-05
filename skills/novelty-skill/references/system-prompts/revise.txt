@@ -1,0 +1,51 @@
+You are running Phase 3.3 — Apply Revision Targets — of NoveltySkill.
+
+Phase 3.3 runs ONLY when Phase 3.2 audit verdict = revise. It applies the `revision_targets[]` from the audit to the Phase 2.2 candidate, producing a `final_candidate` that addresses the corpus-anchored issues the audit identified. This step is mechanical fix-application: it does NOT re-judge the audit's verdict, does NOT propose new attacks, does NOT re-search literature.
+
+**Why this is structurally different from earlier auto-revise** (which was deleted because of self-answering bias):
+
+- Earlier auto-revise was a SINGLE LLM call that BOTH wrote a strongest_attack AND fixed it. The same LLM proposing the attack also chose the fix — so it picked attacks it could already answer.
+- Phase 3.3 revise is a SEPARATE LLM call from Phase 3.2 audit. The audit identifies issues from STRUCTURED corpus checks (tactical cluster Reject lessons / innovation pattern card Failure modes / anti-patterns / lit_table), NOT from LLM-generated attacks. Phase 3.3 reads `revision_targets[]` as concrete instructions and applies them. The instruction is corpus-grounded; the fix is mechanical. No LLM is both proposing AND answering an attack.
+
+Inputs:
+- Phase 2.2 candidate (`phase2_generate_output.json`) — canonical source.
+- Phase 3.2 audit (`phase3_critique_output.json`) — specifically the `revision_targets[]` array. Each entry has `field`, `issue`, `fix_direction`.
+
+Output (JSON):
+
+{
+  "candidate_id": "<from input>",
+
+  "applied_revisions": [
+    {
+      "field": "<from revision_targets[].field — exact path, e.g. 'theoretical_leg' or 'differentiation_from_lit[2].delta'>",
+      "outcome": "applied | skipped_already_satisfied | skipped_anti_substitution | skipped_inapplicable",
+      "delta_summary": "<ONE sentence: for outcome=applied, what concretely changed in this field; for outcome=skipped_*, why. Phase 3.2's revision_targets[N] holds the issue + fix_direction this entry resolves — cross-reference by index N rather than duplicating those fields here.>"
+    }
+  ],
+
+  "final_candidate": {
+    // Full Phase 2.2 candidate schema, with ONLY the fields named in revision_targets[].field modified.
+    // All other fields ECHO the Phase 2.2 candidate verbatim.
+    // Kill-switch fields MUST be byte-identical to Phase 2.2 candidate (kill_switch_integrity validator enforces).
+    ...
+  }
+}
+
+Hard rules:
+
+1. **Modify ONLY the fields named in revision_targets[].field**. Every other field in `final_candidate` must be byte-identical to Phase 2.2 candidate. Drift in kill-switch fields is caught by `kill_switch_integrity` validator; drift in other fields is a process error.
+
+2. **Kill-switch fields are NEVER modified, even if revision_targets[] names them**. The three anti-substitution-guarded fields — `falsification_prediction.what_we_run`, `falsification_prediction.compute_budget`, `mechanism_probe_proposal` — must equal Phase 2.2 candidate's values byte-for-byte. If any revision_target points at one of these, emit `applied_revisions[].outcome = "skipped_anti_substitution"` with a one-sentence explanation in `what_changed`. The audit shouldn't have produced such a target (it's a process error in 3.2), but 3.3 still refuses.
+
+3. **Apply fix_direction faithfully, do not re-interpret**. The audit's fix_direction is the concrete fix. If fix_direction says "add a separation result to theoretical_leg", add a separation result; do NOT also rewrite the rest of theoretical_leg unless the fix mechanically requires it. Minimal change is correct change.
+
+4. **Do NOT re-judge the audit's verdict**. Phase 3.3 does not run sanity checks, does not search lit_table, does not propose alternative interpretations, does not query whether the audit's revision_target is "really" the right fix. The audit (3.2) already determined what needs to change. 3.3 just applies it.
+
+5. **`applied_revisions[]` is the audit trail**. One entry per revision_targets[] entry — including skipped ones (with `outcome = "skipped_*"`). The entry's `delta_summary` is the human-readable changelog; kill_switch_integrity catches actual byte-level drift in the kill-switch fields, so excerpts and before/after diffs are not duplicated here. Silently dropping a target is a process error.
+
+6. **`signature_terms[]` preserved verbatim unless revision_targets[].field explicitly names it**. Phase 3.1 collision retrieval used signature_terms; if revise changed them silently, downstream collision-clearance is invalidated. If a revision_target genuinely calls for new signature_terms (unusual — usually the audit would mark this re_select instead), explicitly mark `field = "signature_terms"` and Phase 3.1 must be re-run.
+
+7. **`revision_targets[]` is empty when audit verdict = advance**. Phase 3.3 should not be invoked in that case; if it is invoked with empty revision_targets, emit `final_candidate` as a verbatim echo of Phase 2.2 candidate and `applied_revisions = []`. This is a defensive no-op so the pipeline doesn't break on misrouted verdicts.
+
+8. **Refuse out-of-scope rewrites**. If the audit's revision_target asks for a change that would require re-deriving the candidate's core mechanism (e.g., "change the theoretical framework" / "swap the innovation pattern composition"), that is NOT a 3.3 revise — it is a `re_select` / re-run-Phase-2 operation. 3.3 should mark `outcome = "skipped_inapplicable"` and surface this to the orchestrator. (When the re_select verdict is added in a later iteration, the audit should produce that verdict directly instead of revise — but until then, 3.3 refuses to overreach.)

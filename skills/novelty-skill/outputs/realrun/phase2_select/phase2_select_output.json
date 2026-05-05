@@ -1,0 +1,45 @@
+{
+  "_dryrun_note": "Phase 2.1 selection on RLHF overoptimization bottleneck. Read innovation-patterns/overview.md + anti-patterns.md.",
+
+  "ranked_compositions": [
+    {
+      "rank": 1,
+      "primary_pattern": "analytic_refinement_of_loose_bounds",
+      "secondary_patterns": ["assumption_audit_and_relax"],
+      "structural_fit_rationale": "The bottleneck has two structural features. (a) Three closest_adjacent papers (Moskovitz, Zhu, Uncertainty-penalized) all introduce a heuristic threshold / smoothing strength / disagreement scaling — what's missing is a derived, finite-sample-tight bound that says HOW MUCH regularization is needed as a function of preference dataset size and proxy-true gap structure. `analytic_refinement_of_loose_bounds` directly addresses this: it tightens an existing loose bound (the asymptotic SFT-as-adversarial equivalence in W4399115631) into a finite-sample form usable as a stopping rule. (b) The bottleneck rests on the implicit assumption that the proxy reward's failure mode is well-characterized by KL distance to the SFT prior; `assumption_audit_and_relax` audits this and replaces it with a structurally richer measure (e.g., divergence between proxy and true reward gradients). The two patterns compose: the audit names the right gap measure; the analytic refinement turns it into a finite-sample bound.",
+      "anti_pattern_check": {
+        "matches": false,
+        "matched_pattern": null,
+        "required_mitigation": null
+      },
+      "delta_potential": "W4399115631 has the asymptotic equivalence; substantive delta = derive the finite-sample correction term and prove it is the dominant overoptimization signal in the user's data-limited regime. Moskovitz / Zhu have heuristic thresholds; substantive delta = these heuristic choices recovered as special cases of the finite-sample-derived schedule under specific assumptions."
+    },
+    {
+      "rank": 2,
+      "primary_pattern": "formal_reframing_via_equivalence",
+      "secondary_patterns": ["analytic_refinement_of_loose_bounds"],
+      "structural_fit_rationale": "W4399115631 already establishes a partial reframing (SFT loss ↔ adversarial regularizer), so further reframing in this direction risks duplicating prior work. Re-using formal_reframing as primary requires identifying a DIFFERENT classical object the RLHF objective resembles — perhaps minimax-game reformulation, or distributionally-robust optimization. Structural fit is plausible but less direct than rank 1 because the asymptotic equivalence W4399115631 already handles the obvious classical-target candidate.",
+      "anti_pattern_check": {
+        "matches": false,
+        "matched_pattern": null,
+        "required_mitigation": null
+      },
+      "delta_potential": "If a fresh classical-object identification can be made (e.g., distributionally-robust formulation), substantive delta = subsume W4399115631 as a special case under more general framing. Less direct than rank 1; W4399115631 occupies the obvious slot."
+    },
+    {
+      "rank": 3,
+      "primary_pattern": "assumption_audit_and_relax",
+      "secondary_patterns": ["root_cause_surgical_remediation"],
+      "structural_fit_rationale": "Moskovitz already does a partial assumption audit (assumes the constraint threshold can be heuristically chosen) and applies a surgical remediation (Lagrangian PPO). Picking this composition risks producing a paper that looks methodologically identical to Moskovitz with marginal improvement on threshold choice.",
+      "anti_pattern_check": {
+        "matches": true,
+        "matched_pattern": "audit_surgical",
+        "required_mitigation": "pair the surgical fix with an analytic refinement (preservation theorem, stability bound, regret guarantee)"
+      },
+      "delta_potential": "Anti-pattern matched. Required mitigation IS the rank-1 composition's primary methodology — so this rank-3 path effectively reduces to rank 1 with extra mitigation overhead. Rank 1 is the cleaner choice."
+    }
+  ],
+
+  "winning_composition_rank": 1,
+  "winning_rationale": "Composition 1 (analytic_refinement primary + assumption_audit secondary) has the best structural fit. The 4 closest_adjacent papers' shared limitation is the absence of a finite-sample-tight bound — exactly what analytic_refinement produces. The audit secondary names the binding assumption (proxy-true gap structure). Anti-pattern clean. Composition 3 (audit + surgical) hits anti-pattern audit_surgical, and the required mitigation IS analytic refinement, so it reduces to composition 1 with overhead. Composition 2 (formal_reframing primary) competes with W4399115631 which already occupies the asymptotic equivalence slot."
+}

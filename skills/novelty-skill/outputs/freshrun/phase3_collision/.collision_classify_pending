@@ -1,0 +1,13 @@
+{
+  "step_name": "collision_classify",
+  "rubric_file": "/home/ntu/zqh/research/novelty_skill/skills/novelty-lit-search/references/collision-rubric.md",
+  "inputs": {
+    "idea": "outputs/freshrun/phase2_generate/c1_idea.json",
+    "hits": "/home/ntu/zqh/research/novelty_skill/skills/novelty-skill/outputs/freshrun/phase3_collision/collision_hits.json"
+  },
+  "expected_outputs": [
+    "collision_report.json"
+  ],
+  "instruction": "Read collision-rubric.md, classify each retrieved hit into the 7-class taxonomy (exact / mechanism / claim / evaluation / terminology / weak-transfer / non-blocking). For category 7 hits, populate `delta` (one-sentence differentiation). Render collision_report.json with classified_hits[], highest_severity_category, verdict (pass/regenerate/narrow_claim/etc. per the action mapping conditioned on novelty_target).",
+  "re_invocation": "no re-invocation; write collision_report.json directly to out_dir"
+}

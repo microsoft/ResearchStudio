@@ -1,0 +1,13 @@
+{
+  "candidate_id": "C1",
+  "title": "Consistency Distillation as Augmented-Data ELBO at the Boundary",
+  "core_mechanism": "Show via Tweedie's formula that CD loss at t→0 equals the ELBO of an augmented model under teacher-score-conditioned augmentation A_θ. Replace consistency-loss with augmented-ELBO directly.",
+  "novelty_claim": "First derivation that consistency-distillation IS an augmented-data ELBO; boundary instability is a missing augmentation, not a numerical singularity.",
+  "signature_terms": [
+    "consistency distillation augmented ELBO equivalence",
+    "Tweedie formula score reformulation distillation",
+    "boundary regime t to 0 consistency model",
+    "EDM teacher score-parameterized augmentation",
+    "augmented ELBO finite NFE bound"
+  ]
+}

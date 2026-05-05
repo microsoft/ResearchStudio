@@ -1,0 +1,1288 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=2.0cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{multicol}
+\usepackage[breakable]{tcolorbox}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{listings}
+\usepackage{fontspec}
+\usepackage[CJKmath=true]{xeCJK}
+\IfFontExistsTF{Noto Sans CJK SC}{
+  \setCJKmainfont{Noto Sans CJK SC}[BoldFont=Noto Sans CJK SC Bold, AutoFakeBold=false]
+}{
+  \setCJKmainfont{Heiti SC}[BoldFont=Heiti SC Medium, AutoFakeBold=false]
+}
+
+\definecolor{cblue}{HTML}{4C72B0}
+\definecolor{cgold}{HTML}{DD8452}
+\definecolor{cred}{HTML}{C44E52}
+\definecolor{cgreen}{HTML}{55A868}
+\definecolor{codebg}{HTML}{F7F7F7}
+\definecolor{bgskill}{HTML}{F0F7FF}
+
+\hypersetup{colorlinks=true, linkcolor=cblue, citecolor=cblue, urlcolor=cblue, breaklinks=true}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+
+% allow generous wrapping inside \texttt{...}, \url{...}, paths, and long identifiers
+\renewcommand{\UrlBreaks}{\do\/\do-\do_\do.\do=\do?\do\&\do\#}
+\sloppy
+\emergencystretch=3em
+\setlength{\hfuzz}{2pt}
+\setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
+\setlength{\floatsep}{10pt plus 2pt minus 2pt}
+\setlength{\intextsep}{10pt plus 2pt minus 2pt}
+\makeatletter
+\setlength{\@fptop}{0pt}
+\setlength{\@fpsep}{10pt plus 2pt minus 2pt}
+\setlength{\@fpbot}{0pt plus 1fil}
+\makeatother
+
+\lstset{basicstyle=\ttfamily\small, backgroundcolor=\color{codebg}, frame=single, framerule=0.5pt, rulecolor=\color{gray!50}, breaklines=true, columns=fullflexible}
+
+\title{\textbf{NoveltySkill: Innovation Patterns and Idea Generation\\in Top-Tier ML Research} \\[6pt] \large Technical Report}
+\author{NoveltySkill Project}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+NoveltySkill helps large language models generate Oral-grade machine-learning research ideas by giving them a data-induced reasoning scaffold built from real conference outcomes. The substrate is a corpus of 1947 papers across ICLR, ICML, and NeurIPS (2021--2025) split into accepted-Oral, highly-cited-but-non-Oral, and rejected. From this corpus we induce, with no preset taxonomy, thirteen high-level innovation patterns and forty-seven finer innovation sub-patterns, and we tag every paper with its full multi-pattern composition. Every innovation pattern and sub-pattern is then summarized into a structured operational card: how successful papers execute it, where rejected papers fall short, what reviewers ask for, and which past papers exemplify it.
+
+The empirical analysis surfaces four findings that are independent of any downstream skill. First, accepted and rejected papers occupy the same strategy space; rejection is overwhelmingly about execution, not strategy choice. Second, the empirical mode for accepted papers is composing exactly three innovation patterns, and one specific 3-way composition --- audit-and-relax-an-assumption, reframe-via-alternative-formalism, align-heterogeneous-sources-in-a-shared-latent --- appears in eighteen of our papers with zero rejections. Third, innovation patterns are domain-agnostic in coverage but domain-conditional in acceptance rate, so an idea generator must condition its priors on the user's domain. Fourth, which innovation patterns the program committee rewards versus which the community ends up citing diverges sharply: some innovation patterns are loved at submission time but ignored afterward; others are quietly cited for years while rarely winning Oral.
+
+We package these findings as a model-agnostic two-tier skill. The parent skill drives a five-phase workflow: literature retrieval across DBLP / OpenAlex / OpenReview / arXiv (Phase 0), bottleneck identification grounded in $\geq 2$ retrieved papers (Phase 1), innovation-pattern selection by structural fit followed by single-candidate generation with mechanism-specific signature terms (Phase 2), a corpus-anchored audit performing three checks --- composition-scoped reject-pattern scan against the candidate's chosen sub-pattern card and any secondary patterns' methodology cards, anti-pattern substantive-mitigation verification, and paper-pointed threat search across the unified pool of Phase-0 broad retrieval and Phase-3.1 mechanism-specific retrieval (Phase 3) --- with mechanical revision of named candidate fields when audit verdict is \texttt{revise}, and finally expansion into a structured idea card with motivation, method flow, falsification prediction, mechanism probe, and a five-axis feasibility validation (Phase 4). Two mechanical contracts govern the skill: \texttt{kill\_switch\_integrity} enforces that the candidate's three falsification-anchor fields (what we run, compute budget, mechanism probe) remain byte-identical from Phase 2 through Phase 4, and \texttt{expansion\_completeness} verifies the idea card has all required structural sections. The skill produces a single idea card as PDF + Markdown + JSON; it runs unchanged on Claude, GPT, Gemini, or open-weights backends. Dataset, innovation pattern cards, sub-pattern cards, the domain matrix, and both skills are released open source.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+
+%======================================================================
+\section{Introduction}
+\label{sec:intro}
+%======================================================================
+
+\subsection{Motivation}
+
+Top ML conferences accept only a small fraction of submissions as Oral presentations: ICLR / ICML / NeurIPS each Oral-accept on the order of \(5\%\) of submissions, and a smaller fraction subsequently become foundational, high-citation work~\cite{wang2024scireasoning}. These papers tend to define paradigms (e.g., diffusion-model formulations, transformer variants, alignment objectives), seed architectures the community adopts, or surface fundamental properties of learning systems. Understanding what \emph{strategic operations} separate Oral submissions from the much larger pool of rejected work --- and from the orthogonal pool of highly-cited but non-Oral work --- has direct value: scientifically, as a characterization of what the field rewards; practically, as a grounding signal for the rapidly-expanding ecosystem of LLM-based research assistants.
+
+The last 18 months have seen an explosion of such assistants:
+\begin{itemize}[leftmargin=1.5em, topsep=2pt, itemsep=2pt]
+\item End-to-end ``AI scientist'' systems that draft, run, and write up research at scale \cite{lu2024aiscientist,airesearcher2025,agentlab2025};
+\item iterative-refinement and multi-agent ideation systems that couple search over candidates with self-critique loops \cite{baek2024researchagent,deepideation2025,virsci2024,iris2025,multiworkflow2026,idea2plan2025};
+\item benchmarks measuring idea novelty, feasibility, and future impact \cite{ideabench2024,airesearchideas2025,researchbench2025,hindsight2026,future_aligned2026};
+\item novelty-assessment tools that verify whether a candidate idea collides with prior art \cite{novbench2026,opennovelty2026,graphmind2025,litgrounded2025,idea_novelty_checker2025,augment_ideation2026}.
+\end{itemize}
+
+Yet across this ecosystem, the largest blind human study to date \cite{si2024llmideas} reports a striking diagnosis: LLM-generated ideas are judged \emph{more novel} than expert ideas but \emph{less feasible}. A follow-up execution study \cite{si2026execution} shows that AI ideas score sharply lower than human ideas \emph{after} they are actually carried out --- the gap is not in surface novelty but in the operational criteria that determine whether an idea survives implementation and review.
+
+\subsection{The grounding gap}
+
+We diagnose the gap as follows. LLMs trained on the open web see Oral, Spotlight, Poster, and Rejected papers indistinguishably. They learn what an ML paper \emph{looks like} but not what \emph{converts} into Oral acceptance, citation persistence, or rejection. Existing systems address this in three ways, each with limitations:
+
+\textbf{Better search over the idea space} (multi-agent debate, evolutionary search, recursive decomposition~\cite{virsci2024,deepideation2025,multiworkflow2026,iris2025,sakana_v2}). Effective at exploring more candidates, but does not change the criteria the LLM uses to score them.
+
+\textbf{Retrieval-augmented grounding in recent literature}~\cite{baek2024researchagent,augment_ideation2026,litgrounded2025,idea_novelty_checker2025}. Catches collisions and identifies adjacent work, but does not encode the structural moves (e.g., audit-and-relax-an-assumption + sharpen-an-analytic-step) that historically separate Oral from Reject.
+
+\textbf{Black-box scoring of novelty / impact / taste}~\cite{novbench2026,ai_taste2026,future_aligned2026,hindsight2026}. Useful filters, but their scores do not decompose into actionable operations the user can apply or modify.
+
+We argue a fourth approach is needed: \emph{induce the operational criteria from the empirical contrast between Oral, High-Cited, and Rejected papers, then deliver them to the LLM as structured reasoning constraints.}
+
+A concurrent thread of work characterizes Oral papers against predefined or motivation-driven taxonomies \cite{wang2024scireasoning,moRI2026,motivgraph2025,navigating_ideation2026}, but these efforts (a) often impose their categories rather than discovering them, (b) analyze only accepted papers and miss the contrastive signal in rejection meta-reviews, and (c) stop at analysis without delivering a reusable LLM-scaffold artifact that other systems can plug in.
+
+\subsection{Approach}
+
+We address these limitations end-to-end. Figure~\ref{fig:pipeline} summarizes the pipeline; we make five design commitments.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_pipeline_generated.pdf}
+\caption{Empirical substrate construction. The pipeline builds a 1{,}947-paper Oral / High-Cited / Reject corpus, extracts structured innovation signatures, embeds and clusters them to induce 13 high-level patterns and 47 sub-patterns, analyzes pattern composition and outcome variation, and converts the resulting taxonomy into operational methodology cards. The bottom band summarizes the substrate used downstream by NoveltySkill: a composable pattern space, domain-conditioned priors, review-vs-citation diagnostics, and audit-ready cards.}
+\label{fig:pipeline}
+\end{figure}
+
+\textbf{(1) Discover, don't impose.} The innovation pattern taxonomy is induced by Claude Opus from the 47 empirically clustered tactics, with no seed categories supplied. Every Level-1 innovation pattern that appears in Section~\ref{sec:methodology} has a definition, an operational signature (verb--object template), and a set of clusters it subsumes; it was invented in response to the data, not before seeing it.
+
+\textbf{(2) Contrast across the full acceptance spectrum.} We cluster Oral, High-Cited, and Rejected papers in the same embedding space, then compute per-pattern acceptance profiles. This exposes innovation patterns that the program committee rewards but the community does not adopt (e.g.\ \emph{Sharpen a Single Analytic Step}: oral=60, hc=1), and innovation patterns the community cites heavily but the PC treats more cautiously (e.g.\ \emph{Audit Evaluation via Controlled Perturbation}: hc=29, the highest HC share per unit Oral of any innovation pattern).
+
+\textbf{(3) Separate domain from strategy before embedding.} We produce a second-pass \emph{domain-agnostic} rewrite of each paper's four innovation fields (abstract\_strategy, abstract\_key\_step, abstract\_why\_non\_obvious, abstract\_trigger\_condition) using Claude Sonnet. Embeddings are computed on these rewrites, not on the original domain-laden text. This converts clustering from a topic-similarity operation into a \emph{strategy-similarity} operation, which is what we want for innovation pattern induction.
+
+\textbf{(4) Validate the taxonomy against the rejected population.} We re-cluster the 722 Rejected papers alone and ask Opus to map the resulting 23 reject-only clusters onto the 13-innovation pattern taxonomy induced from accepted papers. All but one cluster (\(n{=}12\), an adversarial-security subtheme) map cleanly. Rejected papers do not occupy a separate strategy space; they share the strategies of Oral papers but fail on execution-level criteria. This is the empirical lever NoveltySkill exploits: the gap to Oral is in \emph{execution criteria} (success conditions / failure modes / reviewer expectations), so the skill encodes these criteria from per-paper meta-reviews and uses them to audit candidate ideas.
+
+\textbf{(5) Compose, don't choose.} A separate Opus pass independently re-tags every paper with all 13 innovation patterns, no upper cap. The result: 57.3\% of accepted papers execute exactly three innovation patterns; \(k{=}3\) is the modal composition size for Oral, HC, and Reject. The standout 3-way \emph{audit + reframing + shared-latent alignment} appears in 18 papers (12 Oral, 6 HC, 0 Reject), the dataset's only \(n{\geq}10\) composition with zero Rejected instances. The skill therefore generates 1--3-innovation pattern compositions with explicit roles (primary novelty action, supporting mechanism, validation action, framing action) rather than ranking single innovation patterns.
+
+\subsection{Key findings}
+
+Our analysis yields findings that stand independent of the downstream SKILL system:
+
+\begin{enumerate}[leftmargin=1.5em]
+\item \textbf{Thirteen induced innovation patterns.} Opus induces exactly 13 Level-1 innovation patterns from the 47 fine-grained clusters --- the count emerged, we did not specify it. The cluster-level mapping reaches 1{,}264 of 1{,}276 clustered papers (97\% of clustered; 65\% of full corpus). The independent paper-level multi-label tagging (\S\ref{subsec:multilabel}), which does not depend on cluster geometry, reaches all 1{,}947 papers including the 671 HDBSCAN-unclustered papers. The unclustered papers carry the same innovation pattern compositions as clustered ones (mean $k$ = 2.75 vs.\ 2.69) and have a slightly higher Oral acceptance rate (54.8\% vs.\ 50.8\%); the unclustered label means ``embedding lies between modal clusters,'' not ``outside the strategy space.''
+\item \textbf{Oral-favored and Reject-favored innovation patterns are distinguishable.} Using the bias measure $\Delta = p_\text{oral} - p_\text{reject}$: Oral-favored innovation patterns (${+}1.1$ to ${+}4.2$ percentage points) include \emph{Reframe via Alternative Formalism} ($\Delta{=}{+}4.2$), \emph{Audit Evaluation via Controlled Perturbation} (${+}1.5$), and \emph{Sharpen a Single Analytic Step} (${+}1.3$); Reject-over-represented innovation patterns include \emph{Audit and Relax Implicit Assumption} (${-}3.0$), \emph{Align Heterogeneous Sources in Shared Space} (${-}2.8$), and \emph{Decompose and Recombine} (${-}1.4$). High-risk innovation patterns have high expected value \emph{if executed well}: \emph{Assumption Audit} produces the second-largest Oral pool (122 papers) despite its negative acceptance bias.
+\item \textbf{PC-valued vs community-valued innovation patterns diverge.} \emph{Diagnose Then Surgically Fix} has a dramatic HC$\gg$Oral skew (47 HC vs 28 Oral): papers that precisely localize and patch a pathology get cited heavily but are rarely Oral-selected. Conversely, \emph{Sharpen a Single Analytic Step} has 60 Oral and only 1 HC---a classic PC-bias pattern (reviewers reward tight proofs; the community does not cite them).
+\item \textbf{Multi-strategy is the norm.} 72\% of clustered papers receive a secondary innovation pattern. The top empirical pair is \emph{assumption audit} + \emph{formal reframing} (137 papers), followed by \emph{auxiliary signal} + \emph{shared latent alignment} (128) and \emph{analytic refinement} + \emph{assumption audit} (120).
+\item \textbf{Conference and year profiles differ measurably.} ICML over-indexes on \emph{Reframe via Alternative Formalism} (18.3\%) and \emph{Sharpen a Single Analytic Step} (6.6\%); ICLR over-indexes on \emph{Diagnose Then Surgically Fix} (6.2\%); NeurIPS is the most balanced. Temporally, \emph{Audit Evaluation via Controlled Perturbation} more than tripled from 2023 (2.3\%) to 2024 (7.0\%), and \emph{Encode Invariance as Hard Constraint} climbed steadily from 2.6\% (2021) to 6.9\% (2025).
+\end{enumerate}
+
+\subsection{Contributions}
+
+\textbf{Empirical contributions.}
+(i) A data-induced 13-innovation pattern taxonomy with operational signatures, covering 47 fine-grained innovation sub-patterns and 28 induced research domains. The taxonomy is induced by Opus 4.7 from the data, not specified up front; the count of 13 emerged.
+(ii) Per-innovation pattern acceptance and impact profiles across the full Oral / HC / Reject spectrum, including innovation patterns that are PC-rewarded but under-cited (e.g., \emph{Sharpen a Single Analytic Step}: 60 Oral, 1 HC) and innovation patterns the community cites heavily but the PC treats more cautiously (e.g., \emph{Diagnose Then Surgically Fix}: 47 HC, 28 Oral).
+(iii) The negative result that rejected papers occupy the same strategy space as accepted ones, sharpening the research question from ``what strategies work?'' to ``what execution criteria separate same-strategy Oral from same-strategy Reject?''.
+(iv) Paper-level multi-label re-tagging shows \(k{=}3\) is the modal composition size for accepted papers; the 3-way \emph{audit + reframing + shared-latent alignment} composition has 100\% accepted-class share in our sample.
+(v) An induced 28-domain taxonomy + a \(28{\times}13\) joint matrix shows the 8 largest innovation patterns are \emph{domain-agnostic} in coverage (\(\geq 18/28\) domains) but \emph{domain-conditional} in acceptance rate (cell rates vary by tens of pp).
+
+\textbf{Artifact contributions.}
+(vi) Per-innovation pattern and per-sub-pattern operational ``cards'' generated by Opus 4.7: 13 eight-panel innovation pattern cards (step-by-step / success conditions / failure modes / Oral-vs-Reject gap / Oral-vs-HC gap / reviewer expectations / cognitive barriers / examples) and 47 six-panel innovation sub-pattern cards (tactical pattern / sibling differentiation / when-to-pick / tactical failure mode / representative Oral / representative Reject), every claim anchored to specific paper IDs and AC meta-reviews.
+(vii) NoveltySkill: a model-agnostic two-tier skill (\texttt{novelty-skill} parent, \texttt{novelty-lit-search} sub-skill) implementing a 5-phase workflow that returns a single Oral-level research idea. Phase 0 retrieves $\sim$30--40 papers across DBLP / OpenAlex / OpenReview / arXiv with role-based time windows. Phase 1 (one LLM call) writes a literature-grounded bottleneck statement citing $\geq 2$ retrieved papers and routes to \texttt{proceed} or \texttt{do\_not\_generate}. Phase 2 (two LLM calls) selects an innovation-pattern composition by structural fit and generates one candidate with mechanism-specific \texttt{signature\_terms[]} for downstream collision retrieval. Phase 3 runs collision retrieval over a 6-month focused window (one orchestrator call, no LLM call) and a corpus-anchored audit (one LLM call) that performs three checks: composition-scoped reject-pattern scan against the candidate's chosen sub-pattern card plus any secondary patterns' methodology cards (typically 200+ cataloged reject lessons across the 47 sub-pattern cards); anti-pattern substantive-mitigation verification (the three corpus-validated reject-favored compositions with empirical Oral rates 30/39/44\%); and paper-pointed threat search across the unified pool of Phase-0 broad retrieval and Phase-3.1 mechanism-specific retrieval. The audit emits a verdict in \{\texttt{advance}, \texttt{revise}, \texttt{abandon}\} with a two-layer logic: a corpus-anchored hard floor (LLM cannot override) for triggered Reject patterns, refuted novelty claims, or exact-mechanism collisions; LLM soft judgment within the safe zone for advance vs revise. When the verdict is \texttt{revise}, a separate Phase-3.3 LLM call mechanically applies the audit's named revision targets, with kill-switch fields preserved byte-identical. Phase 4 expands the candidate into a structured idea card and renders PDF + Markdown + LaTeX. Two mechanical validators run as final contracts: \texttt{kill\_switch\_integrity} enforces byte-identical preservation of the falsification-anchor fields from Phase 2 through Phase 4, and \texttt{expansion\_completeness} verifies all required idea-card sections are present. The skill follows Anthropic's official skill best practices~\cite{anthropic_skill_bp_2025}: progressive disclosure, lean SKILL.md, scripts for deterministic steps, schema-validated phase boundaries, explicit OOD refusal. The skill produces the IDEA + an honest feasibility judgment; experimental engineering (datasets, baselines, ablations, expected figures) is the user's design responsibility, and no calendar projection is emitted.
+
+\textbf{Open release.} Dataset (1947 papers with all extracted fields and innovation pattern assignments), the 13 + 47 cards (JSON and rendered LaTeX), the \(28{\times}13\) domain matrix, and both skills are released under permissive licensing.
+
+\subsection{Roadmap}
+
+Section~\ref{sec:related} surveys the rapidly-evolving 2025--2026 ideation, novelty-assessment, and scientific-discovery literature. Sections~\ref{sec:data}--\ref{sec:methodology} describe the dataset, the two-stage extraction, and the innovation-pattern induction. Section~\ref{sec:analysis} measures per-pattern acceptance and impact bias. Section~\ref{sec:domains} characterizes the induced domains and the innovation pattern breadth. Section~\ref{sec:trends} reports temporal and conference-level structure. Section~\ref{sec:reject} validates the taxonomy against the rejected population. Section~\ref{sec:ablation} ablates the embedding choice and the abstraction-stage decision. Section~\ref{sec:discussion} discusses limitations and threats to validity. Section~\ref{sec:skill} describes the SKILL system. The 13 innovation pattern cards and 47 sub-pattern cards are bundled in Appendices~\ref{app:cards} and~\ref{app:clusters}; the card-generation procedure is in Appendix~\ref{app:cards-method}.
+
+
+%======================================================================
+\section{Related Work}
+\label{sec:related}
+%======================================================================
+
+The 2024--2026 literature on LLM research-idea generation has expanded rapidly along seven orthogonal axes. We position NoveltySkill against each in turn.
+
+\subsection{End-to-end ``AI scientist'' systems}
+\label{subsec:related-scientist}
+
+End-to-end systems automate the full research lifecycle. AI~Scientist~\cite{lu2024aiscientist} drafts, implements, evaluates, and writes up research ideas in a single loop; its output was often judged incremental. AI-Researcher~\cite{airesearcher2025} extends this to autonomous innovation with structured architectures and decoupled training pipelines. Agent Laboratory~\cite{agentlab2025} accepts a human-supplied research idea and produces a research report and code, supporting variable human-in-the-loop. Idea2Plan~\cite{idea2plan2025} bridges idea to research plan via ReAct-style scaffolding with arXiv tools. The Sakana AI Scientist v2~\cite{sakana_v2} adds evolutionary-search refinement. Auto Research~\cite{autoresearch2025} structures a multi-agent framework spanning literature review, ideation, innovation pattern, experimentation, paper writing, and rebuttal. \emph{NoveltySkill differs}: it is not end-to-end; it terminates at a single Oral-grade idea-card output (with explicit failure paths when the audit cannot clear), leaving experimentation and writing to the user. The argument for stopping at the idea: end-to-end systems are bottlenecked by the same idea-quality gap our analysis characterizes; fixing the idea stage is upstream.
+
+\subsection{Multi-agent and search-based ideation}
+\label{subsec:related-multiagent}
+
+VirSci~\cite{virsci2024} and IRIS~\cite{iris2025} model scientific teamwork as multi-agent collaboration with role-separated agents (ideator / reviewer / retriever). Deep Ideation~\cite{deepideation2025} introduces an explore-expand-evolve workflow over a scientific concept network, with a critic engine trained on real reviewer feedback (10.25\% improvement over baselines across four AI domains). Nova~\cite{nova2024} adds an iterative planning-and-search loop that purposely retrieves external knowledge to enrich each candidate, targeting the novelty-and-diversity gap in LLM ideation. The multi-workflow benchmark~\cite{multiworkflow2026} compares five reasoning architectures (reflection-based iterative refinement, Sakana evolutionary, Google Co-Scientist multi-agent, GPT Deep Research recursive decomposition, Gemini multimodal long-context) and finds decomposition-based and long-context workflows achieve mean novelty of 4.17/5. Alien Science~\cite{alienscience2026} formalizes a complementary creativity gap --- \emph{cognitive availability} (the likelihood a direction would be naturally proposed by a typical researcher) --- and learns to sample coherent but cognitively unavailable directions from clustered ``idea atoms.'' \emph{NoveltySkill differs}: rather than searching over candidate ideas, we constrain the LLM with empirically-derived innovation pattern cards encoding success conditions and failure modes from the Oral / HC / Reject contrast. Search and constraint are complementary: NoveltySkill could be embedded as the audit / constraint layer in any of the systems above.
+
+\subsection{Methodology / pattern induction from accepted papers}
+\label{subsec:related-induction}
+
+The closest line of work to ours is innovation pattern induction from top-conference papers. Wang et al.~\cite{wang2024scireasoning} annotate Oral papers against a predefined 12-category taxonomy. MoRI~\cite{moRI2026} extracts \emph{motivation}\(\to\)\emph{innovation pattern} pairs from ICLR 2024--2025 accepted papers and trains a reasoning policy via supervised fine-tuning + controllable RL on dimensions of feasibility, novelty, and effectiveness. MotivGraph-SoIQ~\cite{motivgraph2025} builds a motivational knowledge graph and pairs it with Socratic dialogue for ideation. Navigating Ideation Space~\cite{navigating_ideation2026} decomposes scientific ideas into conceptual representations for positioning new ideas.
+
+A parallel paradigm grounds idea generation in \emph{knowledge graphs} mined from large literature corpora. SciMuse~\cite{scimuse2024} builds a KG from 58 million research papers and conducts a 100-research-group-leader evaluation showing AI-generated ideas can be perceived as novel and impactful when grounded in cross-disciplinary KG paths. KG-grounded hypothesis generation~\cite{kghyp2024} similarly retrieves relevant KG sub-structures to constrain LLM hypothesis output and reports improved novelty + plausibility on biomedical benchmarks.
+
+\emph{NoveltySkill differs from each}: (i) Wang's taxonomy is preset; ours is induced from data. (ii) MoRI fits a parametric policy; we deliver a structured non-parametric skill. (iii) The KG-based paradigms (SciMuse, KG-Hyp) ground ideas in concept-level co-occurrence; our taxonomy grounds ideas in \emph{strategic operations} (audit + relax assumption / sharpen analytic step / reframe via equivalence) extracted from how Oral and Reject papers differ in execution, not from concept adjacency. (iv) Critically, all six lines analyze \emph{only accepted} papers --- they do not contrast against rejection. Our 722-Reject pool yields the success-condition / failure-mode contrast that drives the skill's audit step, and the 100\%-Oral 3-way composition (\emph{audit + reframing + shared-latent alignment}) is invisible without the rejection contrast.
+
+\subsection{Novelty assessment and prior-art collision}
+\label{subsec:related-novelty}
+
+A parallel thread builds tools that score whether a candidate idea collides with prior art. NovBench~\cite{novbench2026} is the first large-scale benchmark for novelty evaluation (1684 paper-review pairs, 4-dim eval framework: relevance / correctness / coverage / clarity). OpenNovelty~\cite{opennovelty2026} is an agentic system deployed on 500+ ICLR 2026 submissions producing transparent evidence-based novelty reports. GraphMind~\cite{graphmind2025} provides interactive novelty assessment tying paper key-elements to retrieved literature. Idea Novelty Checker~\cite{idea_novelty_checker2025} uses RAG with two-stage retrieve-then-rerank. Literature-Grounded Novelty Assessment~\cite{litgrounded2025} uses expert-annotated in-context examples to guide literature-grounded rationales. Augmenting Research Ideation with Data~\cite{augment_ideation2026} integrates metadata and automated preliminary-validation into ideation (+20\% feasibility, +7\% quality on social-science tasks). \emph{NoveltySkill incorporates this thread}: our \texttt{novelty-lit-search} sub-skill performs Phase-0 broad mapping and Phase-5 focused-window collision checking with a 7-class collision taxonomy; the action mapping is conditioned on the user-supplied novelty target (Oral / publication / Best Paper).
+
+\subsection{Idea evaluation: feasibility, taste, and future impact}
+\label{subsec:related-evaluation}
+
+Si et al.~\cite{si2024llmideas} ran a 100+-NLP-researcher blind study showing LLM-generated ideas are rated \emph{more novel} but \emph{less feasible} than expert ideas. The follow-up execution study~\cite{si2026execution} reports that AI ideas score significantly lower than human ideas \emph{after} execution --- the gap is in operational criteria, not surface novelty. AI Can Learn Scientific Taste~\cite{ai_taste2026} trains a taste model on accepted/rejected pairs. HindSight~\cite{hindsight2026} evaluates LLM-generated ideas via future-citation impact. Learning to Predict Future-Aligned Research Proposals~\cite{future_aligned2026} predicts whether a candidate proposal aligns with future research directions. \emph{NoveltySkill incorporates the operational-criteria framing} from~\cite{si2026execution} as a primary motivation: the skill's audit phase performs three corpus-anchored checks (composition reject scan, anti-pattern verification, paper-pointed threat search) that surface execution-level gaps honestly --- when the audit cannot clear its hard floor it abandons rather than emits a degraded artifact.
+
+\subsection{Benchmarks for ideation and discovery}
+\label{subsec:related-benchmarks}
+
+A wave of benchmarks now measures different aspects of ideation. IdeaBench~\cite{ideabench2024} evaluates research idea generation against referenced-work baselines. AI Idea Bench 2025~\cite{airesearchideas2025} curates 3495 papers from ICLR top-2\% and CVPR highlights as ground truth. ResearchBench~\cite{researchbench2025} decomposes scientific discovery into inspiration retrieval, hypothesis composition, and hypothesis ranking. NewtonBench~\cite{newtonbench2025} evaluates scientific-law discovery on 324 physics tasks with counterfactual law shifts. \emph{NoveltySkill is not a benchmark} and is downstream of these: our 1947-paper dataset and the per-paper innovation pattern assignments could serve as a complementary benchmark for ``does an ideation system reproduce the empirical Oral-favored composition patterns?''.
+
+\subsection{Surveys, structured reasoning, and clustering substrate}
+\label{subsec:related-substrate}
+
+Two recent surveys map the landscape: ``From Automation to Autonomy''~\cite{from_automation_2025} (3-level taxonomy: Tool / Analyst / Scientist) and ``Towards Scientific Intelligence''~\cite{sci_intel_survey2025} (architectures / benchmarks / ethics). On the methodological-foundations side: chain-of-thought prompting~\cite{wei2022cot}, ReAct~\cite{yao2023react}, retrieval-augmented generation~\cite{lewis2020rag}, and Toolformer~\cite{schick2023toolformer} each attach a general-purpose capability to the LLM; SPECTER~\cite{cohan2020specter} provides citation-trained scientific embeddings; BERTopic~\cite{grootendorst2022bertopic} combines contextual embeddings with UMAP and HDBSCAN. Anthropic's official skill best-practices~\cite{anthropic_skill_bp_2025} guide our skill design: progressive disclosure, lean SKILL.md, deterministic scripts for repetitive steps, schema-validated phase boundaries, explicit triggers and negative cases. \emph{NoveltySkill's pipeline} embeds domain-agnostic strategy rewrites (rather than titles or abstracts) with OpenAI \texttt{text-embedding-3-large}; \S\ref{sec:ablation} shows that for strategy-level clustering the general-purpose embedder outperforms SPECTER2 because the relevant similarity is paraphrase-level rather than citation-level.
+
+\subsection{Summary of differentiation}
+
+Across these seven axes, NoveltySkill's distinctive moves are: \emph{(a)} contrast Oral / HC / Reject in the same embedding space (no other system uses Reject as a primary signal); \emph{(b)} induce the innovation pattern taxonomy from data (Wang~\cite{wang2024scireasoning} and MoRI~\cite{moRI2026} use predefined or motivation-driven schemas); \emph{(c)} deliver per-pattern operational cards with quoted reviewer evidence (no other system produces audit-ready cards anchored in meta-reviews); \emph{(d)} support multi-pattern compositions with explicit roles, justified by paper-level multi-label data showing \(k{=}3\) is the empirical mode; \emph{(e)} ship as a model-agnostic two-tier skill following Anthropic's official best practices, deployable to Claude Code, OpenAI assistants, Gemini, or open-weights LLMs without modification.
+
+
+%======================================================================
+\section{Dataset Construction}
+\label{sec:data}
+%======================================================================
+
+\subsection{Scope and labeling}
+
+We collect papers from ICLR, ICML, and NeurIPS for 2021--2025 via the OpenReview API (v1 for ICLR 2021--2023, v2 for ICLR 2024+, ICML 2023+, NeurIPS 2023+). ICLR 2020 is excluded from this release due to differing review-data schemas. For each paper we retain the title, abstract, author list, OpenReview id, decision string, full review set (rating, confidence, soundness, contribution, summary, strengths, weaknesses, questions), meta-review, and Semantic Scholar citation count.
+
+Each paper receives zero or more of three labels. A paper may carry multiple labels (49 papers are simultaneously Oral and High-Cited).
+
+\textbf{\textcolor{cblue}{Oral}} (1{,}014 papers): papers whose venue decision is Oral or Spotlight, representing what the program committee values most.
+
+\textbf{\textcolor{cgold}{High-Cited (HC)}} (260 papers): top-30 most-cited papers per venue-year via authoritative citation CSVs, representing community adoption. For 2025 the top-10 most-cited are used because citation counts are still accumulating.
+
+\textbf{\textcolor{cred}{Reject}} (722 papers): papers with an explicit Reject decision and a non-trivial review set, representing concrete failure signal.
+
+Table~\ref{tab:data} shows the venue-year breakdown. The per-venue counts reflect two independent factors. First, \textbf{venue openness}: ICLR is OpenReview-native and publishes accept and reject decisions with full review threads, so its Reject pool is deepest; ICML and NeurIPS expose decisions on OpenReview only from 2023 onward and ICML 2023--2024 in particular release very few rejected submissions, which is why those rows show 0--3 in the Reject column. Second, \textbf{review accessibility}: even when a decision is published, the meta-review and reviewer comments are sometimes withheld or formatted such that automatic parsing fails---this is why metadata coverage (Section~\ref{subsec:meta-coverage}) shows only 340/1947 papers carrying a meta-review despite all 1947 having decisions. ICML 2025 is additionally excluded from the HC pool due to data-quality issues with the 2025 ICML citation source. These asymmetries are non-issues for the clustering stage but are treated carefully in the quantitative analysis (Section~\ref{sec:analysis}).
+
+\begin{table}[htbp]
+\centering
+\caption{Dataset composition. Each column counts a paper if it carries that label; the same paper can appear in multiple columns. The Total row sums to $1{,}014+260+722=1{,}996$; the unique-paper count is $1{,}947$ after removing the $49$ Oral$\cap$HC overlaps. Per-class disjoint-pool counts used in Section~\ref{sec:analysis} are $1{,}014$ Oral, $211$ HC, $722$ Reject. ICLR 2020 is excluded.}
+\label{tab:data}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+\textbf{Venue} & \textbf{Year} & \textbf{\textcolor{cblue}{Oral}} & \textbf{\textcolor{cgold}{HC}} & \textbf{Oral$\cap$HC} & \textbf{\textcolor{cred}{Reject}} \\
+\midrule
+ICLR    & 2021 &  52 & 30 & 5 &   0 \\
+ICLR    & 2022 &  49 & 30 & 5 &   0 \\
+ICLR    & 2023 &  85 & 30 & 6 & 143 \\
+ICLR    & 2024 &  63 & 30 & 1 & 138 \\
+ICLR    & 2025 & 186 & 10 & 4 & 128 \\
+ICML    & 2023 & 147 & 30 & 9 &   3 \\
+ICML    & 2024 & 135 & 30 & 9 &   0 \\
+ICML    & 2025 &  99 & 10 & 3 &  65 \\
+NeurIPS & 2023 &  69 & 30 & 4 &  94 \\
+NeurIPS & 2024 &  60 & 30 & 3 & 101 \\
+NeurIPS & 2025 &  69 &  0 & 0 &  50 \\
+\midrule
+\textbf{Total} &  & \textbf{1{,}014} & \textbf{260} & \textbf{49} & \textbf{722} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Metadata coverage}
+\label{subsec:meta-coverage}
+
+After merging, 1{,}947 unique papers remain. All 1{,}947 carry the eight base fields and four abstracted fields (Section~\ref{sec:extract}). Metadata coverage varies: 1{,}074 papers carry the full abstract, 716 carry parsed reviews, 682 carry an extracted introduction, and 340 carry a meta-review. The Reject subset is particularly review-rich because rejection signal lives in the reviews.
+
+\subsection{Splits}
+
+We produce a stratified 80/20 train/test split over (venue, year, primary label) with seed 42: 1{,}557 train, 390 test. For buckets with $<5$ papers the whole bucket goes to train. All pattern discovery, innovation pattern induction, and acceptance analysis reported in this paper use the full 1{,}947 papers; the split is reserved for downstream SKILL evaluation in future work.
+
+\subsection{Convention for in-paper paper references}
+\label{subsec:paper-id-convention}
+
+Throughout this paper we reference papers in the corpus by an internal identifier of the form \texttt{<VENUE>\_<YEAR>\_<NNNN>} (e.g., \texttt{ICLR\_2022\_0094}, \texttt{NeurIPS\_2023\_0753}). Each identifier resolves uniquely to an OpenReview submission via the \texttt{openreview\_id} field in the released dataset (\texttt{data/dataset/all\_records\_full.json}); a paper can be looked up at \texttt{https://openreview.net/forum?id=<openreview\_id>} after consulting the dataset. Of the 1{,}947 corpus papers, approximately 1{,}088 are referenced at least once in this report --- typically as evidence under a methodology card's success-condition or failure-mode list (e.g., ``evidence: \texttt{ICLR\_2022\_0094}, \texttt{ICML\_2023\_0551}, \ldots''). We do not include these as bibliography entries: a complete bib of the cited corpus would obscure the second-order related-work citations that constitute Section~\ref{sec:related}. The released dataset is the authoritative bibliographic resolution layer for any \texttt{paper\_id} appearing in this report. Where a specific corpus paper is discussed substantively in body text (e.g., the diffusion-ELBO paper~\cite{kingma2023diffusion} = \texttt{NeurIPS\_2023\_0753} that anchors our SKILL freshrun case study in Section~\ref{sec:skill}; LP-FT~\cite{kumar2022lpft} = \texttt{ICLR\_2022\_0094}, the DP continual-observation paper~\cite{henzinger2023dpcontinual} = \texttt{ICML\_2023\_0551}, EigenGame~\cite{gemp2021eigengame} = \texttt{ICLR\_2021\_0018}, and SAM-as-Bayes~\cite{mollenhoff2023sambayes} = \texttt{ICLR\_2023\_0331}, all of which feature as canonical examples in the methodology cards), a proper bibliography entry is provided.
+
+
+%======================================================================
+\section{Two-Stage Innovation-Signature Extraction}
+\label{sec:extract}
+%======================================================================
+
+To convert each paper into a form amenable to strategy-level clustering we extract a twelve-field \emph{innovation signature}: eight base fields capturing the paper's domain-specific innovation story, plus four domain-agnostic rewrites of the most strategy-bearing fields.
+
+\subsection{Stage 1: Eight base fields}
+
+We feed Claude Sonnet the paper's title, abstract, introduction (extracted from the PDF), all reviews, and the meta-review, and request a structured output with the following fields:
+
+\begin{enumerate}[nosep, leftmargin=1.5em]
+\item \texttt{innovation\_approach}: one sentence describing \emph{how} this paper innovates as a reasoning strategy.
+\item \texttt{key\_step}: the single most critical reasoning step from diagnosis to solution.
+\item \texttt{why\_non\_obvious}: the cognitive barrier that blocked others from this approach.
+\item \texttt{trigger\_condition}: domain-agnostic situation where this strategy applies, phrased as ``When X, apply Y to achieve Z.''
+\item \texttt{reviewer\_praise}: three specific points the reviewers praised.
+\item \texttt{reviewer\_concern}: three specific reviewer concerns.
+\item \texttt{acceptance\_signal}: one sentence explaining what made the paper Oral / cited / rejected.
+\item \texttt{contribution\_type}: one of \{theoretical, methodological, empirical, benchmark, system\}.
+\end{enumerate}
+
+Extraction is run under a JSON schema that enforces non-empty lists of length 3 for the two review-derived fields. All 1{,}947 papers pass the Stage-1 extraction.
+
+\subsection{Stage 2: Four domain-agnostic rewrites}
+
+A well-known failure mode of direct embedding is that the model latches onto domain nouns (``Transformer'', ``diffusion'', ``image'', ``molecule'') and produces topic clusters rather than strategy clusters. We defuse this by running a second Claude Sonnet pass that rewrites the first four base fields into their strategy-only equivalents. The prompt instructs the model to replace domain nouns with generic placeholders, adopt imperative phrasing (``Audit \ldots'', ``Transfer \ldots'', ``Design \ldots''), preserve the mechanism, and drop application detail. The resulting four fields are:
+
+\begin{enumerate}[nosep, leftmargin=1.5em]
+\item \texttt{abstract\_strategy} $\leftarrow$ \texttt{innovation\_approach}
+\item \texttt{abstract\_key\_step} $\leftarrow$ \texttt{key\_step}
+\item \texttt{abstract\_why\_non\_obvious} $\leftarrow$ \texttt{why\_non\_obvious}
+\item \texttt{abstract\_trigger\_condition} $\leftarrow$ \texttt{trigger\_condition}
+\end{enumerate}
+
+A representative contrast illustrates the shift: for the paper \emph{High Fidelity Speech Synthesis with Adversarial Networks}, \texttt{innovation\_approach} reads ``\textit{They solved a domain transfer problem by borrowing the PatchGAN multi-scale discriminator strategy from image GANs and re-instantiating it at multiple temporal windows in audio, adding conditioning signals to close the fidelity gap}'' whereas \texttt{abstract\_strategy} reads ``\textit{Transfer a multi-scale discrimination strategy from one data modality to another by re-instantiating it at the appropriate domain-specific granularity, then add conditioning signals to close the remaining fidelity gap.}'' The generic version is what we feed into the embedding model.
+
+All four abstract fields are populated for 1{,}947/1{,}947 papers.
+
+
+%======================================================================
+\section{Unsupervised Pattern Discovery}
+\label{sec:clustering}
+%======================================================================
+
+\subsection{Embedding}
+
+We concatenate the four abstract fields per paper with explicit \texttt{field: content} prefixes (average length 1{,}185 characters) and embed with OpenAI \texttt{text-embedding-3-large} (3{,}072 dimensions). Vectors are L2-normalized.
+
+\subsection{Clustering}
+
+UMAP reduces the 3{,}072-dim cosine-normalized space to 10 dimensions ($n\_\text{neighbors}{=}15$, $\min\_\text{dist}{=}0$, seed 42), and HDBSCAN ($\min\_\text{samples}{=}\lceil \min\_\text{cluster\_size}/3 \rceil$, \texttt{cluster\_selection\_method}=\texttt{eom}) clusters the reduced space. We sweep $\min\_\text{cluster\_size}\in\{10,15,20,25,30,40\}$ and pick the configuration that maximizes silhouette subject to unclustered fraction $<0.20$; when no configuration meets the unclustered cap we report the highest-silhouette one. Table~\ref{tab:sweep} shows the ALL-set sweep.
+
+\begin{table}[htbp]
+\centering
+\caption{HDBSCAN sweep on the full 1{,}947-paper embedding. Selected row bolded.}
+\label{tab:sweep}
+\small
+\begin{tabular}{cccccc}
+\toprule
+$\min\_\text{cluster\_size}$ & $k$ & $n_\text{unclustered}$ & \% unclustered & silhouette \\
+\midrule
+\textbf{10} & \textbf{47} & \textbf{671} & \textbf{34.5} & \textbf{0.474} \\
+15 & 30 & 679 & 34.9 & 0.425 \\
+20 & 18 & 839 & 43.1 & 0.432 \\
+25 & 19 & 845 & 43.4 & 0.497 \\
+30 & 13 & 862 & 44.3 & 0.482 \\
+40 &  9 & 869 & 44.6 & 0.433 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We pick $\min\_\text{cluster\_size}{=}10$ despite its slightly lower silhouette than the $=25$ row because it identifies 47 innovation sub-patterns while keeping unclustered fraction stable at 34.5\%. Coarsening min\_cluster\_size does not reduce the unclustered fraction (it hovers near 34--44\% across the sweep), meaning the additional unclustered points'' at fine granularity is not recovered by coarsening --- those points are genuinely far from all density peaks.
+
+\paragraph{What ``unclustered'' actually means (and why we don't call it ``noise'').} HDBSCAN's standard nomenclature labels points outside any density peak as ``noise''. We use ``unclustered'' throughout this paper because, as the analysis below shows, the property is geometric (between modal clusters) rather than substantive (idiosyncratic outliers / low-quality papers / strategies outside the innovation pattern framework). The 34.5\% of papers HDBSCAN flags are \emph{not} strategy-empty: unclustered and clustered papers have nearly identical paper-level multi-label innovation pattern compositions (mean $k = 2.75$ vs.\ $2.69$; $k{=}3$ is 56.8\% in unclustered vs.\ 57.6\% in clustered; 100\% of both groups have all four \texttt{abstract\_*} fields populated with comparable median lengths $\sim 220$--$280$ chars). Unclustered papers also have a slightly \emph{higher} Oral acceptance rate (54.8\% vs.\ 50.8\% for clustered). The unclustered label is a property of \emph{embedding geometry under the chosen mcs threshold}, not a property of strategic content: a paper whose strategy embedding lands at the boundary between two or three modal clusters --- typically because its three executed innovation patterns are weighted comparably in the rewritten text --- is flagged unclustered even though its innovation pattern composition is identical to clustered papers'. In short, ``unclustered'' here means \emph{between modal clusters}, not \emph{outside the strategy space}. The 13-innovation pattern framework, which operates at the paper level via independent multi-label tagging (\S\ref{subsec:multilabel}), covers unclustered and clustered papers equally.
+
+\subsection{What the 47 clusters look like}
+
+Cluster sizes (excluding unclustered) range from 10 (the smallest valid size) to 115, with mean 27.1 and median 18. The largest clusters are:
+
+\begin{itemize}[nosep, leftmargin=1.5em]
+\item \textbf{C24} (\(n{=}115\)): \emph{Unified Cross-Modal Latent Space Alignment}---projecting heterogeneous modalities or task formats into a single shared space.
+\item \textbf{C35} (\(n{=}93\)): \emph{Benchmark Validity Auditing via Controlled Perturbation}.
+\item \textbf{C15} (\(n{=}93\)): \emph{Tight Bound Recovery via Targeted Proof Refinement}.
+\item \textbf{C31} (\(n{=}79\)): \emph{Bottleneck Audit with Targeted Component Substitution}.
+\item \textbf{C22} (\(n{=}71\)): \emph{Generative Reframing of Sequential Decision Problems}.
+\end{itemize}
+
+Each cluster is automatically labeled by an additional Claude Sonnet pass that consumes the cluster's eight centroid-nearest representative papers and produces a 2--6 word label plus a one-sentence description. A second Opus 4.7 pass then produces a level-2 \emph{disambiguation card} for each cluster (\S\ref{subsec:multistrat} uses the resulting tactic-level patterns; full cards in App.~\ref{app:clusters}). Each disambiguation card has six panels: (1) \emph{tactical\_pattern} --- the cluster's specific reasoning move at the granularity below the level-1 innovation pattern; (2) \emph{differentiation\_within\_parent} --- what distinguishes this cluster from its sibling clusters that share the same level-1 parent; (3) \emph{when\_to\_pick\_this\_one} --- the situational trigger conditions under which this sub-pattern is the right choice; (4) \emph{tactical\_failure\_mode} --- the cluster-specific failure shape that recurs in its Reject papers; (5) \emph{representative\_oral} --- one Oral exemplar with a one-line lesson; (6) \emph{representative\_reject} --- one Reject exemplar with a one-line lesson. We use the 47-cluster inventory as raw material for innovation pattern induction in the next section.
+
+\subsection{Per-cluster acceptance composition: which clusters are safe vs.\ warning}
+\label{subsec:clusterskew}
+
+Although the embedding (Fig.~\ref{fig:umap}b) interleaves Oral, HC, and Reject papers across most clusters, the cluster-level proportions are highly non-uniform. Figure~\ref{fig:cluster_skew} shows each of the 47 clusters' Oral / HC / Reject composition, sorted by Oral rate. Two flagging rules let us partition the clusters into actionable categories for downstream use (the SKILL retrieval layer pre-filters on these flags):
+
+\begin{itemize}[leftmargin=1.4em, topsep=2pt, itemsep=2pt]
+\item \textbf{Oral-safe} ($p_O \geq 65\%$ and $n_O \geq 5$): \textbf{12 clusters}. These are the clusters whose tactic, when properly executed, lands at the top of the acceptance distribution. The five sharpest are C07 \emph{Timescale Separation for Staged Dynamics Analysis} (11/0/0, 100\% Oral), C08 \emph{Formal Abstraction for Tight Expressivity Bounds} (14/1/1, 88\%), C01 \emph{Symmetry Exploitation via Equivariant Architecture} (17/2/1, 85\%), C45 \emph{Generative Framework Generalization via Mathematical Reformulation} (17/0/3, 85\%), and C09 \emph{Structural Inductive Bias Formalization} (16/1/2, 84\%).
+\item \textbf{Reject-warn} ($p_R \geq 65\%$ and $n_R \geq 5$): \textbf{5 clusters}. These tactics are present in accepted work but rarely succeed; the SKILL should warn rather than recommend. They are C42 \emph{Decompose-then-Recombine Multi-Objective Search} (1/0/10, 91\% Reject), C04 \emph{Soft Uncertainty Preservation via Probabilistic Reformulation} (3/0/12, 80\%), C13 \emph{Global Structure Recovery via Local Proxy Decomposition} (3/0/11, 79\%), C19 \emph{Relational Structure Critique and Realignment} (2/2/14, 78\%), and C20 \emph{Supervision Redesign via Training Signal Audit} (1/2/7, 70\%).
+\item \textbf{Mixed}: the remaining 30 clusters. These tactics produce both Oral and Reject papers in comparable shares; they are the bulk of the working space, and acceptance hinges on the per-paper success conditions and failure modes characterized in the methodology cards (\S\ref{subsec:cards}, App.~\ref{app:cards}).
+\end{itemize}
+
+The per-cluster labels and full counts are in \texttt{clustering/extra/cluster\_composition.csv}.
+
+\paragraph{These flags are risk signals, not recommendation labels.} \emph{Oral-safe} does not mean ``preferred''; \emph{Reject-warn} does not mean ``forbidden''. They are statistical priors with limited sample sizes, sensitive to year, conference, and topic saturation, and a Reject-warn cluster's reject papers may have failed on execution rather than tactic choice. We therefore expose these flags as informational signals available to downstream consumers but do not gate recommendation on them; a user whose problem genuinely matches a Reject-warn cluster's tactic is free to proceed and is informed of the cluster's documented failure modes via the sub-pattern card.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\textwidth]{figures/fig_cluster_skew.pdf}
+\caption{Acceptance composition of the 47 clusters, sorted by Oral rate. Twelve clusters cross the 65\% Oral threshold (left); five cross the 65\% Reject threshold (right). The remaining 30 are mixed.}
+\label{fig:cluster_skew}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.50\textwidth}
+\includegraphics[width=\textwidth]{figures/fig_umap_clusters.pdf}
+\caption{47 clusters, colored; unclustered in gray.}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.42\textwidth}
+\includegraphics[width=\textwidth]{figures/fig_umap_label.pdf}
+\caption{Colored by label (Oral / HC / Reject).}
+\end{subfigure}
+\caption{2D UMAP projection of the 1{,}947-paper embedding. Oral, HC, and Reject papers are interleaved across essentially every cluster: the embedding captures strategy, not acceptance.}
+\label{fig:umap}
+\end{figure}
+
+
+%======================================================================
+\section{Methodology Induction}
+\label{sec:methodology}
+%======================================================================
+
+Fine-grained innovation sub-patterns answer ``what specific move did this paper make?'' but not ``what kind of move is that?''. For the latter we ask Claude Opus 4.7 to induce a Level-1 innovation pattern taxonomy from the 47 clusters, with the only prompt-level constraints being (a) produce between 6 and 18 entries, (b) every entry must describe a reusable reasoning strategy (not a domain, not a venue), (c) every entry must include a definition, an operational signature, and a when-to-apply clause, and (d) every one of the 47 clusters must be mapped to a primary innovation pattern plus an optional secondary.
+
+Opus returns a 13-innovation pattern taxonomy (Table~\ref{tab:tax}) and a 47-cluster mapping in a single structured call. We make no edits to either. The 13 innovation patterns are:
+
+\begin{table}[htbp]
+\centering
+\caption{The 13 induced innovation patterns. \(n_\text{cl}\)=fine-grained clusters mapped as primary; Oral / HC / Reject counts are paper-level primary-mapping counts.}
+\label{tab:tax}
+\small
+\begin{tabular}{p{7cm} c rrrr}
+\toprule
+\textbf{Methodology (id)} & \textbf{\(n_\text{cl}\)} & \textbf{Oral} & \textbf{HC} & \textbf{Reject} & \textbf{Total} \\
+\midrule
+Reframe via Alternative Formalism \texttt{(formal\_reframing)}      & 9 & 162 & 21 & 85 & 268 \\
+Audit and Relax Implicit Assumption \texttt{(assumption\_audit)}    & 11 & 122 & 23 & 108 & 253 \\
+Align Heterogeneous Sources in Shared Space \texttt{(shared\_latent)} & 1 & 45 & 22 & 52 & 119 \\
+Encode Invariance as Hard Constraint \texttt{(invariance\_constraint)} & 6 & 62 & 5 & 36 & 103 \\
+Diagnose Then Surgically Fix \texttt{(surgical\_fix)}               & 2 & 28 & 47 & 27 & 102 \\
+Audit Evaluation via Controlled Perturbation \texttt{(eval\_audit)} & 1 & 46 & 29 & 22 & 97 \\
+Sharpen a Single Analytic Step \texttt{(analytic\_refinement)}      & 1 & 60 & 1 & 33 & 94 \\
+Exploit Redundancy via Compression \texttt{(redundancy\_compression)} & 2 & 31 & 13 & 29 & 73 \\
+Decompose and Recombine \texttt{(decomposition)}                    & 5 & 31 & 5 & 32 & 68 \\
+Engineer Auxiliary Supervision Signal \texttt{(auxiliary\_signal)}  & 5 & 23 & 9 & 24 & 56 \\
+Localize via Causal Probing \texttt{(mechanistic\_probing)}         & 2 & 29 & 6 & 20 & 55 \\
+Soft Probabilistic Relaxation \texttt{(soft\_relaxation)}           & 1 & 3 & 0 & 12 & 15 \\
+Aggregate Over Diverse Candidates \texttt{(candidate\_aggregation)} & 1 & 6 & 3 & 3 & 12 \\
+\midrule
+\textit{Noise (no primary)} &  & 368 & 76 & 239 & 683 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Each innovation pattern is specified to the level of operational detail needed to be actionable; full definitions, operational signatures (the \texttt{step\_by\_step} panel), and when-to-apply clauses are provided verbatim in the per-pattern cards in Appendix~\ref{app:cards}.
+
+\paragraph{Non-mutually-exclusive operators.} The 13 innovation patterns are \emph{not} mutually exclusive innovation classes. Several pairs naturally overlap --- e.g., \emph{Audit and Relax Implicit Assumption} vs.\ \emph{Reframe via Alternative Formalism} (a reframing often exposes a hidden assumption); \emph{Diagnose Then Surgically Fix} vs.\ \emph{Localize via Causal Probing} (causal probing is a diagnostic instrument); \emph{Engineer Auxiliary Supervision Signal} vs.\ \emph{Align Heterogeneous Sources in Shared Space} (multi-modal distillation typically does both). The cluster-level mapping forces a single primary per cluster for organizational reasons, but the underlying papers genuinely execute multiple operators in composition. The paper-level multi-label tagging in \S\ref{subsec:multilabel} confirms this empirically (\(k{=}3\) is the modal composition size). \emph{The right way to read the 13 innovation patterns is as innovation operators, where a paper is represented as a composition of operators rather than assigned to a single category.}
+
+\paragraph{A note on small-sample innovation patterns.} Two innovation patterns have small per-paper-primary populations: \emph{Soft Probabilistic Relaxation} ($n{=}15$ papers) and \emph{Aggregate Over Diverse Candidates} ($n{=}11$). These are valid \emph{operators} --- the underlying clusters are statistically distinct in embedding space --- but they are \textbf{low-support operators}: their per-pattern acceptance statistics rest on thin evidence and should not be used as strong recommendation priors. The corresponding cards (App.~\ref{app:cards}) are auto-flagged as \texttt{confidence: low}, and downstream consumers (including the SKILL's Phase 2.1 selection step) read this flag and surface the low-support warning rather than gating these innovation patterns out of recommendation. They remain available for ideation when the user's problem genuinely fits.
+
+\paragraph{Plain-language aliases.} The innovation pattern names use compact technical phrasing for analytical precision (\emph{Audit and Relax Implicit Assumption}, \emph{Encode Invariance as Hard Constraint}, etc.). Each innovation pattern also carries a \emph{plain-language alias} that the SKILL surfaces in user-facing output to keep the framework legible to non-specialists: e.g., \emph{Audit and Relax Implicit Assumption} $\to$ ``Find the hidden assumption and weaken it''; \emph{Reframe via Alternative Formalism} $\to$ ``Change the mathematical lens''; \emph{Diagnose Then Surgically Fix} $\to$ ``Find the failure point and patch only that''. The full alias map is in the per-pattern cards (\texttt{plain\_alias} field) of Appendix~\ref{app:cards}.
+
+\subsection{From definition to operational card}
+\label{subsec:cards}
+
+A definition + operational signature tells a researcher \emph{what} the innovation pattern is, but not \emph{when it lands and when it doesn't}. To answer the latter we run a second Opus 4.7 pass per innovation pattern, feeding all of its Oral, HC, and Reject papers (with their abstract$_*$ fields and AC meta-reviews; 83\% review coverage after a separate review-recovery pass; see Appendix~\ref{app:cards-method}) and asking for a structured card with eight panels: (1) \emph{step\_by\_step} --- a 6-step procedural recipe for executing the pattern; (2) \emph{success\_conditions} --- cross-Oral patterns of what makes the pattern land; (3) \emph{failure\_modes} --- cross-Reject patterns of how it fails; (4) \emph{oral\_reject\_gap} --- the prose contrast between the two pools; (5) \emph{oral\_hc\_gap} --- the prose contrast between PC-favored and community-favored execution; (6) \emph{reviewer\_expectations} --- bullets tagged by provenance (\texttt{[oral\_reviews]}, \texttt{[reject\_reviews]}, \texttt{[both]}); (7) \emph{cognitive\_barriers} --- the field-level blind spots that make the pattern non-obvious; (8) \emph{representative\_examples} --- 6--8 paper-anchored exemplars (Oral and Reject), each with a one-line lesson. Every claim must cite $\geq 2$ \texttt{paper\_id}s; the model is instructed to set \texttt{confidence=low} when sample sizes or meta coverage fall below thresholds and to refuse the Oral-vs-HC contrast when $n_{HC}<5$.
+
+The 13 resulting cards comprise the operational substrate of the SKILL system: each card's success conditions become positive constraints on idea generation, its failure modes become guardrails, its Oral-vs-Reject gap becomes the discrimination signal during ranking, and its representative examples become the few-shot exemplars. The seven cards with \texttt{confidence=high} carry the load; three medium and three low cards are still emitted but flagged. The full 13 cards are in Appendix~\ref{app:cards}; readers are pointed in particular at the cards for \emph{Audit and Relax Implicit Assumption} and \emph{Reframe via Alternative Formalism}, which are the secondary and primary innovation patterns of the freshrun end-to-end candidate (\S\ref{subsec:skill-workflow}) and form a continuous trail from corpus card to running case study.
+
+\subsection{Coverage and granularity}
+
+The 13 innovation patterns have two coverage figures, and we report both because they answer different questions:
+\begin{itemize}[leftmargin=1.4em, topsep=2pt, itemsep=2pt]
+\item \textbf{Cluster-level coverage}: 1{,}264 of 1{,}276 clustered papers (97\% of clustered; 65\% of the full 1{,}947-paper corpus) receive a primary innovation pattern by inheritance from their innovation sub-pattern. The 12 papers without primary fall in the single out-of-taxonomy reject cluster (\S\ref{sec:reject}).
+\item \textbf{Paper-level multi-label coverage}: \emph{all} 1{,}947 papers, including the 671 HDBSCAN-unclustered papers, receive a non-empty innovation pattern assignment from the independent multi-label tagging pass (\S\ref{subsec:multilabel}). The 13-innovation pattern framework therefore covers the corpus completely at the paper level, even though only 65\% of papers are assignable via the cluster-level inheritance.
+\end{itemize}
+The distribution has a long tail. By cluster-level primary count, the top three innovation patterns (\emph{formal reframing}, \emph{assumption audit}, \emph{shared latent alignment}) account for 640 papers; the bottom three (\emph{soft relaxation}, \emph{candidate aggregation}, and \emph{mechanistic probing}) account for 82. This matches the cluster-level pattern: many innovations use a small number of deeply-worked strategies; a long tail uses rare ones.
+
+The joint hierarchy exposes both each innovation pattern's paper volume / Oral--HC--Reject mix and how many fine-grained tactical clusters each parent pattern decomposes into. Two empirical observations are immediate:
+
+\textbf{(i) Methodology fragmentation is uneven.} \emph{Audit and Relax Implicit Assumption} (250 papers) decomposes into 11 distinct innovation sub-patterns; \emph{Reframe via Alternative Formalism} (259) into 9; \emph{Encode Invariance as Hard Constraint} (101) into 6. By contrast, \emph{Align Heterogeneous Sources in Shared Space} (115), \emph{Audit Evaluation via Controlled Perturbation} (93), and \emph{Sharpen a Single Analytic Step} (93) are each a single large cluster --- the innovation pattern operates at one consistent tactical granularity. The 11-cluster decomposition under \emph{Audit and Relax} is not over-fragmentation: the underlying clusters distinguish substantively different audit-relax moves (e.g., audit a generative-model identifiability assumption vs.\ audit an evaluation-protocol assumption vs.\ audit a privacy-budget assumption).
+
+\textbf{(ii) Cluster sizes follow a long-tail distribution.} Cluster sizes range from 10 to 115 (mean 27.1, median 18). Of 47 clusters, 13 are small ($n<15$); the corresponding tactical cards (App.~\ref{app:clusters}) are auto-flagged as \texttt{confidence: low}. We do not merge these small clusters into their parents because (a) HDBSCAN at $\textit{mcs}{=}10$ has already enforced the minimum size, (b) the cards' confidence flags transparently expose the thin-evidence status to downstream users, and (c) some small clusters carry strong consistent signals (e.g., C04 \emph{Soft Probabilistic Relaxation} with 11/15 reject papers is the dataset's clearest reject-warn cluster --- merging it into a larger parent would dilute that signal).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_hierarchy_donut.pdf}
+\caption{Hierarchical paper distribution. Panel (a): the 13 induced Level-1 innovation patterns, sorted by cluster-level primary paper count and stacked by outcome class. Panel (b): the number of fine-grained tactical clusters under each parent innovation pattern. Framing patterns such as audit and reframing have both high volume and high fragmentation; execution and validation patterns such as shared-latent alignment, evaluation audit, and analytic refinement are more tactically concentrated.}
+\label{fig:hierarchy_donut}
+\end{figure}
+
+\subsection{Multi-strategy assignments}
+\label{subsec:multistrat}
+
+This subsection presents the cluster-level view of multi-strategy composition. The cluster-level mapping caps at \emph{primary~+~secondary} per paper by construction; the deeper paper-level multi-label view that recovers the true \(k{=}3\) modal composition, including the 671 HDBSCAN-unclustered papers excluded here, is reported in \S\ref{subsec:multilabel} and should be read as the authoritative composition analysis.
+
+\textbf{Paper-level coverage of the secondary slot.} Cluster-level (primary, secondary) propagates to per-paper. Of the 1{,}947 papers, 671 (34.5\%) fall into the HDBSCAN-unclustered bucket and have no cluster-level primary innovation pattern (though they have full paper-level multi-label assignments, see \S\ref{subsec:multilabel}); of the remaining 1{,}276 clustered papers, 923 (72.3\%) carry both a primary and a non-trivial secondary, and 353 (27.7\%) carry only a primary (their cluster's secondary slot was empty in the Opus mapping). Multi-strategy assignment is therefore the norm among coherently-clustered papers.
+
+Table~\ref{tab:combos} lists the top primary$+$secondary combinations and their acceptance breakdown. Combinations are unordered pairs; the count is the number of papers whose cluster's primary$/$secondary maps to exactly this pair.
+
+\begin{table}[htbp]
+\centering
+\caption{Methodology combinations with $n{\geq}20$, sorted by Oral-vs-Reject rate $p_O = n_O / (n_O + n_R)$. Baseline $p_O$ across the dataset is $\mathbf{58.4\%}$ (1014 Oral, 722 Reject). $\Delta p_O$ is the combination's deviation from the baseline. Combinations $>+5\,$pp\ are Oral-favored; combinations $<-5\,$pp\ are Reject-favored.}
+\label{tab:combos}
+\small
+\begin{tabular}{p{8.6cm} rrr r r}
+\toprule
+\textbf{Combination} & \textbf{Oral} & \textbf{HC} & \textbf{Reject} & \textbf{$p_O$} & \textbf{$\Delta p_O$} \\
+\midrule
+\textit{analytic refinement} + \textit{assumption audit}            &  81 &  0 &  39 & 67.5\% & $+9.0$ \\
+\textit{assumption audit} + \textit{formal reframing}               &  88 &  5 &  44 & 66.7\% & $+8.2$ \\
+\textit{invariance constraint} + \textit{shared latent alignment}   &  18 &  0 &   9 & 66.7\% & $+8.2$ \\
+\textit{decomposition} + \textit{formal reframing}                  &  28 &  3 &  15 & 65.1\% & $+6.7$ \\
+\midrule
+\textit{mechanistic probing} + \textit{surgical fix}                &  20 &  1 &  16 & 55.6\% & $-2.9$ \\
+\textit{assumption audit} + \textit{mechanistic probing}            &  14 &  4 &  14 & 50.0\% & $-8.5$ \\
+\textit{formal reframing} + \textit{invariance constraint}          &  18 &  0 &  19 & 48.6\% & $-9.8$ \\
+\textit{auxiliary signal} + \textit{shared latent alignment}        &  51 & 18 &  59 & 46.4\% & $-12.1$ \\
+\textit{assumption audit} + \textit{surgical fix}                   &  32 & 39 &  40 & 44.4\% & $-14.0$ \\
+\textit{formal reframing} + \textit{redundancy compression}         &  13 &  5 &  18 & 41.9\% & $-16.5$ \\
+\textit{assumption audit} + \textit{invariance constraint}          &  20 &  6 &  31 & 39.2\% & $-19.2$ \\
+\textit{assumption audit} + \textit{auxiliary signal}               &  10 &  7 &  23 & 30.3\% & $-28.2$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three observations.
+
+\textbf{(i) Multi-strategy is more common than single-strategy, but single-strategy is more accepted on average.} Among the 1{,}276 clustered papers, the 923 paired papers achieve $p_O = 55.0\%$ (508 Oral / 415 Reject); the 353 single-innovation pattern papers achieve $p_O = 63.7\%$ (149 Oral / 85 Reject). Adding a second innovation pattern, in expectation, slightly hurts acceptance. The intuitive narrative ``every Oral paper has a framing move plus an execution move'' is partially correct but obscures the true pattern: \emph{specific} combinations are sharply Oral-favored; the average combination is mildly Reject-favored. Single-innovation pattern Orals are not rare and not weak.
+
+\textbf{(ii) The Oral-favored combinations all pair an audit/reframing move with an analytic or formalist consequence.} The top 4 combinations (each $\Delta p_O \geq +6.7$\,pp) share a structural template: a framing innovation pattern (\emph{assumption audit}, \emph{formal reframing}, \emph{decomposition}) paired with a innovation pattern that produces a sharp \emph{analytic outcome} (\emph{analytic refinement of loose bounds}, \emph{formal reframing} again, \emph{shared latent alignment} when paired with an architectural \emph{invariance constraint}). The empirical signature of an Oral combination is therefore not just ``framing $+$ execution'', but more specifically ``identify-the-modeling-choice $+$ derive-a-sharp-result''. The Reject-side combinations, by contrast, all pair a framing move with a \emph{tactic-level} engineering substitution (\emph{surgical fix}, \emph{auxiliary signal}, \emph{invariance constraint as architecture}, \emph{redundancy compression}) where the framing remains rhetorical because the consequent step is engineering rather than derivation.
+
+\textbf{(iii) The same primary can land in either bucket depending on its secondary.} \emph{Assumption audit} appears as primary in 4 Oral-favored combinations (top of table) and 5 Reject-favored ones (bottom). The asymmetric outcome implies: pairing the audit with a sharpening move (analytic refinement, formal reframing) is what produces Oral-grade work; pairing it with an engineering substitution (surgical fix, auxiliary signal, invariance constraint as architecture) produces a paper that reviewers find competent but unconvincing. Decomposing $\Delta_{OR}$ at the primary-only level (\S\ref{sec:analysis}) hides this --- the methodology cards (\S\ref{subsec:cards}) and the tactical cards (App.~\ref{app:clusters}) are the level at which the decision actually lives.
+
+\subsection{Methodology adjacency in embedding space}
+\label{subsec:adj}
+
+Why do certain innovation pattern pairs combine often? The OpenAI \texttt{text-embedding-3-large} embedding gives us a direct geometric measure: each innovation pattern has a centroid (mean of its papers' normalized embeddings); pair-wise centroid cosine quantifies how close two innovation patterns live in the strategy space. Figure~\ref{fig:adjacency} shows the full $13 \times 13$ matrix; Table~\ref{tab:nn} gives each innovation pattern's nearest neighbor.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/fig_methodology_adjacency.pdf}
+\caption{Centroid-cosine similarity between the 13 innovation patterns. Rows/columns ordered by mean similarity (most ``central'' innovation patterns first). All off-diagonal entries fall in $[0.78, 0.98]$: innovation patterns are not orthogonal in this embedding, they form a dense neighborhood on a low-dimensional manifold.}
+\label{fig:adjacency}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Nearest-neighbor innovation pattern and centroid cosine. The neighbors corroborate the structure of Table~\ref{tab:combos}: the high-cosine pairs are exactly the ones that compose into Oral-favored combinations, and the most isolated innovation patterns (\emph{Aggregate Over Diverse Candidates}, \emph{Soft Probabilistic Relaxation}) are the small Reject-favored tail.}
+\label{tab:nn}
+\small
+\begin{tabular}{p{6.0cm} p{6.0cm} r r}
+\toprule
+\textbf{Methodology} & \textbf{Nearest Neighbor} & \textbf{cosine} & \textbf{n} \\
+\midrule
+Reframe via Alternative Formalism & Decompose and Recombine & 0.975 & 259 \\
+Decompose and Recombine & Reframe via Alternative Formalism & 0.975 & 68 \\
+Audit and Relax Implicit Assumption & Reframe via Alternative Formalism & 0.966 & 250 \\
+Encode Invariance as Hard Constraint & Decompose and Recombine & 0.955 & 101 \\
+Engineer Auxiliary Supervision Signal & Decompose and Recombine & 0.950 & 54 \\
+Exploit Redundancy via Compression & Decompose and Recombine & 0.949 & 69 \\
+Align Heterogeneous Sources in Shared Space & Engineer Auxiliary Supervision Signal & 0.945 & 115 \\
+Diagnose Then Surgically Fix & Audit and Relax Implicit Assumption & 0.943 & 95 \\
+Localize via Causal Probing & Audit and Relax Implicit Assumption & 0.936 & 53 \\
+Sharpen a Single Analytic Step & Reframe via Alternative Formalism & 0.932 & 93 \\
+Audit Evaluation via Controlled Perturbation & Diagnose Then Surgically Fix & 0.929 & 93 \\
+Aggregate Over Diverse Candidates & Reframe via Alternative Formalism & 0.922 & 11 \\
+Soft Probabilistic Relaxation & Audit and Relax Implicit Assumption & 0.922 & 15 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three observations.
+
+\textbf{(i) Adjacency predicts the Oral-favored combinations.} The four Oral-favored pairs in Table~\ref{tab:combos} (top) are all between high-cosine neighbors: \emph{analytic refinement}--\emph{audit} ($\cos\!\to\!0.932$ for sharpen$\to$reframe; nearby), \emph{audit}--\emph{reframing} (0.966), \emph{invariance}--\emph{shared latent} (0.945 via auxiliary signal hub), \emph{decomposition}--\emph{reframing} (0.975). Geometric proximity in the abstract$_*$ embedding is a useful priors signal for ``which secondary is plausible to compose with this primary''.
+
+\textbf{(ii) The two most isolated innovation patterns are the two smallest and most Reject-prone.} \emph{Aggregate Over Diverse Candidates} ($n{=}11$) and \emph{Soft Probabilistic Relaxation} ($n{=}15$) have the lowest nearest-neighbor cosine (both 0.922) and also the worst $\Delta_{OR}$ profile in \S\ref{sec:analysis}. Embedding isolation, small sample, and Reject-skew co-occur --- consistent with these being genuinely rare strategies that the field has not yet learned to execute.
+
+\textbf{(iii) The hub innovation patterns are framing-level.} \emph{Reframe via Alternative Formalism} appears as nearest neighbor for 6 of the other 12 innovation patterns, and \emph{Decompose and Recombine} for 4. This matches the structural reading of Table~\ref{tab:combos}: framing innovation patterns are the connective tissue of multi-strategy papers; an idea generator can usefully default to ``compose this execution innovation pattern with reframing or decomposition'' when no specific secondary is suggested by the query.
+
+\subsection{Paper-level multi-label innovation pattern assignment}
+\label{subsec:multilabel}
+
+The cluster-level mapping in \S\ref{sec:methodology} caps at \emph{primary~+~secondary} per cluster (and therefore per paper). To verify that 2 is the right cap and to surface 3+ pattern combinations directly, we run a separate Opus~4.7 pass on every paper independently: given the 13 innovation pattern definitions and the paper's title, abstract, and four \texttt{abstract}$_*$ fields, the model emits a JSON list of innovation patterns the paper actually \emph{executes} (not just mentions), each with a quoted evidence span and a \texttt{primary}/\texttt{supporting} role. There is no upper cap on \(k = |\text{applied\_methodologies}|\); the minimum is~1.
+
+All 1{,}947 papers received a non-empty assignment. Rather than report a Bayesian acceptance rate (which requires constructing a denominator that mixes the OpenReview Oral/Reject decision with the citation-based HC class — these classes overlap in reality and we bucket exclusively into Oral $\succ$ HC $\succ$ Reject), we report the \emph{class-conditional distribution} \(P(k \mid \text{decision})\) directly. Table~\ref{tab:k_dist} shows, within each acceptance class, what fraction of that class's papers execute \(k\) innovation patterns.
+
+\begin{table}[htbp]
+\centering
+\caption{Class-conditional \(k\) distribution. Each column sums to 100\% within its class. \(\bar{k}\) is the per-class mean. Cells are \(n\) (\%-of-class).}
+\label{tab:k_dist}
+\small
+\begin{tabular}{c r r r r}
+\toprule
+\(k\) & all (n=1947) & Oral (n=1014) & HC (n=211) & Reject (n=722) \\
+\midrule
+1 &   47 (2.4\%) &  22 (2.2\%) &   3 (1.4\%) &  22 (3.1\%) \\
+2 &  630 (32.4\%) & 318 (31.3\%) &  60 (28.4\%) & 252 (35.0\%) \\
+3 & \textbf{1116 (57.3\%)} & \textbf{604 (59.4\%)} & \textbf{124 (58.8\%)} & \textbf{388 (53.9\%)} \\
+4 &  149 (7.7\%) &  70 (6.9\%) &  \textbf{23 (10.9\%)} &  56 (7.8\%) \\
+5 &    5 (0.3\%) &   2 (0.2\%) &   1 (0.5\%) &   2 (0.3\%) \\
+\midrule
+\(\bar{k}\) & 2.71 & 2.72 & \textbf{2.81} & 2.67 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three observations.
+
+\textbf{(i) \(k{=}3\) is the empirical mode in every class.} 57.3\% of all papers execute exactly three innovation patterns. The mode is shared across Oral (59.4\%), HC (58.8\%), and Reject (53.9\%). The cluster-based view of \S\ref{subsec:multistrat} (which capped at \(k=2\) by construction) systematically under-counted: 67.6\% of papers have \(k \geq 3\) but were forced into a \(k \leq 2\) view by the cluster mapping. Paper-level multi-label is the right granularity for capturing this.
+
+\textbf{(ii) HC papers are slightly more complex than Oral, which are slightly more complex than Reject.} The class means are tightly stacked: \(\bar{k}_R = 2.67 < \bar{k}_O = 2.72 < \bar{k}_{HC} = 2.81\). The \(\bar{k}_{HC} - \bar{k}_O = 0.09\) gap is small but driven entirely by the \(k{=}4\) tail: 10.9\% of HC papers have \(k=4\), versus 6.9\% of Oral and 7.8\% of Reject — HC papers are \(1.58\times\) more likely to be at \(k=4\) than Oral. The 23 HC papers at \(k{=}4\) consistently include \emph{Engineer Auxiliary Supervision Signal} as one of the four (a innovation pattern that is mildly Reject-favored in 2-way combinations, \S\ref{subsec:multistrat}), suggesting HC papers buy citation persistence by composing comprehensive innovation pattern stacks where Oral papers stop at three.
+
+\textbf{(iii) Cluster-based pair grossly under-represents true innovation pattern coverage.} Cross-tabulating against the cluster-derived \texttt{(primary, secondary)} pair: the cluster primary is present in the paper-level set \emph{only} 64.3\% of the time, the cluster secondary 53.1\% of the time, and \textbf{1860 of 1947 papers (95.6\%) have at least one innovation pattern beyond the cluster pair}. The cluster pair is not wrong, but it captures only the dominant axis. Multi-label tagging surfaces the routine 1--2 supporting moves that distinguish Oral execution.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_multilabel_k.pdf}
+\caption{Multi-label innovation pattern assignment. (a)~\(k\) distribution as stacked counts by acceptance class. (b)~Class-conditional distribution \(P(k \mid \text{decision})\): each curve is a probability mass function summing to 100\%. \(k{=}3\) is the mode for all three classes; HC has a heavier \(k{=}4\) tail (10.9\%) than Oral (6.9\%) or Reject (7.8\%).}
+\label{fig:multilabel_k}
+\end{figure}
+
+\paragraph{Multi-label coverage of HDBSCAN-unclustered papers.} The paper-level multi-label tagging is independent of HDBSCAN. We therefore use it to verify what the unclustered label means. Table~\ref{tab:unclustered_vs_clustered} shows the comparison: unclustered and clustered papers carry near-identical innovation pattern compositions, and unclustered papers actually have a slightly higher Oral rate. The HDBSCAN-unclustered label is therefore not a measure of strategic emptiness; it is a measure of \emph{embedding-geometry typicality} (whether a paper's specific phrasing places it inside a modal cluster's density region). The three-pattern composition that defines the empirical mode is just as common in unclustered as in clustered --- unclustered papers do not lack innovation pattern composition, they lack \emph{modal} composition.
+
+\begin{table}[htbp]
+\centering
+\caption{HDBSCAN-unclustered vs.\ clustered papers under independent paper-level multi-label tagging. The two groups are statistically indistinguishable on innovation pattern composition; unclustered papers are slightly more Oral-favored.}
+\label{tab:unclustered_vs_clustered}
+\small
+\begin{tabular}{l r r}
+\toprule
+& unclustered (n=671) & clustered (n=1276) \\
+\midrule
+mean $k$                                 & 2.75    & 2.69    \\
+$k=1$                                    & 2.1\%   & 2.6\%   \\
+$k=2$                                    & 31.3\%  & 32.9\%  \\
+$k=3$ (modal)                            & 56.8\%  & 57.6\%  \\
+$k=4$                                    & \textbf{9.7\%}   & 6.6\%   \\
+$k=5$                                    & 0.1\%   & 0.3\%   \\
+\midrule
+Oral rate                                & \textbf{54.8\%}  & 50.8\%  \\
+HC rate                                  & 9.7\%   & 11.4\%  \\
+Reject rate                              & 35.5\%  & 37.8\%  \\
+\midrule
+all 4 \texttt{abstract\_*} fields populated & 100\%   & 100\%   \\
+median \texttt{abstract\_strategy} length   & 218 chars & 220 chars \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The slightly elevated $k{=}4$ tail in unclustered (9.7\% vs.\ 6.6\%) is consistent with the geometric reading: papers that execute four innovation patterns with comparable weight are more likely to land between modal clusters than papers with a sharply dominant primary innovation pattern. ``Between modal clusters'' is also where some of the most-novel ideas live --- atypical-execution papers are over-represented in the unclustered group's Oral rate.
+
+\paragraph{Top combinations under multi-label tagging.}
+With paper-level multi-label assignments we rank 2-way and 3-way combinations directly (Table~\ref{tab:multilabel_combos}), reporting the class-conditional distribution \((\%_O, \%_{HC}, \%_R)\) within each combination's papers rather than a constructed Bayesian rate. Sample sizes are much larger than under the cluster-pair view (e.g.\ \emph{audit~+~reframe} appears in 538 papers under multi-label vs 137 under cluster-pair). The standout 3-way result: \emph{audit~+~reframe~+~shared\_latent\_alignment} carries \(n=18\) papers split 12/6/0 — \textbf{67\% Oral, 33\% HC, 0\% Reject} — the only combination at \(n \geq 10\) where every paper is in an accepted class. Its presence in 6 of our 211 HC papers as well makes it doubly distinctive: high-acceptance and high-citation simultaneously.
+
+\begin{table}[htbp]
+\centering
+\caption{Top innovation pattern combinations under multi-label tagging, ranked by lowest Reject share within the combination's papers. Each row is a combination's class-conditional distribution: \(\%_O = n_O/n\), \(\%_{HC} = n_{HC}/n\), \(\%_R = n_R/n\) (rows sum to 100\%). 2-way threshold \(n \geq 20\); 3-way threshold \(n \geq 10\). Compare with Table~\ref{tab:combos} (cluster-based, capped at pair).}
+\label{tab:multilabel_combos}
+\small
+\begin{tabular}{p{8.4cm} r r r r r r}
+\toprule
+\textbf{Combination} & \(n\) & \(n_O\) & \(n_{HC}\) & \(n_R\) & \(\%_O / \%_{HC} / \%_R\) \\
+\midrule
+\multicolumn{6}{l}{\textit{Top 2-way (n \(\geq\) 20), sorted by lowest \%-reject}} \\
+\midrule
+\textit{eval audit} + \textit{causal probing}                                   &  42 &  28 &  9 &   5 & 67/21/\textbf{12} \\
+\textit{sharpen analytic} + \textit{reframing}                                  &  87 &  70 &  0 &  17 & 80/0/20 \\
+\textit{causal probing} + \textit{surgical fix}                                 &  35 &  22 &  6 &   7 & 63/17/20 \\
+\textit{sharpen analytic} + \textit{decompose}                                  &  43 &  32 &  1 &  10 & 74/2/23 \\
+\textit{reframing} + \textit{shared latent alignment}                           &  54 &  32 &  9 &  13 & 59/17/24 \\
+\textit{aggregate over diverse} + \textit{reframing}                            &  32 &  21 &  3 &   8 & 66/9/25 \\
+\textit{sharpen analytic} + \textit{surgical fix}                               &  44 &  31 &  2 &  11 & 70/5/25 \\
+\textit{audit} + \textit{reframing}                                             & 538 & 345 & 45 & 148 & 64/8/28 \\
+\textit{eval audit} + \textit{surgical fix}                                     &  36 &  21 &  5 &  10 & 58/14/28 \\
+\textit{eval audit} + \textit{reframing}                                        &  47 &  27 &  6 &  14 & 57/13/30 \\
+\midrule
+\multicolumn{6}{l}{\textit{Top 3-way (n \(\geq\) 10), sorted by lowest \%-reject}} \\
+\midrule
+\textbf{\textit{audit} + \textit{reframing} + \textit{shared latent alignment}} &  \textbf{18} &  \textbf{12} &   \textbf{6} &   \textbf{0} & \textbf{67/33/0} \\
+\textit{sharpen analytic} + \textit{audit} + \textit{reframing}                 &  49 &  42 &  0 &   7 & 86/0/14 \\
+\textit{audit} + \textit{reframing} + \textit{redundancy compression}           &  26 &  19 &  3 &   4 & 73/12/15 \\
+\textit{decompose} + \textit{reframing} + \textit{shared latent alignment}      &  12 &   9 &  1 &   2 & 75/8/17 \\
+\textit{audit} + \textit{causal probing} + \textit{surgical fix}                &  10 &   5 &  3 &   2 & 50/30/20 \\
+\textit{audit} + \textit{eval audit} + \textit{surgical fix}                    &  15 &  10 &  2 &   3 & 67/13/20 \\
+\textit{audit} + \textit{eval audit} + \textit{causal probing}                  &  19 &  12 &  3 &   4 & 63/16/21 \\
+\textit{audit} + \textit{reframing} + \textit{invariance constraint}            &  43 &  31 &  2 &  10 & 72/5/23 \\
+\textit{sharpen analytic} + \textit{decompose} + \textit{reframing}             &  17 &  13 &  0 &   4 & 76/0/24 \\
+\textit{decompose} + \textit{reframing} + \textit{soft probabilistic}           &  16 &  11 &  1 &   4 & 69/6/25 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{What multi-label tagging implies for the SKILL.} The SKILL system treats innovation-pattern composition as 1--3 entries per generated idea (with \(k = 3\) as the empirically supported default), drawing from the innovation pattern cards (\S\ref{subsec:cards}) for the success/failure conditions of each composed innovation pattern. The combination statistics in Table~\ref{tab:multilabel_combos} are surfaced informationally --- not as generation priors --- via the candidate's \texttt{innovation\_pattern\_landscape} block, which echoes the area's pattern usage alongside the candidate's chosen composition so the user sees where their idea sits in the empirical distribution. Selection of patterns happens upstream by structural fit to the bottleneck (Phase 2.1), not by composition-rate priors; loading priors at generation time was tested in an earlier design and removed because it induced distribution-bias homogenization across runs. The 100\%-Oral combination \emph{audit + reframing + shared\_latent\_alignment} is therefore reported here as an empirical observation, not as a SKILL target template.
+
+
+%======================================================================
+\section{Acceptance and Impact Analysis}
+\label{sec:analysis}
+%======================================================================
+
+\subsection{Oral-vs-Reject bias per innovation pattern}
+
+We define the acceptance bias $\Delta_{\text{OR}}(m) = p_\text{oral}(m) - p_\text{reject}(m)$, where $p_\text{oral}(m)$ is the fraction of Oral papers whose primary innovation pattern is $m$ and $p_\text{reject}(m)$ is analogous for Reject. Positive $\Delta_{\text{OR}}$ means reviewers reward the innovation pattern relative to its baseline rejection rate; negative means the innovation pattern appears in rejected work more than in accepted work, relative to totals. Figure~\ref{fig:bias} plots the bias for all 13 innovation patterns; Table~\ref{tab:bias} gives the numbers.
+
+\begin{table}[htbp]
+\centering
+\caption{Per-innovation pattern acceptance bias. \(p_\text{oral}\) is the fraction of all Oral papers ($N{=}1{,}014$) whose primary is this innovation pattern; \(p_\text{reject}\) is analogous among Reject ($N{=}722$). $\Delta_{\text{OR}}{=}p_\text{oral}-p_\text{reject}$ in pp. $\Delta_{\text{OH}}{=}p_\text{oral}-p_\text{hc}$ (positive = PC-favored over community).}
+\label{tab:bias}
+\small
+\begin{tabular}{p{6.5cm} rrrrr}
+\toprule
+\textbf{Methodology} & \(p_\text{oral}\) & \(p_\text{hc}\) & \(p_\text{reject}\) & \(\Delta_{\text{OR}}\) & \(\Delta_{\text{OH}}\) \\
+\midrule
+Reframe via Alternative Formalism & 15.9 & 8.1 & 11.8 & \textbf{+4.2} & +7.9 \\
+Audit Evaluation via Controlled Perturbation & 4.5 & 11.2 & 3.0 & +1.5 & $-$6.6 \\
+Sharpen a Single Analytic Step & 5.9 & 0.4 & 4.6 & +1.3 & +5.5 \\
+Encode Invariance as Hard Constraint & 6.1 & 1.9 & 5.0 & +1.1 & +4.2 \\
+Aggregate Over Diverse Candidates & 0.6 & 1.2 & 0.4 & +0.2 & $-$0.6 \\
+Localize via Causal Probing & 2.9 & 2.3 & 2.8 & +0.1 & +0.5 \\
+Exploit Redundancy via Compression & 3.1 & 5.0 & 4.0 & $-$1.0 & $-$1.9 \\
+Diagnose Then Surgically Fix & 2.8 & 18.1 & 3.7 & $-$1.0 & \textbf{$-$15.3} \\
+Engineer Auxiliary Supervision Signal & 2.3 & 3.5 & 3.3 & $-$1.1 & $-$1.2 \\
+Soft Probabilistic Relaxation & 0.3 & 0.0 & 1.7 & $-$1.4 & +0.3 \\
+Decompose and Recombine & 3.1 & 1.9 & 4.4 & $-$1.4 & +1.1 \\
+Align Heterogeneous Sources in Shared Space & 4.4 & 8.5 & 7.2 & $-$2.8 & $-$4.0 \\
+Audit and Relax Implicit Assumption & 12.0 & 8.8 & 15.0 & \textbf{$-$3.0} & +3.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/fig_methodology_bias.pdf}
+\caption{Per-innovation pattern Oral vs Reject shares (pp). Methodologies above the diagonal are Oral-favored; below are Reject-over-represented.}
+\label{fig:bias}
+\end{figure}
+
+Four observations follow.
+
+\textbf{(O1)} \emph{Formal reframing} is the single most PC-favored innovation pattern in absolute terms: it accounts for 162 Oral papers---more than any other innovation pattern---and $\Delta_{\text{OR}}{=}{+}4.2$ pp. Combined with the fact that it pairs most often with \emph{assumption audit} (Table~\ref{tab:combos}), the data suggests a recipe: re-derive a standard problem in a different formalism, then use that formalism to attack an assumption that the original formalism hid.
+
+\textbf{(O2)} \emph{Assumption audit} is high-volume but high-variance: $p_\text{oral}{=}12.0\%$ and $p_\text{reject}{=}15.0\%$ (the highest Reject share of any innovation pattern), giving $\Delta_{\text{OR}}{=}{-}3.0$. Relaxing an assumption is the second-largest route to Oral in absolute terms (122 papers), but it is also the most common route to Reject (108 papers). Execution-level quality, not strategy choice, is what separates the two pools within this innovation pattern.
+
+\textbf{(O3)} \emph{Shared latent alignment} is structurally risky: it is the only innovation pattern in the top six by Reject count that simultaneously has a mid-single-digit Oral share. Its $\Delta_{\text{OR}}$ of $-2.8$ pp and $\Delta_{\text{OH}}$ of $-4.0$ pp both point in the ``looks like alignment-via-representation-sharing'' direction reviewers flag as incremental.
+
+\textbf{(O4)} \emph{Soft probabilistic relaxation} has the smallest absolute sample (15 papers) but the clearest bias: 3 Oral vs 12 Reject. Although underpowered, it is consistent with the folk claim that ``make it soft'' is often a surface-level move without deeper structural justification.
+
+\subsection{PC-vs-community bias ($\Delta_{\text{OH}}$)}
+
+The \(\Delta_{\text{OH}}{=}p_\text{oral}-p_\text{hc}\) column of Table~\ref{tab:bias} isolates the second, orthogonal axis: are program committees and the citing community aligned on what counts? Two innovation patterns stand out.
+
+\textbf{\emph{Diagnose Then Surgically Fix}}: $\Delta_{\text{OH}}{=}{-}15.3$ pp is the largest anti-Oral skew in the taxonomy. These papers (28 Oral, 47 HC) isolate a specific pathology and deploy a minimal targeted fix that gets reproduced and cited, but program committees judge the contribution as narrow. Every strong practitioner knows this pattern: if your paper is ``we noticed X and fixed it by doing Y,'' the community will cite you but the PC may not call it Oral.
+
+\textbf{\emph{Sharpen a Single Analytic Step}}: $\Delta_{\text{OH}}{=}{+}5.5$ pp with only one HC paper (out of 260) but 60 Oral papers. Proof-tightening work is consistently PC-rewarded and consistently uncited. This is the cleanest PC-bias signal in the taxonomy.
+
+\textbf{\emph{Audit Evaluation via Controlled Perturbation}} is the mirror: $\Delta_{\text{OH}}{=}{-}6.6$ pp, driven by 29 HC vs 46 Oral---a near-parity that, adjusted for pool sizes, makes it the single most \emph{community-favored} innovation pattern. Our data suggests this is the rising innovation pattern of 2024--2025 (see temporal analysis below).
+
+\paragraph{An alternative, conditional-on-accepted PC-bias cut.} The $\Delta_{\text{OH}}$ above measures absolute population-level skew (Oral rate minus HC rate of all papers, including reject). A complementary cut conditions on the accepted pool: \emph{Bias} $= p_\text{oral|accepted} - p_\text{hc|accepted}$, the share of Oral within Oral~$+$~HC per innovation pattern. This answers a different question --- ``among papers that the community already validated as accepted, what fraction did program committees additionally elevate?'' --- and yields the four-bucket type classification in Table~\ref{tab:pc-bias-types}. We surface this table for analytic transparency; the SKILL itself does not consume PC-bias buckets at any phase, to avoid re-introducing distribution-bias homogenization (every run drifting toward Strong-PC patterns regardless of the user's bottleneck).
+
+\begin{table}[htbp]
+\centering
+\caption{Per-methodology PC bias categorization for the SKILL's reviewer simulation. \emph{Bias} $= p_\text{oral|accepted} - p_\text{hc|accepted}$. Type bucket: \emph{Strong PC} $> 0.6$, \emph{Moderate PC} $0.3$--$0.6$, \emph{Balanced} $-0.1$--$0.3$, \emph{Community} $\leq -0.1$.}
+\label{tab:pc-bias-types}
+\small
+\begin{tabular}{p{5.4cm} rrr rr l}
+\toprule
+\textbf{Methodology} & $n$ & $n_O$ & $n_H$ & \textbf{Oral\%} & \textbf{HC\%} & \textbf{Type} \\
+\midrule
+Sharpen a Single Analytic Step & 260 & 60 & 1 & 96.6 & 3.4 & Strong PC \\
+Reframe via Alternative Formalism & 657 & 156 & 26 & 85.6 & 14.4 & Strong PC \\
+Encode Invariance as Hard Constraint & 197 & 88 & 16 & 84.6 & 15.4 & Strong PC \\
+Soft Probabilistic Relaxation &  85 & 49 &  9 & 84.5 & 15.5 & Strong PC \\
+Audit and Relax Implicit Assumption & 988 & 245 & 61 & 80.1 & 19.9 & Strong PC \\
+Diagnose Then Surgically Fix & 391 & 87 & 27 & 76.3 & 23.7 & Moderate PC \\
+Aggregate Over Diverse Candidates &  62 & 29 &  9 & 76.3 & 23.7 & Moderate PC \\
+Decompose and Recombine & 391 & 95 & 30 & 76.0 & 24.0 & Moderate PC \\
+Localize via Causal Probing & 116 & 53 & 19 & 73.6 & 26.4 & Moderate PC \\
+Engineer Auxiliary Supervision Signal & 350 & 60 & 22 & 73.2 & 26.8 & Moderate PC \\
+Exploit Redundancy via Compression & 251 & 65 & 25 & 72.2 & 27.8 & Moderate PC \\
+Align Heterogeneous Sources in Shared Space & 339 & 71 & 30 & 70.3 & 29.7 & Moderate PC \\
+Audit Evaluation via Controlled Perturbation & 197 & 81 & 40 & 66.9 & 33.1 & Moderate PC \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In our 1947-paper corpus, no innovation pattern lands in the \emph{Balanced} or \emph{Community} buckets: every innovation pattern in the taxonomy is at least Moderate PC. This is itself a structural finding --- across the post-2020 ICLR/ICML/NeurIPS pool, the venues' Oral selection is consistently more reviewer-favored than the citing community would predict, and the bias is sharpest for theory-anchored innovation patterns (\emph{Sharpen a Single Analytic Step}, $+0.93$; \emph{Reframe via Alternative Formalism}, $+0.71$; \emph{Encode Invariance as Hard Constraint}, $+0.69$). The SKILL's R0 advocate is required to read this table and, when the candidate's anchor lens has Bias $> 0.6$, name the specific durability mechanism that lifts the candidate above the typical PC-favored fate; meta-(b) likewise must report the Best-Paper gap in PC-bias-aware terms ('the further gap is durability mechanism X', not 'the further gap is X' generically).
+
+
+%======================================================================
+\section{Domain Distribution and Methodology Breadth}
+\label{sec:domains}
+%======================================================================
+
+The innovation pattern cards (\S\ref{subsec:cards}) and the per-pattern bias profile (\S\ref{sec:analysis}) treat the 1{,}947 papers as a single population. But ML is not a monolithic field: a strategy that lands an Oral in \emph{learning theory} may not land in \emph{vision-language pretraining}, and the SKILL needs to know which innovation patterns are domain-agnostic versus domain-specific. This section quantifies that.
+
+\subsection{Domain induction}
+\label{subsec:domain-induction}
+
+We do not preset a domain taxonomy. Instead, we induce one from the data using the same architecture that produced the 13 innovation patterns: (1) Sonnet extracts 1--3 normalized research-subarea tags per paper from its title, abstract, and (when available, $77.9\%$ of the dataset) author-supplied OpenReview keywords; (2) the 3{,}909 unique free-form tags are embedded with OpenAI \texttt{text-embedding-3-large} and clustered with UMAP+HDBSCAN ($k{=}148$ tag-clusters at $\textit{mcs}{=}7$, unclustered $25.5\%$); (3) Sonnet labels each tag-cluster; (4) Opus 4.7 induces a Level-1 domain taxonomy of $N \in [8, 30]$ entries and maps every tag-cluster to one domain. The model returns $N{=}28$ domains; we make no edits.
+
+The per-paper assignment is the union of domains over each paper's tags. Coverage: $\mathbf{98.5\%}$ of papers (1{,}918 / 1{,}947) receive at least one domain; the average is $1.81$ domains per paper. The 28 domains range from $n{=}256$ (\textit{Transfer, Continual \& Meta-Learning}) down to $n{=}16$ (\textit{Online \& Bandit Learning}); the full ordered list and machine-readable taxonomy are in \texttt{clustering/domains/domain\_taxonomy.json}.
+
+\subsection{Domain $\times$ innovation pattern heatmap}
+\label{subsec:dm-heatmap}
+
+Figure~\ref{fig:domain_method} shows two views of the $28 \times 13$ joint structure: panel (a) is the raw paper count per cell; panel (b) is the cell-level Oral rate $p_O = n_O / (n_O + n_R)$, masked where $n_O + n_R < 5$ to avoid spurious low-sample reads. 120 of the 364 cells (33\%) clear the $\geq 5$ threshold, yielding a dense-enough sub-matrix for cell-level conclusions.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_domain_methodology.pdf}
+\caption{(a) Paper counts per (domain, innovation pattern) cell --- domains and innovation patterns sorted by total. (b) Per-cell Oral rate $p_O$ (cells with $n_O + n_R < 5$ are blank). The colored signal in (b) is heterogeneous: the same innovation pattern can land at $90\%$ Oral in one domain and $40\%$ Oral in another.}
+\label{fig:domain_method}
+\end{figure}
+
+The cell-level reads confirm the high-level picture from \S\ref{sec:analysis} but add domain specificity. The strongest cells (each $p_O \geq 75\%$ on $n \geq 8$):
+
+\begin{itemize}[leftmargin=1.4em, topsep=2pt, itemsep=2pt]
+\item \textit{Trustworthy \& Responsible ML} $\times$ \textit{Audit Evaluation via Controlled Perturbation}: $\mathbf{93\%}$ Oral ($n_O{=}14$, $n_R{=}1$) --- the dataset's single highest-acceptance cell.
+\item \textit{Bayesian \& Probabilistic Methods} $\times$ \textit{Reframe via Alternative Formalism}: $88\%$ ($14/2$).
+\item \textit{LLM Capabilities \& Evaluation} $\times$ \textit{Reframe via Alternative Formalism}: $87\%$ ($13/2$).
+\item \textit{Geometric, Equivariant \& Topological Learning} $\times$ \textit{Encode Invariance as Hard Constraint}: $87\%$ ($13/2$).
+\item \textit{Neural Architecture Design \& Theory} $\times$ \textit{Encode Invariance as Hard Constraint}: $82\%$ ($9/2$).
+\end{itemize}
+
+The weakest cells ($p_O < 56\%$): \textit{Distributed \& Federated Learning} $\times$ \textit{Audit and Relax Implicit Assumption} ($44\%$); \textit{Visual Perception \& Recognition} $\times$ \textit{Reframe via Alternative Formalism} ($50\%$); \textit{Algorithmic Game Theory \& Social Computing} $\times$ \textit{Reframe via Alternative Formalism} ($52\%$); \textit{ML for Biology \& Neuroscience} $\times$ \textit{Encode Invariance as Hard Constraint} ($53\%$). The same innovation pattern that wins in adjacent domains under-performs here, consistent with the cards' guidance that the success conditions are not transparently transferable across domains.
+
+\subsection{Methodology breadth: how domain-agnostic is each innovation pattern?}
+\label{subsec:breadth}
+
+For the SKILL system to make ``method X works in your domain'' recommendations, we need each methodology's domain footprint. Figure~\ref{fig:breadth} plots, for each innovation pattern, the number of distinct domains it touches (with at least one paper) and the share of its papers concentrated in its single largest domain.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/fig_methodology_breadth.pdf}
+\caption{Methodology breadth: number of distinct domains each innovation pattern has at least one paper in (out of 28), with the bar shaded by single-largest-domain concentration. Ten of the 13 innovation patterns touch $\geq 18$ domains and have top-domain share $\leq 38\%$, supporting the SKILL's domain-agnostic positioning. The two narrowest innovation patterns are exactly the two smallest and most Reject-favored.}
+\label{fig:breadth}
+\end{figure}
+
+Three observations.
+
+\textbf{(i) The framing-level innovation patterns are universal.} \textit{Audit and Relax Implicit Assumption} and \textit{Reframe via Alternative Formalism} each touch \textbf{27 of 28 domains}, with top-domain shares of $22\%$ and $16\%$ respectively. \textit{Decompose and Recombine}, \textit{Diagnose Then Surgically Fix}, and \textit{Align Heterogeneous Sources in Shared Space} each touch $24$--$26$ domains with top-domain shares $\leq 15\%$. The five innovation patterns that drive the Oral-favored multi-strategy combinations (Table~\ref{tab:combos}) are also the five with the broadest domain coverage --- a clean coincidence of empirical universality and acceptance signal.
+
+\textbf{(ii) The execution-level innovation patterns are still broadly applicable but more concentrated.} \textit{Encode Invariance as Hard Constraint} ($22$ domains, top-share $16\%$), \textit{Audit Evaluation via Controlled Perturbation} ($23$ domains, top-share $31\%$), \textit{Localize via Causal Probing} ($21$ domains, top-share $42\%$), and \textit{Exploit Redundancy via Compression} ($19$ domains, top-share $38\%$). Higher concentration corresponds to a innovation pattern that rides on a particular domain's substrate (causal probing on \textit{Causality, Identifiability \& Interpretability}; compression on \textit{Model Efficiency \& Compression}) but still appears across most of the field.
+
+\textbf{(iii) Domain-narrow innovation patterns coincide with Reject-favored innovation patterns.} \textit{Aggregate Over Diverse Candidates} touches only $11$ domains; \textit{Soft Probabilistic Relaxation} only $14$. These are also the two innovation patterns with the lowest absolute paper counts and the worst $\Delta_{OR}$ in \S\ref{sec:analysis}, and the two most isolated centroids in \S\ref{subsec:adj}. Domain-narrowness, embedding isolation, small sample, and Reject-skew co-occur consistently --- this triangulation supports treating these two as genuinely under-developed niche strategies, not measurement artifacts.
+
+\subsection{Per-domain temporal trends}
+\label{subsec:domain-temporal}
+
+For each of the six largest domains we plot, in Figure~\ref{fig:domain_temporal}, the share over time of its top-3 most-frequent innovation patterns. The shape of the trends differs by domain: \textit{Diffusion, Flow \& Score Models} is dominated by \textit{Reframe via Alternative Formalism} which has been steady at $30$--$50\%$ share since 2022; \textit{Trustworthy \& Responsible ML} is rising in \textit{Audit Evaluation via Controlled Perturbation} ($14\%$ in 2021 to $32\%$ in 2025); \textit{Reinforcement Learning} shows a recent acceleration of \textit{Sharpen a Single Analytic Step}; \textit{Representation \& Self-Supervised Learning} is dominated by \textit{Align Heterogeneous Sources in Shared Space} but has lost share to \textit{Audit and Relax Implicit Assumption} since 2023.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_domain_temporal.pdf}
+\caption{Per-domain share over years of the top-3 innovation patterns, for the six largest domains. Vertical scale is share within the domain (\%). Different domains have different innovation pattern dynamics; the SKILL can use this signal to give domain-specific timing advice (``in your domain, innovation pattern X has been gaining'').}
+\label{fig:domain_temporal}
+\end{figure}
+
+The trend differences are not noise: each domain has 130--256 papers and the per-year cells are populated. The SKILL retrieval layer uses these as time-stratified priors (``for queries in domain $D$ in year $Y$, prefer innovation patterns that are gaining share in $D$'').
+
+\subsection{Multi-label innovation pattern trends per domain}
+\label{subsec:domain-temporal-multilabel}
+
+\S\ref{subsec:domain-temporal} above used the cluster-based primary innovation pattern --- a single-label view in which a paper contributes one count to one innovation pattern in its (domain, year) cell. The paper-level multi-label assignment of \S\ref{subsec:multilabel} gives a richer picture: a paper at \(k{=}3\) contributes one count to each of its three innovation patterns. We re-compute, for every (domain, year, innovation pattern) triple, the \emph{share} of papers in that (domain, year) cell that execute that innovation pattern. Because shares now sum to \(\bar{k}\) rather than 100\%, the metric directly answers ``how often does this innovation pattern appear in a paper here?''
+
+Figure~\ref{fig:domain_temporal_multilabel} shows the top-5 innovation patterns (by total share within the domain) for each of the six largest domains over 2021--2025. Three patterns emerge that the cluster-based view misses.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_domain_methodology_temporal.pdf}
+\caption{Per-domain temporal trends under multi-label tagging. Each panel: top-5 innovation patterns (by total share in that domain) and their per-year usage share (\% of domain papers carrying the innovation pattern). Because innovation patterns are not exclusive, the y-axis values within a year sum to roughly \(\bar{k} \approx 270\%\) across all 13. Annotations under the x-axis report papers per year in the domain.}
+\label{fig:domain_temporal_multilabel}
+\end{figure}
+
+\textbf{(i) The framing innovation patterns dominate every domain.} \emph{Audit and Relax Implicit Assumption} and \emph{Reframe via Alternative Formalism} are in the top-5 of all six largest domains, with \(\geq 50\%\) usage share in 2024--2025. The cluster-based view (which used primary only) showed at most one of these per panel; the multi-label view shows both consistently — confirming that strong papers \emph{compose} the framing moves rather than choose between them.
+
+\textbf{(ii) Domain-characteristic innovation patterns are sharply visible.} The top-3 in last 2 years (2024--2025):
+\begin{itemize}[leftmargin=1.4em, topsep=2pt, itemsep=2pt]
+\item \emph{Decompose and Recombine}: \textit{LLM Capabilities \& Evaluation} (63), \textit{Model Efficiency \& Compression} (46), \textit{Trustworthy \& Responsible ML} (41) --- decomposition is the LLM-era innovation pattern par excellence.
+\item \emph{Audit Evaluation via Controlled Perturbation}: \textit{LLM Capabilities \& Evaluation} (50), \textit{LLM Training \& Alignment} (24), \textit{Trustworthy ML} (23) --- benchmark-auditing is concentrated in LLM evaluation domains.
+\item \emph{Localize via Causal Probing}: \textit{Causality, Identifiability \& Interpretability} (28), \textit{LLM Capabilities \& Evaluation} (18), \textit{Transfer/Continual/Meta} (15) --- mechanistic interpretability is becoming a innovation pattern, not just a topic.
+\item \emph{Sharpen a Single Analytic Step}: \textit{Optimization Theory \& Methods} (26), \textit{Self-Supervised Learning} (18), \textit{RL} (17) --- analytic refinement is a theory-side innovation pattern, as expected.
+\end{itemize}
+
+\textbf{(iii) Methodology adoption shifts over time within a domain.} \textit{Trustworthy \& Responsible ML} shows \emph{Audit Evaluation via Controlled Perturbation} rising from 24\% (2021) to 47\% (2025); \textit{LLM Capabilities \& Evaluation} shows \emph{Decompose and Recombine} rising from 18\% to 53\% over 2023--2025; \textit{Diffusion, Flow \& Score Models} maintains \emph{Reframe via Alternative Formalism} at 60--75\% steady-state since 2022. The SKILL system uses \texttt{clustering/multilabel/extra/domain\_year\_methodology\_share.json} (28 domains \(\times\) 5 years \(\times\) 13 innovation patterns) as the time-stratified prior: ``in your stated domain, in the current year, innovation pattern X is rising/falling/saturated --- this informs whether your idea is timely or behind.''
+
+%======================================================================
+\section{Temporal and Conference Structure}
+\label{sec:trends}
+%======================================================================
+
+\subsection{Temporal trends}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_temporal.pdf}
+\caption{Per-innovation pattern share of all papers by year (\% of that year's papers, including unclustered). Methodologies are drawn from 2021 to 2025; lines that rise through the window are the innovation patterns currently ascending.}
+\label{fig:temporal}
+\end{figure}
+
+Table~\ref{tab:trend} gives the underlying share-by-year matrix. Several innovation patterns show clean monotonic moves across the 2021--2025 window:
+
+\begin{itemize}[nosep, leftmargin=1.5em]
+\item \textbf{\emph{Audit Evaluation via Controlled Perturbation}} climbed from 2.3\% in 2023 to 7.0\% in 2024 (and 5.9\% in 2025, partial-year). This is the single fastest-growing innovation pattern in the dataset; it lines up with the 2024 publication wave of LLM-reasoning benchmarks and dataset-contamination audits.
+\item \textbf{\emph{Encode Invariance as Hard Constraint}} climbs steadily from 2.6\% (2021) to 6.9\% (2025). A second wave of equivariant and geometry-preserving architectures, this time in molecular and physical-simulation domains rather than vision.
+\item \textbf{\emph{Sharpen a Single Analytic Step}} climbs from 1.3\% (2021) to 5.6\% (2025): theoretical refinement is a growing share of Oral pages, not a shrinking one.
+\item \textbf{\emph{Diagnose Then Surgically Fix}} falls from 10.4\% (2021) to 3.3\% (2025). The kind of paper that reported ``we found a small bug and fixed it'' is being squeezed out.
+\item \textbf{\emph{Exploit Redundancy via Compression}} falls from 7.8\% (2021) to 3.1\% (2025), consistent with the maturation of quantization and distillation as productization rather than research.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Per-innovation pattern share (\% of year's papers) by year, plus trend verdict comparing 2023 to 2025. \emph{Trend rule}: \emph{Rising} if 2025 share $> 1.4 \times$ 2023 share AND absolute gap $\geq 1.5$pp; \emph{Falling} symmetrically; otherwise \emph{Stable}. Noise counted in the denominator.}
+\label{tab:trend}
+\small
+\begin{tabular}{p{5.4cm} rrrrr l}
+\toprule
+\textbf{Methodology} & \textbf{2021} & \textbf{2022} & \textbf{2023} & \textbf{2024} & \textbf{2025} & \textbf{Trend} \\
+\midrule
+Audit and Relax Implicit Assumption & 13.0 & 13.5 & 15.0 & 11.3 & 12.0 & Stable $\to$ \\
+Encode Invariance as Hard Constraint &  2.6 &  4.1 &  4.1 &  5.1 &  6.9 & \textbf{Rising $\uparrow$} \\
+Reframe via Alternative Formalism & 14.3 & 10.8 & 12.6 & 12.4 & 15.1 & Stable $\to$ \\
+Decompose and Recombine &  0.0 &  0.0 &  3.4 &  3.5 &  4.4 & Stable $\to$ \\
+Diagnose Then Surgically Fix & 10.4 & 10.8 &  4.4 &  5.6 &  3.3 & Stable $\to$ \\
+Soft Probabilistic Relaxation &  0.0 &  0.0 &  1.0 &  0.7 &  0.8 & Stable $\to$ \\
+Exploit Redundancy via Compression &  7.8 &  4.1 &  3.3 &  3.7 &  3.1 & Stable $\to$ \\
+Engineer Auxiliary Supervision Signal &  5.2 &  1.4 &  2.9 &  3.8 &  1.5 & \textbf{Falling $\downarrow$} \\
+Align Heterogeneous Sources in Shared Space &  2.6 &  8.1 &  6.0 &  5.6 &  6.2 & Stable $\to$ \\
+Aggregate Over Diverse Candidates &  0.0 &  0.0 &  0.7 &  0.2 &  1.0 & Stable $\to$ \\
+Localize via Causal Probing &  2.6 &  0.0 &  2.8 &  2.4 &  3.3 & Stable $\to$ \\
+Audit Evaluation via Controlled Perturbation &  3.9 &  0.0 &  2.3 &  7.0 &  5.9 & \textbf{Rising $\uparrow$} \\
+Sharpen a Single Analytic Step &  1.3 &  2.7 &  5.4 &  4.0 &  5.6 & Stable $\to$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{How the SKILL uses these trend signals.} The static trend verdicts in Table~\ref{tab:trend} are corpus-wide priors and are deliberately \emph{not} loaded into the SKILL's bottleneck identification (Phase 1) or candidate generation (Phase 2), because surfacing static priors at generation time induces distribution-bias homogenization (every run drifts toward the currently-Rising innovation pattern regardless of the user's specific bottleneck). Instead, Phase 1 computes a per-run \texttt{domain\_pattern\_distribution} signal by aggregating the on-topic rows of the run's Phase-0 \texttt{lit\_table.md} along the innovation-pattern axis (primary plus secondary tags both count), and labels each pattern's local share as \emph{high} / \emph{medium} / \emph{low} saturation against fixed thresholds (share $\geq 0.30$ high, $0.15$--$0.30$ medium, $<0.15$ low). This per-run distribution is informational only --- echoed into the final idea card so the user sees where their candidate's chosen patterns sit in the area's local pattern usage --- and is not consumed as a generation prior. The static Table~\ref{tab:trend} is provided for the reader's reference, to compare a specific run's local distribution against the global field-level trend.
+
+\subsection{Conference preferences}
+
+\begin{table}[H]
+\centering
+\caption{Per-innovation pattern share by venue (\% of that venue's papers).}
+\label{tab:venue}
+\small
+\begin{tabular}{p{6.5cm} rrr}
+\toprule
+\textbf{Methodology} & \textbf{ICLR} & \textbf{ICML} & \textbf{NeurIPS} \\
+\midrule
+Reframe via Alternative Formalism & 12.5 & \textbf{18.3} &  9.9 \\
+Audit and Relax Implicit Assumption & 12.0 & \textbf{15.7} & 11.7 \\
+Sharpen a Single Analytic Step &  2.6 &  6.6 & \textbf{7.1} \\
+Align Heterogeneous Sources in Shared Space &  6.1 &  5.2 & 6.2 \\
+Diagnose Then Surgically Fix &  \textbf{6.2} &  4.8 &  2.4 \\
+Encode Invariance as Hard Constraint &  5.0 &  4.6 &  6.0 \\
+Audit Evaluation via Controlled Perturbation &  5.4 &  4.6 &  3.8 \\
+Exploit Redundancy via Compression &  3.7 &  2.8 &  4.0 \\
+Decompose and Recombine &  3.5 &  1.6 &  5.4 \\
+Localize via Causal Probing &  3.0 &  2.4 &  2.4 \\
+Engineer Auxiliary Supervision Signal &  2.9 &  1.4 &  3.8 \\
+Soft Probabilistic Relaxation &  0.9 &  0.4 &  0.8 \\
+Aggregate Over Diverse Candidates &  0.5 &  0.8 &  0.4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three patterns are measurable. \textbf{ICML} over-indexes on theoretical refinement-and-reframing innovation patterns: \emph{formal reframing} (18.3\% vs 12.5\% at ICLR) and \emph{assumption audit} (15.7\% vs 12.0\%). \textbf{ICLR} over-indexes on diagnostic-and-fix work: \emph{surgical fix} (6.2\% vs 2.4\% at NeurIPS). \textbf{NeurIPS} is the most uniform venue: it has the highest share of \emph{analytic refinement} (7.1\%) and \emph{decomposition} (5.4\%) but no strongly off-balance category. These venue signatures line up with informal community perception; they are quantified here per-pattern for the first time.
+
+
+%======================================================================
+\section{Do Rejected Papers Inhabit a Different Strategy Space?}
+\label{sec:reject}
+%======================================================================
+
+A natural concern is that by clustering Oral, HC, and Reject papers in a single space we may force Reject papers into clusters that only exist because of the accepted population. If rejected work used \emph{different} strategies, the induced innovation patterns would systematically under-represent them. We test this directly.
+
+\subsection{Reject-only clustering}
+
+We re-run the embedding+clustering pipeline on the 722 Reject papers alone with the same UMAP hyperparameters and a smaller min\_cluster\_size sweep $\{8,10,12,15,20,25\}$. The best configuration ($\min\_\text{cl}{=}8$) produces 23 clusters with silhouette 0.496 and unclustered fraction 35.9\%---almost identical cohesion to the full-set clustering despite the smaller population.
+
+\subsection{Mapping reject clusters onto the main taxonomy}
+
+We ask Opus, using the taxonomy it previously induced from the full set, to map each of the 23 Reject clusters to primary/secondary innovation patterns. Opus is explicitly allowed to mark a cluster as \texttt{out\_of\_taxonomy} and suggest a new name.
+
+Only one cluster is flagged: Reject cluster 19 ($n{=}12$), which collects papers where internal activation alignment is used as an adversarial-stealth optimization objective (e.g., matching intermediate activation statistics to mask malicious fine-tuning). Opus's suggested name: \texttt{internal\_activation\_alignment\_for\_adversarial\_stealth}. This is a semantically coherent subtheme but not a innovation pattern a well-known accepted paper operates under; it is plausibly under-represented in the accepted pool because the venues in question rarely publish attack-optimization papers.
+
+The remaining 22 clusters map onto existing innovation patterns. Table~\ref{tab:rejmap} shows the resulting innovation pattern distribution over the 722 Reject papers.
+
+\begin{table}[htbp]
+\centering
+\caption{Methodology distribution of the 722 Reject papers, via Reject-only clustering + Opus Pass-2 mapping. Compare the \textbf{Reject-only} column to the \textbf{Reject-in-full} column (from Table~\ref{tab:tax}, \emph{Reject} column) to see whether re-clustering within Reject changes the picture.}
+\label{tab:rejmap}
+\small
+\begin{tabular}{p{6.5cm} rr}
+\toprule
+\textbf{Methodology} & \textbf{Reject-only} & \textbf{Reject-in-full} \\
+\midrule
+Audit and Relax Implicit Assumption & 101 & 108 \\
+Engineer Auxiliary Supervision Signal &  81 &  24 \\
+Align Heterogeneous Sources in Shared Space &  67 &  52 \\
+Decompose and Recombine &  57 &  32 \\
+Exploit Redundancy via Compression &  48 &  29 \\
+Encode Invariance as Hard Constraint &  33 &  36 \\
+Diagnose Then Surgically Fix &  28 &  27 \\
+Localize via Causal Probing &  20 &  20 \\
+Sharpen a Single Analytic Step &  11 &  33 \\
+Reframe via Alternative Formalism &   9 &  85 \\
+Audit Evaluation via Controlled Perturbation &   8 &  22 \\
+Soft Probabilistic Relaxation &   0 &  12 \\
+Aggregate Over Diverse Candidates &   0 &   3 \\
+\textit{out of taxonomy (adversarial stealth)} & 12 & --- \\
+\textit{unclustered} & 259 & 239 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Two consistent stories, one divergence}
+
+Six of the 13 innovation patterns yield near-identical Reject counts across the two ways of computing: \emph{assumption audit}, \emph{surgical fix}, \emph{mechanistic probing}, \emph{invariance constraint}, \emph{shared latent} (a bit higher in Reject-only), and \emph{decomposition}. The Reject pool's strategic shape is stable regardless of whether we cluster it alongside or separately from the accepted pool.
+
+The interesting divergence is in the two innovation patterns whose Reject-only counts \emph{drop sharply}: \emph{Reframe via Alternative Formalism} (85 $\to$ 9) and \emph{Sharpen a Single Analytic Step} (33 $\to$ 11). These are the two most Oral-favored innovation patterns (Table~\ref{tab:bias}). What we read off this: when we force the taxonomy induced from accepted work onto reject papers, many rejected proof-tightening and reframing papers get absorbed into \emph{formal reframing} and \emph{analytic refinement}; when the same reject papers cluster among themselves, they cluster into \emph{auxiliary signal}, \emph{shared latent}, \emph{decomposition} instead. In other words, \emph{rejected reframing-flavored papers look a lot like rejected representation-alignment papers once you strip away the reframing veneer}---suggesting that one execution-level failure mode of reframing is producing something indistinguishable from standard alignment work.
+
+\subsection{What this says about the taxonomy}
+
+\textbf{Positive.} The taxonomy induced from accepted papers is expressive enough to cover 97\% of the reject population without modification. Rejection is not caused by using a different kind of strategy.
+
+\textbf{Negative.} The reject-only clustering's divergence from the in-full mapping tells us that the fine-grained surface form of a rejected paper can drift toward innovation patterns simpler than what the author intended. An author who thinks they are doing \emph{formal reframing} may produce a paper that clusters with \emph{shared latent alignment} once the reframing apparatus is stripped down by reviewers. This is a design hint for the SKILL: the audit phase must detect this drift explicitly.
+
+
+%======================================================================
+\section{Ablation: Embedding Model and Abstraction Stage}
+\label{sec:ablation}
+%======================================================================
+
+The two design choices most responsible for the quality of the induced taxonomy are (a) embedding on a general-purpose paraphrase-strong encoder rather than SPECTER2, and (b) embedding on the \emph{domain-agnostic} rewrites rather than on the four original base fields. We run both ablations on the same 1{,}947-paper dataset with the same UMAP parameters and the same HDBSCAN sweep.
+
+\begin{table}[htbp]
+\centering
+\caption{Clustering ablation. All three variants use UMAP (10-dim, $n\_\text{neighbors}{=}15$, $\min\_\text{dist}{=}0$, cosine) and an HDBSCAN sweep; the row reported is the $\min\_\text{cluster\_size}{=}10$ configuration to make $k$ comparable. The two OpenAI rows differ only in which text is embedded.}
+\label{tab:ablation}
+\small
+\begin{tabular}{l c c c c c}
+\toprule
+\textbf{Embedding} & \textbf{Text} & $k$ & \textbf{Noise \%} & \textbf{Silhouette} & \textbf{Cluster character} \\
+\midrule
+OpenAI \texttt{text-embedding-3-large} & 4 abstract fields & 47 & 34.5 & 0.474 & strategy-like \\
+OpenAI \texttt{text-embedding-3-large} & 4 base fields     & 48 & 28.0 & \textbf{0.569} & topic-like \\
+SPECTER2 (768-dim)                     & 4 abstract fields & 37 & 42.6 & 0.400 & mixed/diffuse \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Embedding model: OpenAI vs SPECTER2}
+
+With identical input text (the four domain-agnostic fields) and identical downstream pipeline, OpenAI \texttt{text-embedding-3-large} achieves both more clusters (47 vs 37) and a 8.1-pp lower unclustered fraction (34.5\% vs 42.6\%) with a higher silhouette (0.474 vs 0.400). SPECTER2's sweep never produces a configuration with lower unclustered fraction than the OpenAI row: its unclustered fraction stays between 42\% and 49\% across $\min\_\text{cluster\_size}\in\{10,\ldots,25\}$, dropping only when $\min\_\text{cluster\_size}$ is set so large that the sweep collapses to 2 meta-clusters (silhouette 0.19).
+
+Qualitatively, SPECTER2 is trained on citation-informed contrastive pairs and is best at placing topically adjacent papers near each other. But our clustering target is strategy similarity, not topic similarity: two papers that both ``re-instantiate a proven mechanism at the appropriate domain-specific granularity'' should cluster together even if they work on different modalities. SPECTER2's objective drives the opposite behavior. The general-purpose paraphrase encoder, which was trained on a much broader corpus without a citation prior, places those strategy-equivalent papers closer together, producing a tighter strategy partition.
+
+\subsection{Abstraction stage: why silhouette is not the objective}
+
+The second ablation exposes a subtler point. Keeping the embedder fixed and switching the input text from the four domain-agnostic fields to the four base (domain-specific) fields \emph{raises} silhouette from 0.474 to 0.569 and \emph{lowers} unclustered fraction from 34.5\% to 28.0\%. In a standard clustering benchmark this would be a strict win for the base-fields variant.
+
+It is a loss for our task. Inspecting the base-fields clusters reveals that the additional cohesion comes from topic proximity: one cluster ($n{=}18$) groups \emph{Training with Quantization Noise}, \emph{F8Net}, \emph{SmoothQuant}, \emph{QLoRA}, and \emph{KVTQ}---every paper is about weight-bit compression---but their strategies are not the same (two do \emph{exploit redundancy via compression}, one does \emph{assumption audit}, one does \emph{surgical fix}). Another cluster ($n{=}22$) aggregates brain-inspired and neuro-mapping work: \emph{Coordination Through a Shared Global Workspace}, \emph{Aligning Model and Macaque IT Cortex Representations}, \emph{Brain Diffusion for Visual Exploration}---papers that share the ``neural systems'' subject but use four different innovation patterns (\emph{shared latent alignment}, \emph{mechanistic probing}, \emph{formal reframing}, \emph{auxiliary signal engineering}).
+
+Silhouette rewards cohesion regardless of what the cohesion is \emph{about}, so topic clusters score better than strategy clusters on the same metric. The right response is not to chase silhouette but to choose the input text so that the cohesion the metric measures is cohesion of \emph{strategy}. Moving the abstraction inside the text---rewriting each paper's innovation fields into a domain-agnostic form before embedding---does exactly that. The resulting clusters have lower silhouette than the topic clusters but they afford the innovation pattern taxonomy of Section~\ref{sec:methodology}. Induction from the base-fields clusters yields a taxonomy whose level-1 entries are domain names (``quantization and compression'', ``neuroscience-inspired models'', ``reinforcement learning'')---i.e., categories a reader already knows from arXiv subject listings, with no strategic content.
+
+\subsection{What the ablation says}
+
+The ablation is more precisely a \emph{construct-validity} argument than a conventional metric ablation. Silhouette measures whether clusters are internally cohesive; it does not measure whether the cohesion lives along the axis we care about. The OpenAI-plus-abstract-fields configuration has the lowest raw silhouette of the three variants we tested but is the only one whose clusters afford a innovation pattern taxonomy with operational signatures, per-pattern acceptance bias, and one-to-one coverage of the rejected population. The other two configurations optimize a metric they were not built to optimize.
+
+
+%======================================================================
+\section{Discussion and Limitations}
+\label{sec:discussion}
+%======================================================================
+
+\subsection{What the data shows about ML innovation}
+
+Three claims of the paper hold up under the analyses above; one we set up but do not yet test.
+
+\textbf{(i) The strategy space is shared, not stratified.} Section~\ref{sec:reject} establishes that running the entire pipeline on the 722 Reject papers in isolation reproduces 12 of the 13 induced innovation patterns, with a single $n{=}12$ out-of-taxonomy reject cluster. Bartholomew's argument that \emph{rejection encodes lack of strategic novelty} would predict the opposite: a Reject-only run should foreground strategies missing from the Oral side. It does not. The signal lives in execution---specifically in the success conditions and failure modes characterized in the per-pattern cards (\S\ref{subsec:cards}, App.~\ref{app:cards}), not in strategy choice.
+
+\textbf{(ii) Acceptance bias is real but innovation pattern-specific.} The $\Delta_{OR}$ analysis (Fig.~\ref{fig:bias}, Table~\ref{tab:bias}) shows that the most Oral-favored innovation pattern is \emph{formal reframing} (${+}4.2$ pp), followed by \emph{audit evaluation via controlled perturbation} (${+}1.5$ pp) and \emph{analytic refinement} (${+}1.3$ pp); the most Reject-favored are \emph{audit-and-relax} (${-}3.0$ pp), \emph{shared-latent alignment} (${-}2.8$ pp), and \emph{soft probabilistic relaxation} (${-}1.4$ pp). \emph{Audit-and-relax} is the special case: it is the highest-volume Oral pattern in absolute terms (122 papers) yet simultaneously the highest-volume Reject pattern (108 papers), so the within-pattern execution gap dominates the strategy-choice signal---precisely the gap the SKILL's audit step targets via the per-pattern success-condition vs failure-mode lists. By contrast, \emph{shared-latent alignment} and \emph{soft probabilistic relaxation} are defined by combinatorial composition (alignment, mixture priors) where the failure mode \emph{`combination indistinguishable from sum of parts'} dominates Reject reviews, and the strategy itself carries the bias.
+
+\textbf{(iii-bis) Methodologies are domain-agnostic in coverage; acceptance is domain-conditional in effect.} The eight largest innovation patterns each touch $\geq 18$ of the 28 induced domains (\S\ref{subsec:breadth}); the top two touch 27/28 with single-domain concentration $\leq 22\%$. This validates the SKILL's domain-agnostic positioning at the innovation pattern level. But the cell-level Oral rate (Fig.~\ref{fig:domain_method}b) varies by tens of percentage points for the same innovation pattern across different domains --- the same \textit{Encode Invariance as Hard Constraint} that lands $87\%$ in \textit{Geometric/Equivariant Learning} lands $53\%$ in \textit{ML for Biology}. Two implications for the SKILL: (a) methodology recommendations are robust to user domain (the innovation pattern is broadly applicable), but (b) acceptance-likelihood priors are not (the SKILL must condition $p_O$ on the user's stated domain, drawing from the per-cell rates rather than the marginal rate).
+
+\textbf{(iv) Multi-strategy is the norm and the empirical mode is \(k{=}3\), not \(k{=}2\).} The cluster-based view (\S\ref{subsec:multistrat}) capped at \emph{primary~+~secondary} per paper. The independent multi-label re-tagging (\S\ref{subsec:multilabel}) recovers the true distribution: \textbf{57.3\%} of papers execute exactly three innovation patterns, the mode is \(k{=}3\) for all three acceptance classes (Oral 59.4\%, HC 58.8\%, Reject 53.9\%), and 95.6\% of papers carry at least one innovation pattern beyond the cluster pair. HC papers carry a heavier \(k{=}4\) tail (10.9\%) than Oral (6.9\%) — \(\bar{k}_{HC}{=}2.81 > \bar{k}_O{=}2.72 > \bar{k}_R{=}2.67\). The standout 3-way combination \emph{audit~+~reframing~+~shared\_latent\_alignment} appears in 18 papers (12 Oral, 6 HC, 0 Reject) — the only composition with \(n \geq 10\) where every accepted-class paper carries it and zero rejected-class paper does. The implication for the SKILL system: composition into 1--3 innovation patterns (default 3) is the right granularity; the SKILL must select \emph{which} innovation patterns to compose, using the innovation pattern cards (\S\ref{subsec:cards}) and the multi-label combination table (Table~\ref{tab:multilabel_combos}) for priors.
+
+\textbf{(iv) Open---execution validity at the SKILL endpoint.} We do not, in this report, evaluate ideas generated by SKILL against held-out papers or human reviewers. The construct-validity argument in \S\ref{sec:ablation} shows that the cluster--innovation pattern--card chain is internally coherent and reject-discriminative; whether that chain produces \emph{Oral-quality ideas} when invoked at inference time is a separate experiment. Section~\ref{sec:skill} (next) describes the SKILL design; the matched evaluation is future work.
+
+\subsection{Threats to validity}
+
+\textbf{Cluster vs paper-level coverage.} The HDBSCAN clustering labels 34.5\% of papers as unclustered. As we showed in \S\ref{sec:clustering} and re-emphasize here, this label is a property of \emph{embedding geometry under the chosen mcs threshold}, not of strategic content: unclustered papers carry the same innovation pattern compositions as clustered papers (mean $k = 2.75$ vs.\ $2.69$) and have a slightly higher Oral rate (54.8\% vs.\ 50.8\%). They are unclustered relative to the modal-cluster structure, not relative to the innovation pattern framework. The 13-innovation pattern framework (which is paper-level multi-label, not cluster-bound) covers all 1947 papers. The cluster-level view (where the unclustered points live) is one organizational lens; the paper-level multi-label view (where coverage is complete) is another. Both are valid; which one a downstream user chooses depends on whether they want modal-pattern density or paper-by-paper completeness.
+
+\textbf{Review-side asymmetry.} ICML 2023/2024 do not publish reviews on OpenReview, leaving 282 Oral and 42 HC papers without reviewer voice. After the recovery pass described in App.~\ref{app:cards-method}, our overall meta-review coverage is 83\%, but Oral coverage trails (72\%) HC (80\%) and Reject (99\%). The Oral-side coverage is the dominant constraint on the per-pattern card confidence; it is an empirical reason that 3/13 cards are flagged \texttt{confidence=low}.
+
+\textbf{Decision-class definition.} Our HC class (211 papers) is constructed from a separately-curated high-citation set, not from OpenReview decisions. HC papers can have any acceptance level (Oral, Spotlight, Poster); they are defined by post-publication impact. This makes Oral-vs-HC a weaker contrast than Oral-vs-Reject---HC may include Spotlights and Posters whose \emph{only} difference from Oral is venue-level discretion. We retain the contrast because it isolates a real signal (the gap between technical solidity and Oral-graduating boldness), but we set the bar for $\Delta_{OH}$ claims at $n_{HC} \geq 5$ and discount it where this fails.
+
+\textbf{Single-model induction; stability not validated.} The 13 innovation patterns are induced by Opus 4.7 in a single call. We have not run an inter-prompt, inter-seed, or inter-model agreement check — that is, we do not know how stable the count ``13'' or the specific innovation pattern cuts are when (a) the induction prompt is rephrased, (b) the temperature/seed is varied, or (c) a different frontier model (e.g., Sonnet 4.6) is asked to induce a taxonomy from the same 47 cluster summaries. The reject-coverage test (\S\ref{sec:reject}) is partial evidence: the same taxonomy maps 12 of 13 reject-only induced clusters back onto Oral-side categories (one $n{=}12$ out-of-taxonomy cluster aside), which would be unlikely under a model-idiosyncratic carving. But this is internal-consistency evidence (the same Opus 4.7 mapping produces stable assignments on a held-out cluster set), not external-stability evidence (a fresh induction run from a different model produces a comparable taxonomy). Readers should therefore interpret the count ``13'' as an \emph{induced operational granularity} — the level at which Opus 4.7 separates ML innovation patterns given our 47 cluster summaries and our prompt — not as a canonical ontology. A different prompt or model could plausibly produce 10--16 categories with significant overlap to ours; full stability validation is a clear next step we have left for future work.
+
+\textbf{Domain-tactic coupling: a few clusters carry domain context, not domain-agnostic technique.} A small number of the 47 induced clusters describe a domain-shaped tactic rather than a fully domain-agnostic methodological move. Inspecting cluster labels (App.~\ref{app:clusters}) the clearest cases are: \emph{adversarial-robustness probing under specific threat models} (anchors in adversarial security), \emph{equivariant architecture design under group symmetries} (anchors in geometric/equivariant learning), \emph{GNN expressivity bounds} (anchors in graph learning), \emph{differential-privacy auditing} (anchors in privacy/security), and \emph{exploration--exploitation rebalancing in RL} (anchors in RL). For these, the parent innovation pattern (e.g.\ \emph{invariance as architectural constraint}) is genuinely domain-agnostic, but the cluster's representative papers and reviewer-language signal cluster within a single domain --- the domain $\times$ innovation pattern heatmap (Fig.~\ref{fig:domain_method}) shows the corresponding cells with high single-domain concentration. The SKILL's domain-conditional acceptance prior (\S\ref{subsec:skill-positioning}) absorbs this: when the user's stated domain matches a tactic-carrier cluster, the per-cell rate is used; when it does not, the user is offered the parent innovation pattern with a plain-language alias (\S\ref{subsec:cards}) and the cluster's tactical card is not surfaced. We flag the coupling here because a reader testing the taxonomy outside these domains may find the corresponding clusters less directly transferable than the parent innovation pattern cards.
+
+\textbf{Hallucinated paper IDs.} In one of the 13 cards a hallucinated \texttt{paper\_id} appeared in an evidence list (\texttt{ICLR\_2023\_0992}, dropped at validation time; the failure mode it cited still has 3 valid evidence papers). All other 13$\times$($\sim$10) evidence citations validate against the dataset. This is an artifact of structured-output generation against long prompts; the validator step in the merge script (App.~\ref{app:cards-method}) catches it.
+
+\subsection{What follows from this analysis}
+
+The taxonomy is the prerequisite for the SKILL system but is also a stand-alone deliverable. Two uses are visible already: it lets a researcher rank a candidate idea against the 13 innovation patterns (e.g., ``which of the success conditions does my draft satisfy?''), and it lets a reviewer surface specific failure modes by name when writing critiques (``this is a textbook 'combination indistinguishable from sum of parts'''). The SKILL system in \S\ref{sec:skill} operationalizes both uses inside an LLM scaffolding.
+
+%======================================================================
+\section{SKILL System Design}
+\label{sec:skill}
+%======================================================================
+
+This section describes the SKILL system that operationalizes the empirical substrate (\S\ref{sec:methodology}--\S\ref{sec:reject}) into an interactive research-idea generator. Figure~\ref{fig:skill_workflow} summarizes the execution path. The focus is on \emph{verifiability}: which contracts are mechanically checkable, which checks are anchored in concrete corpus content the LLM cannot fabricate, and which judgments remain LLM-dependent. The full implementation, prompts, and artifacts ship with the skill bundle.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_skill_workflow_generated.pdf}
+\caption{NoveltySkill execution workflow. A user problem is first grounded through multi-source literature retrieval, then converted into a literature-grounded bottleneck through gap extraction and assumption analysis. The system selects 1--3 innovation patterns from the induced library, instantiates a concrete candidate, and audits it against real literature using novelty, feasibility, and coverage checks before either advancing, revising, abandoning, or refusing generation. The bottom panels show the shared knowledge backbone and mechanical guarantees used across phases, including kill-switch integrity and expansion completeness.}
+\label{fig:skill_workflow}
+\end{figure}
+
+\subsection{Positioning}
+\label{subsec:skill-positioning}
+
+The SKILL converts an under-specified research direction into one reviewer-defensible Oral-level research proposal. The output is a single idea card containing motivation, method flow, claims, falsification prediction, and feasibility validation. One user input produces one of three outcomes: an idea-card PDF (the audit cleared), a \texttt{do\_not\_generate} diagnosis (the direction is too underspecified or out of scope), or a \texttt{phase\_3\_failed} report (a candidate was generated but the audit rejected it). The skill never asks the user mid-flow.
+
+The skill is not a innovation pattern recommender, an experiment planner, or a paper writer. It does not propose datasets, baselines, ablation matrices, or expected figures, since those depend on user context the skill cannot access. It produces an IDEA plus an honest feasibility judgment; the empirical engineering remains the user's responsibility.
+
+\subsection{Five-phase workflow}
+\label{subsec:skill-workflow}
+
+The skill treats the 13 induced innovation patterns as \emph{diagnostic vocabulary} that the candidate generator reads from, not as a forced taxonomy candidates must classify into. The advance path runs five LLM calls plus two real-retrieval steps; the revise path adds one mechanical fix-application call.
+
+\paragraph{Phase 0 --- Literature retrieval.} Real retrieval over four connectors in role-specific time windows: arXiv at 0--4 months for active preprints, DBLP and OpenAlex (filtered to published proceedings) at 4--24 months for venue-validated work, OpenReview at 0--6 months for in-review forward signal. Cross-source dedup with priority ordering yields ${\sim}30$--$40$ deduped papers, each tagged by an LLM classification step with \texttt{innovation pattern} (one of the 13), \texttt{bottleneck}, and \texttt{open\_issue}. The role-based windowing replaces an earlier all-in-one design that produced ${\sim}80\%$ off-topic results from recency-dominated retrieval. Output: \texttt{lit\_results.json} (papers $+$ abstracts) and \texttt{lit\_table.md} (per-paper tags). A sentinel records that retrieval was real (vs.\ a webfallback degraded mode), enforcing that downstream phases cannot run on model-recall-only literature.
+
+\paragraph{Phase 1 --- Bottleneck identification (1 LLM call).} Reads the user query, the retrieved literature, and the intake context, then writes a literature-grounded bottleneck statement citing $\geq 2$ \texttt{paper\_id}s, the closest-adjacent papers (with where each stopped), and the routing decision. The intake schema requires: domain, venue or time horizon, data, compute, expertise, baseline, limitation, contribution type, and preference (theory/empirical/both); missing fields are inferred from the query and listed in \texttt{\_inferred\_fields}, never asked back. The single-call structure replaces an earlier design that ran 13 separate ``lens probes'' here, each scoring 0--3 sharpness with persistence times activity caps and cross-lens consistency Jaccard checks; that mechanism added drift more than signal because the LLM-rule hybrid scoring drifted on the LLM side and the rules amplified the drift. The simplified Phase 1 trusts the LLM to read query plus literature and identify the gap directly. Six OOD triggers route to \texttt{do\_not\_generate} with concrete remedial steps: too-broad direction, no bottleneck anchor, engineering integration request, no verifiable benchmark, venue-time mismatch, unobtainable resources.
+
+\paragraph{Phase 2 --- Idea generation (2 LLM calls).} Step 2.1 reads the bottleneck plus a selection-friendly summary of the 13 innovation patterns and ranks the top three innovation pattern compositions \emph{structurally suited} to the bottleneck (one primary plus 0--2 secondaries). Step 2.2 reads the full innovation pattern cards for the winning composition (1--3 of 13) plus the relevant innovation sub-pattern cards under the primary innovation pattern (typically 3--4 of 47), and generates one candidate. Methodology selection is structural fit, not a novelty constraint --- two papers using the same composition on different problems can both be novel. Novelty is enforced in Step 2.2's \texttt{differentiation\_from\_lit} deltas, each requiring a \texttt{paper\_id} from \texttt{closest\_adjacent} and a substantive contribution difference (the rule explicitly forbids ``different innovation pattern'' as a delta). The candidate emits \texttt{signature\_terms[]} (3--5 phrases of 3--7 words each) for downstream collision retrieval. K=1 is a deliberate simplification of an earlier K=N design (K=3 with anchor diversity, then K=2 with a forced engineering candidate as a structural guard against theory-first bias): in practice the alternate candidates were never auto-selected on Phase 3 escalation, and the forced engineering candidate never won, so the cost of generating multiple candidates produced no quality gain.
+
+\paragraph{Phase 3.1 --- Collision retrieval.} Real retrieval over arXiv, OpenAlex, and OpenReview (DBLP skipped --- its 4--24-month window does not overlap the 6-month collision focus) using the candidate's \texttt{signature\_terms} as queries. Output: \texttt{collision\_hits.json} (deduped, no classification). The retrieval expands the paper pool that Phase 3.2 will search; classification was deliberately removed because Phase 3.2's paper-pointed threat search performs the same subsumption judgment with broader context. An earlier 7-class collision classifier produced its own verdict layer that both duplicated the audit and produced inconsistent signals.
+
+\paragraph{Phase 3.2 --- Audit (1 LLM call).} Three corpus-anchored checks plus a two-layer verdict (\S\ref{subsec:skill-audit}). The audit emits no \texttt{final\_candidate}: it produces a judgment report only. When fixes are needed, \texttt{revision\_targets[]} names specific candidate fields plus concrete fix directions; Phase 3.3 applies them mechanically. Separating audit from revision eliminates self-answering bias --- the LLM that judges does not also choose what to fix.
+
+\paragraph{Phase 3.3 --- Revise (1 LLM call, only when verdict $=$ \texttt{revise}).} Reads Phase 2.2's candidate and the audit's \texttt{revision\_targets[]}; emits \texttt{final\_candidate} with the named fields modified and all others byte-identical to the candidate. Hard rules: modify only fields named in \texttt{revision\_targets}, never touch the kill-switch fields, apply each fix faithfully without re-interpretation, do not re-judge the audit's verdict. The \texttt{applied\_revisions[]} array is the audit trail; out-of-scope rewrites (e.g., asking to swap the innovation pattern) are surfaced as \texttt{skipped\_inapplicable} rather than silently extended.
+
+\paragraph{Phase 4 --- Expansion and packaging (1 LLM call $+$ template render).} Step 4.1 expands the candidate (Phase 2.2 directly when verdict was \texttt{advance}, or Phase 3.3's \texttt{final\_candidate} when revise ran) into structured PDF content: motivation (with $\geq 2$ \texttt{why\_prior\_stopped} entries citing specific papers), core claim with sub-claims, method flow with numbered steps each linked to a leg and a failure mode, theorem-or-algorithm-or-system-design statement, byte-identical-echoed falsification block and mechanism probe, five-sub-check feasibility validation (compute, data, theoretical, engineering, falsification, plus an overall verdict), differentiation from literature, and reviewer-concerns-and-responses derived from the audit's three checks. Step 4.2 templates this into a PDF with no additional LLM call --- the no-LLM rendering ensures the kill-switch fields cannot drift during PDF generation, since templating is purely string substitution and produces a deterministic output that the kill\_switch\_integrity validator can compare byte-for-byte against the source.
+
+\subsection{Corpus-anchored audit}
+\label{subsec:skill-audit}
+
+The audit step (Phase 3.2) replaces an earlier eight-call multi-attacker simulation (six-dimensional rubric audit, four reviewer attackers, novelty advocate, meta-reviewer) with a single LLM call performing three composition-scoped checks plus a two-layer verdict. Each check requires citing concrete corpus content the LLM cannot fabricate: this is what makes the audit auditable and resistant to rubber-stamping.
+
+\paragraph{Check 1 --- composition reject scan.} \emph{What it catches}: candidates that look novel from the outside but fall into corpus-documented Reject patterns specific to the chosen tactic --- the most common failure shape for ideas in the 1947-paper corpus, with $\sim$200 specific reject lessons cataloged across 47 innovation sub-pattern cards. The candidate is a innovation pattern composition with one primary and 0--2 secondaries. The audit reads reject patterns at the granularity each role committed to: for the primary, the candidate's chosen innovation sub-pattern card's \texttt{Tactical failure mode} section plus all \texttt{[Reject]} examples' \texttt{Lesson} lines (typically five lessons per card); for each secondary, the methodology card's \texttt{Failure modes (from Reject)} section. Total reads $=$ \texttt{composition\_size} cards. The LLM evaluates each lesson individually, marking \texttt{candidate\_match} as \texttt{no}, \texttt{yes}, or \texttt{borderline} with a one-sentence reasoning citing the candidate field that triggers it (or why it does not). Aggregate verdict $=$ worst across primary and secondaries.
+
+\paragraph{Check 2 --- anti-pattern substantive verification.} \emph{What it catches}: keyword-stuffed mitigations --- candidates whose \texttt{core\_mechanism} contains the right mitigation phrases without producing the artifact those phrases name. Phase 2.2's prompt instructs the LLM to insert mitigation when the composition matches an anti-pattern, but prompts cannot enforce semantic delivery; this check verifies it. If the innovation pattern composition matches one of the three reject-favored 2-way compositions documented in \S\ref{sec:reject} (audit $+$ auxiliary signal at 30\% Oral, $n{=}40$; audit $+$ invariance at 39\%, $n{=}57$; audit $+$ surgical fix at 44\%, $n{=}111$), the audit verifies that the required mitigation is \emph{substantively delivered} in \texttt{theoretical\_leg} or \texttt{core\_mechanism}, not merely keyword-present. The check looks for the artifact the mitigation names: a real preservation theorem, an explicit identifiability condition, a derived implication chain. \texttt{mitigation\_substantively\_delivered} is the binary outcome.
+
+\paragraph{Check 3 --- paper-pointed threat.} \emph{What it catches}: candidates whose claim is already subsumed by a specific recent paper, whether retrieved by Phase 0's broad-domain queries (lit\_table) or by Phase 3.1's mechanism-specific signature\_terms queries (collision\_hits). Phase 0 and Phase 3.1 retrieve along orthogonal axes, so the union is the largest paper pool the system can search; a candidate that survives this check has demonstrably nontrivial novelty headroom. Searches \texttt{lit\_table} $\cup$ \texttt{collision\_hits} (the unified paper pool from Phase 0 and Phase 3.1) for the most specific paper that subsumes or competes with the candidate's claim. If found, the audit emits \texttt{threat\_paper\_id}, a one-paragraph \texttt{subsumption\_argument} citing the threat's specific result, and \texttt{addressable\_via} (which candidate field would need to change). If no paper-pointed threat exists after honest search, \texttt{threat\_paper\_id} is \texttt{no\_threat\_found}: this is a legitimate clearance signal, and fabricating a generic threat to fill the field is forbidden by the prompt.
+
+\paragraph{Two-layer verdict.} Layer 1 is a mechanical hard floor that the LLM cannot override: \texttt{abandon} fires when composition\_reject\_check $=$ \texttt{triggered}, anti\_pattern matched with mitigation\_substantively\_delivered $=$ \texttt{false} and uninsertable, or threat is exact-mechanism overlap. These correspond to corpus-anchored facts the LLM has no authority to soften. Layer 2 is LLM judgment within the safe zone left by Layer 1: \texttt{advance} or \texttt{revise} based on whether borderline / partial / addressable findings hit load-bearing structural properties. The LLM cannot rewrite per-check facts (a check that says \texttt{borderline} stays \texttt{borderline}) but can weigh how severe a borderline is for advance vs.\ revise. The \texttt{verdict\_rationale} must cite specific check findings; ``all checks pass'' or ``looks fine overall'' without naming a finding is a process error.
+
+The two-layer split is a deliberate response to two failure modes of pure-mechanical or pure-LLM aggregation. Pure mechanical aggregation over-triggers \texttt{revise} because it cannot distinguish a single trivial borderline from three severe borderlines. Pure LLM verdict introduces agreeable-bias and loses the audit trail. Hard floor preserves what is non-negotiable; soft layer uses context to distinguish ``must fix'' from ``noted concern, advance with caveat''.
+
+\subsection{Verifiability contracts}
+\label{subsec:skill-verifiability}
+
+Two validators run after Phase 4 to check contracts the prompts assert. Both are mechanical: they detect violations through string equality and field presence, not LLM judgment.
+
+\paragraph{kill\_switch\_integrity (hard fail).} The candidate's three kill-switch fields --- \texttt{falsification\_prediction.what\_we\_run}, \texttt{falsification\_prediction.compute\_budget}, and \texttt{mechanism\_probe\_proposal} --- must be byte-identical from Phase 2.2 through Phase 4. The validation chain depends on the verdict path: \texttt{Phase 2 $\to$ Phase 4} (advance path, Phase 3.2 is a passthrough that emits no \texttt{final\_candidate}), or \texttt{Phase 2 $\to$ Phase 3.3 final\_candidate $\to$ Phase 4} (revise path). Phase 3.3 is forbidden by prompt rule from modifying these three fields; the validator catches any drift mechanically rather than relying on prompt compliance. The motivation: an LLM under context pressure could substitute a friendlier kill-switch experiment (a smaller dataset, a softer compute claim, a less stringent probe) to make the candidate look more defensible at audit time. Byte-identical equality forecloses this loophole.
+
+\paragraph{expansion\_completeness (soft warn).} Phase 4 expansion must contain the structural sections the idea-card PDF template depends on: \texttt{motivation} with $\geq 2$ \texttt{why\_prior\_stopped} entries each carrying \texttt{paper\_id} plus four sub-fields, \texttt{method\_flow.steps[]} where each step has \texttt{linked\_component} and \texttt{linked\_falsification} fields, \texttt{feasibility\_validation} with five sub-verdicts plus an overall verdict, plus non-empty \texttt{abstract\_draft}, \texttt{core\_claim}, and \texttt{sub\_claims[]}. The check is field-existence and list-length; absence triggers a soft warning so the user knows which sections will render as \texttt{(missing)} in the PDF. The PDF still ships even with warnings; the user can re-run Phase 4.1 or fill the gaps manually.
+
+\paragraph{What the validators do not check.} They do not enforce semantic correctness within fields (an empty placeholder ``...'' satisfies expansion\_completeness), they do not check whether the candidate's claim is actually novel (only that the audit said it was), and they do not enforce cross-run determinism (the same query may produce different candidates across runs). Reproducibility is bounded by the underlying LLM, not by the skill design. An earlier validator V\_anti\_pattern (keyword-level mitigation detection) was removed because Phase 3.2's anti\_pattern\_check verifies the same property at the semantic level; keyword detection added redundant signal at the cost of false positives (paraphrased mitigations) and false negatives (keyword-stuffed mitigations without artifact).
+
+\subsection{Output schema}
+\label{subsec:skill-schema}
+
+The idea card contains: title, one-line hook, abstract draft (150--250 words, ordered: problem $\to$ bottleneck $\to$ contribution $\to$ falsification $\to$ expected outcome). The motivation block contains problem framing, why now (citing recent retrieved papers), why prior stopped (a list of $\geq 2$ entries each citing one paper from \texttt{closest\_adjacent} with what they did, what they did not do, and the structural reason they stopped), and what changes when the gap closes. The method flow contains a high-level pipeline narrative plus numbered steps, each step naming the leg it touches (theoretical\_leg / engineering\_leg / both) and the failure mode it tests against (failure\_a\_numerical / failure\_b\_mechanistic / both). The theorem-or-algorithm-or-system-design statement is the formal commitment: a derived equivalence, an algorithm specification, or a system design --- pseudocode or formal statement, not prose alone.
+
+The falsification block (verbatim-echoed from the candidate) commits to one minimal experiment: what to run (model, dataset, what to measure), success threshold, two distinct failure modes (\texttt{failure\_a\_numerical} as ``the metric does not move'' and \texttt{failure\_b\_mechanistic} as ``the metric moves but the predicted mechanism is absent in the probe''), the compute budget, and the decision rule (``if failure\_a or failure\_b $\to$ kill''). The mechanism probe (also verbatim-echoed) is the experiment that distinguishes failure\_b from success. \texttt{compute\_budget} is user-relative: Phase 4's feasibility validation compares to the user's stated compute, with no absolute cap. The five-sub-check feasibility block returns one verdict among \texttt{feasible / tight / infeasible} per axis (compute, data, theoretical, engineering, falsification) plus an overall verdict. Differentiation from literature lists deltas against $\geq 2$ specific \texttt{paper\_id}s. Reviewer-concerns-and-responses derives directly from the audit's three checks plus the paper-pointed threat (when present); each entry names the concern, the response, and the candidate field where the defense is anchored.
+
+What the schema deliberately excludes: experiment matrices, ablation plans, baseline tables, expected figures, and any calendar projection (no ``week N'', no ``first month'', no completion timelines). These belong to the user's experimental engineering, not to the IDEA the skill produces.
+
+\subsection{Trade-offs and limitations}
+\label{subsec:skill-tradeoffs}
+
+\paragraph{Reproducibility is bounded by the underlying LLM.} Phase 1, Phase 2.1, Phase 2.2, Phase 3.2, and Phase 4.1 are LLM-reasoning calls with non-zero variance. The same query on the same model can produce different but coherent candidates across runs. The validators catch contract violations between phases (anti-substitution, expansion completeness), but not cross-run determinism --- that is a property of the underlying inference, not of the skill design.
+
+\paragraph{Coverage of Oral types.} The 13-innovation pattern vocabulary covers theory plus reframing-first Orals, scaling-law Orals, surgical-fix plus theory-anchored Orals, evaluation-validity audit Orals, and most empirical-reveal Orals. It does not cover \emph{benchmark construction} Orals (BIG-bench, HELM, MMLU style); their falsification structure is ``does the benchmark discriminate strong vs.\ weak baselines on the claimed dimension?'' rather than the failure-a/failure-b distinction the skill expects, and the user is routed to \texttt{do\_not\_generate} via the no-verifiable-benchmark OOD trigger. Pure system / infrastructure Orals are similarly routed via the engineering-integration OOD trigger. Estimated coverage: 75--85\% of Oral types in the corpus.
+
+\paragraph{Blank-space directions.} If the user's direction has no adjacent literature in any 24-month retrieval window, Phase 1 routes to \texttt{do\_not\_generate} with a redirect explaining the literature-anchored design needs literature to ground against. The skill is for converting under-specified directions into proposals, not for agenda-setting work that opens new fields. Truly novel directions usually have some adjacent literature the user can reframe against; when they do not, a position paper or workshop pilot is the appropriate next step rather than this skill.
+
+\paragraph{LLM-driven reasoning vs.\ rule-based scaffolding.} An earlier design layered substantial rule-based scaffolding around LLM reasoning (sharpness 0--3 rubrics with persistence times activity caps, cross-lens Jaccard checks, six-dimensional audit scoring, K=N candidate diversity validators, four-attacker reviewer simulation). Each rule layer added complexity without proportionally improving output quality: the LLM had to interpret the rubric, the rule had to parse the LLM's output, and mismatches were common. The current design pushes more of the work onto LLM reasoning and uses rules sparingly at well-defined contracts (kill-switch integrity, expansion completeness, hard-floor verdict triggers, composition-scoped check schema). The trade-off is honest: the skill is more dependent on the underlying LLM's reasoning quality and less amenable to mechanical inspection. In return it is significantly easier to understand, debug, and extend, and the contracts that remain mechanical are the ones whose violations carry the highest cost (silent kill-switch substitution, missing PDF sections).
+
+\paragraph{Self-answering risk in audit-and-revise.} Audit (Phase 3.2) and revision (Phase 3.3) are deliberately separate LLM calls. An earlier single-call design ran audit plus auto-revise together, which produced self-answering bias: the LLM that proposed the strongest attack also chose the fix, so it tended to surface attacks it could already answer. Splitting into two calls forces the audit to identify issues from corpus checks (not LLM intuition) and the revise call to apply fixes mechanically per the audit's \texttt{revision\_targets[]}. The remaining risk is in the audit's Layer 2 soft judgment, where the LLM picks between advance and revise --- the prompt's requirement to cite specific check findings constrains this but does not eliminate it.
+
+%======================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+%======================================================================
+
+We presented an end-to-end pipeline that converts 1{,}947 ICLR/ICML/NeurIPS papers (2021--2025) into 13 induced innovation patterns, 47 induced innovation sub-patterns, and 28 induced research domains, each tagged with its own Opus 4.7-generated operational card: an 8-panel card at the innovation-pattern layer (Appendix~\ref{app:cards}), a 6-panel disambiguation card at the sub-pattern layer (Appendix~\ref{app:clusters}), and a $28 \times 13$ joint domain $\times$ innovation pattern distribution (\S\ref{sec:domains}). Four findings ground the work: (a) the strategy space is shared between accepted and rejected papers (97\% reject coverage by the Oral-induced taxonomy, 1 out-of-taxonomy reject cluster); (b) acceptance bias is innovation-pattern-specific and traceable to specific success-condition vs failure-mode patterns; (c) the eight largest innovation patterns each touch $\geq 18$ of the 28 induced domains and the top two touch 27/28, supporting domain-agnostic innovation pattern recommendation, but cell-level Oral rates vary by tens of percentage points across domains (Fig.~\ref{fig:domain_method}b), so acceptance priors must be conditioned on the user's domain; (d) under independent paper-level multi-label tagging, 57.3\% of papers execute exactly three innovation patterns, \(k{=}3\) is the mode for all three classes (Oral / HC / Reject), HC carries a heavier \(k{=}4\) tail (10.9\%) than Oral (6.9\%), and 95.6\% of papers carry innovation patterns beyond the cluster pair --- the cluster-based 2-cap systematically under-counts true composition; the standout 3-way \emph{audit~+~reframing~+~shared\_latent\_alignment} appears in 18 papers (12 Oral, 6 HC, 0 Reject), the dataset's only \(n \geq 10\) composition with no rejected-class instances. These 13 + 47 + 28 artifacts are the substrate on which the SKILL system (\S\ref{sec:skill}) is built: a two-tier model-agnostic five-phase workflow whose corpus-anchored audit performs three checks --- composition-scoped reject-pattern scan against the candidate's chosen sub-pattern card and any secondary patterns' methodology cards, anti-pattern substantive-mitigation verification, and paper-pointed threat search across the unified Phase-0 + Phase-3.1 paper pool --- with a hard-floor / soft-judgment two-layer verdict and mechanical kill-switch byte-identical anti-substitution. The skill returns one Oral-level (top $\sim 5\%$) reviewer-defensible idea card per user input, with three possible outcomes: an idea card (PDF + Markdown + JSON), a structured \texttt{do\_not\_generate} diagnosis when the user's direction is OOD, or a \texttt{phase\_3\_failed} report with concrete user-side fixes when the audit abandons. The empirical taxonomy and the skill are released under permissive licensing.
+
+
+\bibliographystyle{plain}
+\begin{thebibliography}{50}
+
+% --- End-to-end systems and ideation agents ---
+\bibitem[Lu et al.(2024)]{lu2024aiscientist} Lu, C., et al. (2024). The AI Scientist: Towards Fully Automated Open-Ended Scientific Discovery. \textit{arXiv:2408.06292}.
+\bibitem[Baek et al.(2024)]{baek2024researchagent} Baek, J., et al. (2024). ResearchAgent: Iterative Research Idea Generation over Scientific Literature with Large Language Models. \textit{arXiv:2404.07738}.
+\bibitem[Schmidgall et al.(2025)]{agentlab2025} Schmidgall, S., et al. (2025). Agent Laboratory: Using LLM Agents as Research Assistants. \textit{arXiv:2501.04227}.
+\bibitem[AI-Researcher Team(2025)]{airesearcher2025} AI-Researcher: Autonomous Scientific Innovation. (2025). \textit{arXiv:2505.18705}.
+\bibitem[IRIS Team(2025)]{iris2025} IRIS: Interactive Research Ideation System for Accelerating Scientific Discovery. (2025). \textit{arXiv:2504.16728}.
+\bibitem[Idea2Plan Team(2025)]{idea2plan2025} Idea2Plan: Exploring AI-Powered Research Planning. (2025). \textit{arXiv:2510.24891}.
+\bibitem[Auto Research Team(2025)]{autoresearch2025} A Vision for Auto Research with LLM Agents. (2025). \textit{arXiv:2504.18765}.
+\bibitem[Sakana AI(2024)]{sakana_v2} Sakana AI Scientist v2: Evolutionary Research Idea Generation. (2024).
+
+% --- Multi-agent and search-based ideation ---
+\bibitem[VirSci Team(2024)]{virsci2024} Many Heads Are Better Than One: Improved Scientific Idea Generation by an LLM-Based Multi-Agent System. (2024). \textit{arXiv:2410.09403}.
+\bibitem[Deep Ideation Team(2025)]{deepideation2025} Deep Ideation: Designing LLM Agents to Generate Novel Research Ideas on Scientific Concept Network. (2025). \textit{arXiv:2511.02238}.
+\bibitem[Multi-Workflow Team(2026)]{multiworkflow2026} Evaluating Novelty in AI-Generated Research Plans Using Multi-Workflow LLM Pipelines. (2026). \textit{arXiv:2601.09714}.
+\bibitem[Nova Team(2024)]{nova2024} Nova: An Iterative Planning and Search Approach to Enhance Novelty and Diversity of LLM Generated Ideas. (2024). \textit{arXiv:2410.14255}.
+\bibitem[Alien Science Team(2026)]{alienscience2026} Alien Science: Sampling Coherent but Cognitively Unavailable Research Directions from Idea Atoms. (2026). \textit{arXiv:2603.01092}.
+
+% --- Knowledge-graph- and corpus-grounded idea generation ---
+\bibitem[SciMuse Team(2024)]{scimuse2024} SciMuse: Interesting Scientific Idea Generation using Knowledge Graphs and LLMs --- Evaluations with 100 Research Group Leaders. (2024). \textit{Nature Machine Intelligence (variant)}.
+\bibitem[KG-Hyp Team(2024)]{kghyp2024} Improving Scientific Hypothesis Generation with Knowledge Grounded Large Language Models. (2024). \textit{arXiv:2411.02382 (variant)}.
+
+% --- Methodology / pattern induction ---
+\bibitem[Wang et al.(2024)]{wang2024scireasoning} Wang, Z., et al. (2024). Sci-Reasoning: Analyzing Scientific Innovation Reasoning in Top AI Conference Papers. \textit{arXiv:2601.04577}.
+\bibitem[MoRI Team(2026)]{moRI2026} MoRI: Learning Motivation-Grounded Reasoning for Scientific Ideation in Large Language Models. (2026). \textit{arXiv:2603.19044}.
+\bibitem[MotivGraph Team(2025)]{motivgraph2025} MotivGraph-SoIQ: Integrating Motivational Knowledge Graphs and Socratic Dialogue for LLM Scientific Ideation. (2025). \textit{arXiv:2509.21978}.
+\bibitem[Navigating Ideation Team(2026)]{navigating_ideation2026} Navigating Ideation Space: Decomposed Conceptual Representations for Positioning Scientific Ideas. (2026). \textit{arXiv:2601.08901}.
+
+% --- Novelty assessment and prior-art collision ---
+\bibitem[NovBench Team(2026)]{novbench2026} NovBench: Evaluating Large Language Models on Academic Paper Novelty Assessment. (2026). \textit{arXiv:2604.11543}.
+\bibitem[OpenNovelty Team(2026)]{opennovelty2026} OpenNovelty: An LLM-powered Agentic System for Verifiable Scholarly Novelty Assessment. (2026). \textit{arXiv:2601.01576}.
+\bibitem[GraphMind Team(2025)]{graphmind2025} GraphMind: Interactive Novelty Assessment System for Accelerating Scientific Discovery. (2025). \textit{arXiv:2510.15706}.
+\bibitem[Idea Novelty Checker Team(2025)]{idea_novelty_checker2025} Literature-Grounded Idea Novelty Checker via Two-Stage Retrieve-Then-Rerank. (2025). \textit{arXiv:2506.22026 (variant)}.
+\bibitem[Lit-Grounded Team(2025)]{litgrounded2025} Literature-Grounded Novelty Assessment of Scientific Ideas. (2025). \textit{arXiv:2506.22026}.
+\bibitem[Augment-Ideation Team(2026)]{augment_ideation2026} Augmenting Research Ideation with Data: Metadata- and Validation-Aware Idea Generation. (2026). \textit{arXiv:2505.21396}.
+
+% --- Idea evaluation: feasibility, taste, future impact ---
+\bibitem[Si et al.(2024)]{si2024llmideas} Si, C., Yang, D., \& Manning, C.D. (2024). Can LLMs Generate Novel Research Ideas? A Large-Scale Human Study with 100+ NLP Researchers. \textit{arXiv:2409.04109}.
+\bibitem[Si et al.(2026)]{si2026execution} Si, C., et al. (2026). The Ideation--Execution Gap: Execution Outcomes of LLM-Generated versus Human Research Ideas. \textit{arXiv:2506.20803}.
+\bibitem[AI Taste Team(2026)]{ai_taste2026} AI Can Learn Scientific Taste. (2026). \textit{arXiv:2603.14473}.
+\bibitem[HindSight Team(2026)]{hindsight2026} HindSight: Evaluating LLM-Generated Research Ideas via Future Impact. (2026). \textit{arXiv:2603.15164}.
+\bibitem[Future-Aligned Team(2026)]{future_aligned2026} Learning to Predict Future-Aligned Research Proposals with Language Models. (2026). \textit{arXiv:2603.27146}.
+
+% --- Benchmarks ---
+\bibitem[IdeaBench Team(2024)]{ideabench2024} IdeaBench: Benchmarking Large Language Models for Research Idea Generation. (2024). \textit{arXiv:2411.02429}.
+\bibitem[AI Idea Bench 2025 Team(2025)]{airesearchideas2025} AI Idea Bench 2025: AI Research Idea Generation Benchmark. (2025). \textit{arXiv:2504.14191}.
+\bibitem[ResearchBench Team(2025)]{researchbench2025} ResearchBench: Benchmarking LLMs in Scientific Discovery via Inspiration-Based Task Decomposition. (2025). \textit{arXiv:2503.21248}.
+\bibitem[NewtonBench Team(2025)]{newtonbench2025} NewtonBench: Benchmarking Generalizable Scientific Law Discovery in LLM Agents. (2025). \textit{arXiv:2510.07172}.
+
+% --- Surveys ---
+\bibitem[From Automation to Autonomy Team(2025)]{from_automation_2025} From Automation to Autonomy: A Survey on Large Language Models in Scientific Discovery. (2025, EMNLP). \textit{arXiv:2505.13259}.
+\bibitem[Sci. Intel. Survey Team(2025)]{sci_intel_survey2025} Towards Scientific Intelligence: A Survey of LLM-based Scientific Agents. (2025). \textit{arXiv:2503.24047}.
+
+% --- Foundations: structured reasoning and clustering substrate ---
+\bibitem[Wei et al.(2022)]{wei2022cot} Wei, J., et al. (2022). Chain-of-Thought Prompting Elicits Reasoning in Large Language Models. \textit{NeurIPS 2022}.
+\bibitem[Yao et al.(2023)]{yao2023react} Yao, S., et al. (2023). ReAct: Synergizing Reasoning and Acting in Language Models. \textit{ICLR 2023}.
+\bibitem[Lewis et al.(2020)]{lewis2020rag} Lewis, P., et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. \textit{NeurIPS 2020}.
+\bibitem[Schick et al.(2023)]{schick2023toolformer} Schick, T., et al. (2023). Toolformer: Language Models Can Teach Themselves to Use Tools. \textit{NeurIPS 2023}.
+\bibitem[Cohan et al.(2020)]{cohan2020specter} Cohan, A., et al. (2020). SPECTER: Document-level Representation Learning using Citation-informed Transformers. \textit{ACL 2020}.
+\bibitem[Grootendorst(2022)]{grootendorst2022bertopic} Grootendorst, M. (2022). BERTopic: Neural Topic Modeling with a Class-based TF-IDF Procedure. \textit{arXiv:2203.05794}.
+\bibitem[McInnes et al.(2018)]{umap2018} McInnes, L., Healy, J., \& Melville, J. (2018). UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction. \textit{arXiv:1802.03426}.
+\bibitem[McInnes et al.(2017)]{hdbscan2017} McInnes, L., Healy, J. (2017). hdbscan: Hierarchical density based clustering. \textit{Journal of Open Source Software}.
+
+% --- Anthropic skill best practices ---
+\bibitem[Anthropic(2025)]{anthropic_skill_bp_2025} Anthropic. (2025). Agent Skills Best Practices. \url{https://platform.claude.com/docs/zh-CN/agents-and-tools/agent-skills/best-practices}.
+
+% --- Corpus papers discussed substantively in body text ---
+\bibitem[Kingma \& Gao(2023)]{kingma2023diffusion} Kingma, D. P., \& Gao, R. (2023). Understanding Diffusion Objectives as the ELBO with Simple Data Augmentation. \emph{NeurIPS 2023}. \url{https://openreview.net/forum?id=NnMEadcdyD}. (Corpus \texttt{paper\_id}: NeurIPS\_2023\_0753.)
+\bibitem[Kumar et al.(2022)]{kumar2022lpft} Kumar, A., Raghunathan, A., Jones, R., Ma, T., \& Liang, P. (2022). Fine-Tuning can Distort Pretrained Features and Underperform Out-of-Distribution. \emph{ICLR 2022}. \url{https://openreview.net/forum?id=UYneFzXSJWh}. (Corpus \texttt{paper\_id}: ICLR\_2022\_0094.)
+\bibitem[Henzinger et al.(2023)]{henzinger2023dpcontinual} Henzinger, M., Sricharan, S., \& Steiger, T. (2023). The Price of Differential Privacy under Continual Observation. \emph{ICML 2023}. \url{https://openreview.net/forum?id=yPUc796tVF}. (Corpus \texttt{paper\_id}: ICML\_2023\_0551.)
+\bibitem[Gemp et al.(2021)]{gemp2021eigengame} Gemp, I., McWilliams, B., Vernade, C., \& Graepel, T. (2021). EigenGame: PCA as a Nash Equilibrium. \emph{ICLR 2021 Outstanding Paper}. \url{https://openreview.net/forum?id=NzTU59SYbNq}. (Corpus \texttt{paper\_id}: ICLR\_2021\_0018.)
+\bibitem[M\"ollenhoff \& Khan(2023)]{mollenhoff2023sambayes} M\"ollenhoff, T., \& Khan, M. E. (2023). SAM as an Optimal Relaxation of Bayes. \emph{ICLR 2023 Spotlight}. \url{https://openreview.net/forum?id=k4fevFqSQcX}. (Corpus \texttt{paper\_id}: ICLR\_2023\_0331.)
+
+\end{thebibliography}
+
+
+\appendix
+\section{Innovation Pattern Cards}
+\label{app:cards}
+
+The 13 innovation patterns. Each card has eight panels: \emph{step\_by\_step}, \emph{success\_conditions}, \emph{failure\_modes}, \emph{oral\_reject\_gap}, \emph{oral\_hc\_gap}, \emph{reviewer\_expectations}, \emph{cognitive\_barriers}, and \emph{representative\_examples}. Sample sizes ($n_{\text{Oral}}/n_{\text{HC}}/n_{\text{Reject}}$), meta-review coverage, and the confidence flag appear at the top of each card. The card-generation procedure is described in App.~\ref{app:cards-method}; the machine-readable version is in \texttt{data/clustering/cards/methodology\_cards.json}.
+
+\input{methodology_cards}
+
+\section{Innovation Sub-Pattern Cards}
+\label{app:clusters}
+
+The 47 innovation sub-patterns. Each card has six panels: \emph{tactical\_pattern} (the specific move shared across the cluster's papers, anchored in verbs and objects), \emph{differentiation\_within\_parent} (what distinguishes this cluster from its sibling clusters under the same level-1 innovation pattern --- with at least one sibling cluster\_id cited explicitly), \emph{when\_to\_pick\_this\_one} (the operational signal that selects this tactic among siblings), \emph{tactical\_failure\_mode} (the cluster-specific failure pattern, anchored in cited reject \texttt{paper\_id}s), \emph{representative\_oral} (one Oral exemplar with a one-line lesson), and \emph{representative\_reject} (one Reject exemplar with a one-line lesson). Every card carries a confidence flag set automatically from sample size: out of 47 cards, 22 are \textbf{high} confidence, 8 \textbf{medium}, and 17 \textbf{low} (the low-confidence cards correspond to clusters with $n_{\text{Oral}}{<}6$ or $n_{\text{Reject}}{<}4$, where the tactical signature or the failure mode rests on thin evidence). The complete machine-readable version is in \texttt{data/clustering/tactical\_cards/tactical\_cards.json}; cluster labels are in \texttt{data/clustering/results/all\_cluster\_labels.json}.
+
+\input{tactical_cards_appendix}
+
+\section{Card-Generation Procedure}
+\label{app:cards-method}
+
+\textbf{Review recovery.} Before card generation we run a review-recovery pass that re-pulls all OpenReview \texttt{Official\_Review} and \texttt{Decision} replies under four schema adapters (ICLR-2021/2022/2023 v1, plus v2-modern for ICLR 2024+ / NeurIPS / ICML 2025) and merges the recovered fields back into the dataset. The original consolidation had $35.4\%$ of papers with reviews, $15.8\%$ with substantive AC meta-reviews; after recovery, $82.8\%$ of papers have real review text and $82.8\%$ have substantive meta-reviews. ICML 2023 / 2024 (282 Oral + 42 HC) carry no public reviews on OpenReview and are passed through without reviewer voice. The merge step preserves all original abstracts and abstract$_*$ extractions; only \texttt{reviews}, \texttt{meta\_review}, and \texttt{openreview\_id} fields are touched.
+
+\textbf{Per-innovation pattern input.} For each of the 13 innovation patterns we build a single Opus input containing: innovation pattern id / name / definition / operational signature / when-to-apply (verbatim from \texttt{methodologies.json}); sample sizes and meta coverage; and the full Oral, HC, and Reject paper lists. Each paper is rendered with: \texttt{paper\_id}, decision, venue, year, title, four abstract$_*$ fields, and meta-review (truncated to 2500 chars). The largest methodology (\texttt{formal\_reframing\_via\_equivalence}, 162 Oral + 12 HC + 85 Reject) requires $\sim$170k input tokens.
+
+\textbf{Generation prompt.} A 220-line system prompt (\texttt{paper/cards/system\_prompt.txt}) enforces: every condition / mode cites $\geq 2$ \texttt{paper\_id}s; oral\_reject\_gap and oral\_hc\_gap cite \emph{observable structural moves} (forbidden words: ``more novel'', ``better written'', ``stronger experiments'', ``more impact''); reviewer\_expectations carry a \texttt{evidence\_source} tag (\texttt{oral\_reviews} / \texttt{reject\_reviews} / \texttt{both}); confidence is set \texttt{low} when $n_{\text{Oral}}<10$, $n_{\text{Reject}}<10$, or any meta coverage $<40\%$; oral\_hc\_gap is replaced with ``HC sample (n=X) too small for reliable contrast'' when $n_{\text{HC}}<5$.
+
+\textbf{Schema validation.} Output is a strict JSON schema (\texttt{card\_schema.json}). After generation a validator pass checks that every cited \texttt{paper\_id} exists in the dataset and that the confidence flag matches the sample-size rule. Across 13 cards $\times$ ${\sim}10$ evidence-paper citations, exactly one hallucinated id (\texttt{ICLR\_2023\_0992} in the \texttt{decomposition\_into\_tractable\_stages} failure-modes list) was caught and removed.
+
+\textbf{Cost and runtime.} Total cost across the 13 cards: \$11.5 (Opus 4.7, 1M context). Runtime: $\sim$50 minutes serial, with quota-aware retry. Cost is dominated by the two largest innovation patterns ($\sim$\$2 each); smallest cards cost $\sim$\$0.4.
+
+\end{document}

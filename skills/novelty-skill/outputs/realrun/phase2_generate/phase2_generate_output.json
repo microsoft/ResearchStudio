@@ -1,0 +1,91 @@
+{
+  "_dryrun_note": "Phase 2.2 generation reading: innovation-patterns/analytic_refinement_of_loose_bounds.md + innovation-patterns/assumption_audit_and_relax.md + innovation-sub-patterns/C15.md (sole sub-pattern under analytic_refinement) + closest_adjacent abstracts. Anti-pattern: clean.",
+
+  "candidate_id": "C1",
+  "title": "Finite-Sample Sharpening of the SFT-as-Adversarial-Regularizer Equivalence",
+  "hook": "The SFT-loss-as-adversarial-regularizer equivalence holds only in the limit. We sharpen it to finite-sample form — and the residual term is exactly the overoptimization signal RLHF training should regulate.",
+  "problem": "Current RLHF overoptimization mitigations (constrained-RL thresholds, iterative smoothing, ensemble disagreement) are heuristic because the underlying theoretical equivalence (SFT loss ↔ adversarial reward regularizer, openalex:W4399115631) is asymptotic. The user's regime is finite preference data (Anthropic HH ≈ 161k pairs) where the asymptotic bound is loose. We tighten the equivalence into a finite-sample form whose residual term is a derivable function of preference dataset size and proxy-true reward gap — and propose using this residual as the principled regularization schedule.",
+
+  "pattern_composition": [
+    {
+      "pattern_id": "analytic_refinement_of_loose_bounds",
+      "role": "primary",
+      "what_this_pattern_contributes": "Sharpens the existing asymptotic SFT-as-adversarial equivalence (W4399115631) by replacing the limit step with a finite-sample concentration bound; the algorithm (SFT-anchored PPO) is unchanged but the regularization strength becomes a derived function of dataset size + proxy-true gap, not a heuristic schedule."
+    },
+    {
+      "pattern_id": "assumption_audit_and_relax",
+      "role": "secondary",
+      "what_this_pattern_contributes": "Names the audited assumption — 'KL-to-SFT distance is sufficient to track proxy-true reward divergence in finite sample' — and replaces it with the structurally richer measure 'finite-sample chi² divergence between proxy and true reward gradients on the preference manifold', for which the analytic refinement derives a tight bound."
+    }
+  ],
+
+  "sub_pattern_id": "C15",
+  "sub_pattern_rationale": {
+    "when_to_pick_quote": "Locate a single load-bearing inequality, complexity parameter, or concentration tool inside a mature proof — one that downstream rates pass through unchanged — and replace it with a strictly sharper drop-in substitute, leaving the algorithm and the rest of the derivation intact.",
+    "how_lens_question_operationalizes_here": "W4399115631's load-bearing step is the asymptotic limit (n → ∞) under which SFT loss equals the adversarial regularizer. We replace this single step with a finite-sample concentration bound (Bernstein-type on the preference-gradient covariance), propagate through the rest of W4399115631's argument unchanged, and recover a finite-n equivalence with explicit residual term ε(n, ‖∇R_proxy − ∇R_true‖). This residual term IS the overoptimization signal: when ε grows, regularization should tighten. Algorithm (SFT-anchored PPO) is byte-identical to W4399115631's prescription. Parallels NeurIPS_2024_1306 swapping diameter for span as the MDP complexity index — same algorithm, sharper bound cascades.",
+    "siblings_considered": [
+      {
+        "sibling_sub_pattern_id": "C15",
+        "why_not_picked": "C15 is the sole sub-pattern under analytic_refinement_of_loose_bounds in this corpus; no sibling alternatives at this level. The audit secondary's sub-pattern siblings (C00, C03, C05, C10, C34 under audit_and_relax) were considered for primary role but the user's bottleneck is structurally about a tight bound on an existing equivalence, not a fresh assumption-relaxation: that's why audit is secondary, not primary."
+      }
+    ]
+  },
+  "outside_taxonomy": false,
+  "outside_justification": "",
+
+  "core_mechanism": "(1) Re-derive W4399115631's SFT-as-adversarial-regularizer equivalence with the asymptotic limit step replaced by a finite-sample Bernstein-type concentration inequality on the preference-gradient covariance Σ_pref (the matrix whose largest eigenvalue controls the approximation gap between empirical and population preference distribution). (2) The result: L_SFT = L_adv-reg + ε(n, ‖∇R_proxy − ∇R_true‖_Σ_pref), where ε is computable from the preference dataset alone (no gold reward needed). (3) Use ε as the regularization-strength schedule: at training step t, set the SFT-anchor coefficient β_t proportional to ε estimated on the current policy's rollouts. (4) Train SFT-anchored PPO with the schedule β_t and verify empirically that (a) overoptimization (proxy-vs-gold gap) is bounded by predicted ε, (b) the schedule outperforms heuristic constant-β and Moskovitz constraint-Lagrangian schedules at fixed compute.",
+
+  "novelty_claim": "First derivation that the SFT-as-adversarial-regularizer equivalence has a finite-sample form whose residual is the overoptimization signal itself, yielding a derivable rather than heuristic regularization schedule. Subsumes Moskovitz's constraint threshold and Zhu's iterative smoothing strength as schedule special cases under different choices of Σ_pref proxy.",
+
+  "theoretical_leg": "Theorem (Finite-Sample SFT-as-Adversarial-Regularizer Equivalence): Let Σ_pref be the empirical preference-gradient covariance over n pairs. Then L_SFT(θ) = L_adv-reg(θ; β=‖∇R_proxy − ∇R_true‖_Σ_pref) + ε(n, ‖∇R_proxy − ∇R_true‖), where ε ≤ C · √(d · log(1/δ) / n) · ‖∇R_proxy − ∇R_true‖_op + O(n^(-1)) with probability 1−δ over the preference draw, for an explicit constant C depending on the policy class. Proof: replace the asymptotic step in W4399115631 with a Bernstein-type concentration on Σ_pref, propagate through the existing argument unchanged. Corollary: the residual ε is computable from preference data alone (no gold reward needed) and serves as a derivable regularization schedule.",
+
+  "engineering_leg": "~30 lines of PyTorch on top of standard RLHF training loop: (a) compute Σ_pref empirically over a held-out preference batch each K policy steps; (b) estimate ‖∇R_proxy − ∇R_true‖_Σ_pref via the proxy reward model's gradient norm + a calibration constant from the SFT model's preference-likelihood gradient; (c) set β_t = clip(c · ε(n, ...), β_min, β_max); (d) standard PPO with this β_t schedule. No new architectures or losses beyond the standard SFT-anchored PPO; only the schedule for the existing β coefficient changes.",
+
+  "differentiation_from_lit": [
+    {
+      "paper_id": "openalex:W4399115631",
+      "delta": "W4399115631 derives the SFT-as-adversarial equivalence asymptotically (n → ∞ limit). We sharpen the single asymptotic step into a finite-sample concentration bound, recovering W4399115631 as the n → ∞ limit of our theorem. The substantive contribution is the residual term ε(n, ...) — which W4399115631 cannot characterize — and its operational use as a regularization schedule."
+    },
+    {
+      "paper_id": "dblp:conf/iclr/MoskovitzSSSSDM24",
+      "delta": "Moskovitz formulates RLHF as constrained RL with a heuristic threshold on a proxy gap measure. Our theorem shows that under specific Σ_pref structure, the optimal Lagrangian schedule is exactly β_t = ε(n, ...) — recovering Moskovitz's heuristic constraint as a special case of our derived schedule, while explaining when the heuristic fails (when Σ_pref is rank-deficient on the user's preference manifold)."
+    },
+    {
+      "paper_id": "dblp:conf/icml/ZhuJJ24",
+      "delta": "Zhu's iterative data smoothing reduces reward-model overfitting upstream by adjusting smoothing strength. We show the optimal smoothing strength under our finite-sample form is also β_t = ε(n, ...) viewed as preference-data-side regularization rather than policy-side, explaining the structural similarity of the two methods and giving a derivable rather than iterative-empirical schedule."
+    },
+    {
+      "paper_id": "openalex:W4417212154",
+      "delta": "Uncertainty-penalized RLHF uses ensemble disagreement as an empirical proxy for the proxy-true reward gap. Our theorem provides a closed-form expression for that gap (in terms of Σ_pref and gradient-norm estimates) without requiring an ensemble — and shows when ensemble disagreement provably tracks ε vs when it does not (it tracks ε only when the ensemble is large enough to span the preference-gradient eigenspectrum, otherwise underestimates)."
+    }
+  ],
+
+  "falsification_prediction": {
+    "what_we_run": "Train SFT-anchored PPO on Anthropic HH-RLHF with Llama-3-8B SFT base, comparing four schedules: (a) constant β = 0.1 (vanilla baseline), (b) Moskovitz constrained Lagrangian, (c) ensemble-disagreement schedule (5-model ensemble), (d) our derived β_t = clip(c · ε(n, Σ_pref^t), 0.01, 1.0) schedule. Use Llama-3-70B as held-out gold reward proxy. Measure (i) gold-reward gap at fixed proxy-reward target, (ii) max gold reward achieved before degradation, (iii) empirical ε(n, Σ_pref^t) trajectory vs theoretical bound at three checkpoints (10k, 50k, 200k preference pairs).",
+    "success": "Schedule (d) achieves at least 0.15 bits per token higher gold reward at peak than schedules (a)/(b)/(c) at fixed compute (8×A100×8wk); empirical ε(n, ...) trajectory stays within 1.5× of theoretical bound across all 3 checkpoints; gold-reward degradation onset for (d) is delayed by ≥ 50% of training steps relative to (a).",
+    "failure_a_numerical": "Schedule (d) does not improve peak gold reward over baselines at fixed compute (within 0.05 bits per token).",
+    "failure_b_mechanistic": "Schedule (d) improves peak gold reward, but empirical ε(n, ...) trajectory exceeds theoretical bound by > 3× at any of the 3 checkpoints — indicating the finite-sample bound is not the operating mechanism (gain came from regularization side-effect, not from tracking the predicted residual).",
+    "compute_budget": "12 GPU-day for the minimal experiment (4 schedules × 1 seed × 200k preference pairs on Llama-3-8B at 8×A100). User has 8×A100×8wk ≈ 448 A100-day; budget is 1.5 orders of magnitude under available — feasible.",
+    "decision_rule": "if failure_a or failure_b → kill"
+  },
+
+  "mechanism_probe_proposal": "At each of 3 checkpoints (10k, 50k, 200k preference pairs into training), measure: (i) empirical L_SFT - L_adv-reg gap, (ii) theoretical ε(n, ...) computed from preference-gradient covariance, (iii) gold-vs-proxy reward gap measured by Llama-3-70B reference. Discriminating outcome: (i) ≈ (ii) within Bernstein-bound tolerance AND (iii) tracks (ii) within constant factor at each checkpoint, for schedule (d) only. For schedules (a)/(b)/(c) the tracking should fail at ≥ 1 checkpoint. This distinguishes 'finite-sample bound IS the operational mechanism' (success) from 'gain from side-effect' (failure_b).",
+
+  "R0_case": {
+    "novelty_case": "First derivation of a finite-sample form of the SFT-as-adversarial-regularizer equivalence whose residual term IS the principled overoptimization regularization signal (signature: derivable theorem with finite-sample bound + observable empirical regime — the ε trajectory measurable across training). Closest_adjacent papers leave this open: W4399115631 stops at asymptotic equivalence; Moskovitz / Zhu / W4417212154 use heuristic thresholds / smoothing / ensemble disagreement instead of a derived bound.",
+    "almost_prior": {
+      "paper_id": "openalex:W4399115631",
+      "what_step_was_missed": "W4399115631 derives the asymptotic (n → ∞) SFT-as-adversarial-regularizer equivalence but does not characterize the finite-sample residual. The substantive step they missed: replacing the asymptotic limit on Σ_pref with a Bernstein-type concentration bound, which yields a closed-form residual ε(n, ...) usable as the regularization schedule. Their argument structure carries over once this single step is sharpened — the algorithm and the rest of their derivation are unchanged."
+    }
+  },
+
+  "is_reframing_contribution": false,
+
+  "signature_terms": [
+    "RLHF SFT adversarial regularizer finite-sample",
+    "preference-gradient covariance concentration bound",
+    "derived KL anchor schedule overoptimization",
+    "Bernstein bound reward model RLHF",
+    "proxy-true reward gap finite-sample"
+  ]
+}

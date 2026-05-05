@@ -1,0 +1,103 @@
+{
+  "_dryrun_note": "Phase 3.2 audit on C1 with composition-aware 4-step design. Reads 1 tactical card (C28 for primary formal_reframing_via_equivalence) + 1 innovation pattern card (assumption_audit_and_relax for secondary) + lit_table.md + anti-patterns.md + collision_hits.json. Single LLM call, no auto-revise.",
+
+  "candidate_id": "C1",
+
+  "composition_reject_check": {
+    "primary": {
+      "pattern_id": "formal_reframing_via_equivalence",
+      "anchor": "sub_pattern:C28",
+      "tactical_failure_mode_quoted": "Substitution dressed as equivalence — replacing one heuristic with a slightly more principled-looking variant without recovering an exact, named classical object. Lacking a clean ‟L_heuristic = L_classical_object\" identity that a reviewer can verify in one line.",
+      "reject_lessons_evaluated": [
+        {
+          "paper_id": "ICML_2025_1680",
+          "lesson_quoted": "f_χⁿ regularizer motivated by gradient-field analysis without recovering any classical object as a special case is a better-tuned heuristic, not a principled equivalence.",
+          "candidate_match": "no",
+          "reasoning": "Candidate names ELBO of the augmented model A_θ as the classical target in advance (theoretical_leg first sentence)."
+        },
+        {
+          "paper_id": "ICLR_2024_0813",
+          "lesson_quoted": "Replacing supremum with energy distance is analytic improvement, not equivalence — the new objective must BE a known classical estimator, not just a less vacuous one.",
+          "candidate_match": "no",
+          "reasoning": "Candidate's L_CD = ELBO_{A_θ} + ε(t) IS an exact equivalence, not an analytic tightening."
+        },
+        {
+          "paper_id": "ICML_2025_1779",
+          "lesson_quoted": "Bundles three fixes under one objective; the equivalence surface is internal to the new construction rather than a bridge to classical statistics.",
+          "candidate_match": "no",
+          "reasoning": "Candidate's bridge is via Tweedie's formula — a textbook tool — to ELBO of a defined classical object."
+        },
+        {
+          "paper_id": "ICLR_2024_0941",
+          "lesson_quoted": "Transports score-based convergence proofs to consistency models — an *adaptation* of analysis machinery, not an equivalence to a textbook framework.",
+          "candidate_match": "no",
+          "reasoning": "Candidate is not transporting analysis from a related framework; it derives an exact L_CD = ELBO equivalence via Tweedie."
+        },
+        {
+          "paper_id": "NeurIPS_2025_1923",
+          "lesson_quoted": "Equivalence showing the target collapses to single-sample fitting demystifies as degenerate rather than recovering as a principled instance — same tactical move, opposite payoff.",
+          "candidate_match": "no",
+          "reasoning": "Candidate's equivalence positively legitimizes CD as a principled likelihood objective at the boundary."
+        }
+      ],
+      "verdict": "clear"
+    },
+    "secondaries": [
+      {
+        "pattern_id": "assumption_audit_and_relax",
+        "anchor": "pattern_card:failure_modes",
+        "failure_modes_evaluated": [
+          {
+            "failure_mode_quoted": "Asserting an assumption is being relaxed without demonstrating it was actually binding — the proposed change works empirically but the paper never shows that the identified assumption (rather than capacity, data quality, or regularization) drove the prior failure.",
+            "candidate_match": "borderline",
+            "reasoning": "Candidate identifies the boundary regime (score Lipschitz blows up at t→0) as the audited assumption. The mechanism_probe_proposal at t∈{0.005, 0.05, 0.5} compares L_CD vs L_augmented_ELBO — this isolates the boundary specifically. But: candidate does not include a separation result (impossibility / lower bound / counterexample) proving the boundary regime IS the binding constraint vs being one of several; this is what the failure mode warns against."
+          },
+          {
+            "failure_mode_quoted": "Identifying the right hidden assumption but offering only an empirical fix — no theorem characterizes when the relaxation succeeds, so the contribution reduces to a heuristic with one new dataset.",
+            "candidate_match": "no",
+            "reasoning": "Candidate has theoretical_leg (Augmented-ELBO Equivalence Theorem with explicit ε(t) bound at finite NFE), not just empirical patch."
+          },
+          {
+            "failure_mode_quoted": "Combining the relaxation with multiple other novelties at once, so reviewers cannot attribute gains to the audited assumption — papers stack components and skip ablations isolating the targeted assumption.",
+            "candidate_match": "no",
+            "reasoning": "Engineering leg is ~8 lines replacing CD loss term with augmented-ELBO; rest of training pipeline byte-identical. Single architectural change isolates contribution to the audited assumption."
+          },
+          {
+            "failure_mode_quoted": "Treating the relaxation as a 'natural extension' that inherits the prior framework's validity automatically, without verifying that the inherited theory actually carries over — most visible when porting techniques across communities.",
+            "candidate_match": "no",
+            "reasoning": "Candidate explicitly proves the equivalence via Tweedie rather than asserting it inherits from NeurIPS_2023_0753's single-network result. Almost_prior section names the construction step (teacher-conditioned A_θ) that doesn't exist in the prior paper."
+          }
+        ],
+        "verdict": "borderline"
+      }
+    ],
+    "verdict": "borderline",
+    "reasoning": "Primary (C28) is clear; secondary (assumption_audit_and_relax) is borderline due to missing formal separation result demonstrating the boundary regime is binding (vs capacity / regularization confounds). Aggregate = worst across roles = borderline. Composition's main exposure surface is the secondary innovation pattern's separation gap, not the primary's reformulation move."
+  },
+
+  "anti_pattern_check": {
+    "matched_pattern_id": null,
+    "required_mitigation_quoted": null,
+    "mitigation_substantively_delivered": "n/a",
+    "reasoning": "Composition is {assumption_audit_and_relax, formal_reframing_via_equivalence}. None of the 3 anti-patterns (audit+auxiliary_signal / audit+invariance / audit+surgical) match this composition."
+  },
+
+  "paper_pointed_threat": {
+    "threat_paper_id": "no_threat_found",
+    "threat_source": "n/a",
+    "subsumption_argument": null,
+    "addressable_via": null
+  },
+
+  "verdict": "revise",
+  "verdict_layer": "soft_judgment",
+  "verdict_rationale": "Hard floor did not fire (no triggered Reject pattern, no unmitigated anti-pattern, no exact-mechanism collision). Soft judgment: composition_reject_check.secondaries[assumption_audit_and_relax] is borderline because the failure mode 'Asserting an assumption is being relaxed without demonstrating it was actually binding' partially matches — mechanism_probe at t∈{0.005, 0.05, 0.5} probes the boundary regime but there is no formal separation result proving the boundary IS the binding constraint vs capacity / regularization. This borderline hits a LOAD-BEARING structural property (the secondary innovation pattern's primary success condition is exactly 'prove A is binding via separation result'), so the LLM judges revise rather than advance-with-note. Other 2 checks clean: anti_pattern=null, paper_pointed_threat=no_threat_found.",
+
+  "revision_targets": [
+    {
+      "field": "theoretical_leg",
+      "issue": "composition_reject_check.secondaries[assumption_audit_and_relax] borderline — boundary regime not formally proven binding",
+      "fix_direction": "Add a separation result to theoretical_leg: a counterexample / impossibility / lower bound showing that at finite NFE the boundary regime t→0 is the binding constraint (not capacity / regularization). Proposed form: an EDM teacher with bounded score Lipschitz everywhere except t→0, on which CD provably fails to achieve the augmented-ELBO bound — demonstrating the bound failure is regime-specific, not bandwidth-specific. Re-run Phase 2.2 with this added requirement."
+    }
+  ]
+}
