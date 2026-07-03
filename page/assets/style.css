@@ -44,6 +44,10 @@
   --code-ink: #e2e8f0;
   --radius:   14px;
   --max:      1180px;
+
+  /* Tell the browser we support both themes — themes form controls,
+     scrollbars, and the address bar to match the current color-scheme. */
+  color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -64,6 +68,13 @@
 
     --code-bg:  #07091a;
   }
+
+  /* Tag pills — bump alpha so they stay visible on the dark card surface,
+     and lift the reel accent off the muddy #0d8a72 (fails WCAG on dark). */
+  .tag-idea { background: rgba(108, 92, 231, 0.22); color: var(--brand-2); }
+  .tag-reel { background: rgba(0, 212, 168, 0.20); color: var(--brand-3); }
+  .cover-card--reel::before { background: linear-gradient(90deg, var(--brand-3), #0d8a72); }
+  .cover-card--reel .cover-card__cta { color: var(--brand-3); }
 }
 
 * { box-sizing: border-box; }
@@ -131,9 +142,6 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 .brand:hover { text-decoration: none; }
 .brand img { display: inline-flex; }
-@media (prefers-color-scheme: dark) {
-  .brand img { filter: brightness(0) saturate(100%) invert(48%) sepia(98%) saturate(746%) hue-rotate(220deg) brightness(96%) contrast(95%); }
-}
 .hero__bg {
   position: absolute;
   inset: 0;
@@ -219,7 +227,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   padding: 6px 12px;
   border-radius: 999px;
   color: var(--ink);
-  background: #fff;
+  background: var(--bg-elev);
 }
 
 /* Star-on-GitHub button in the top nav (Reel-style pill) */
@@ -245,23 +253,23 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* .btn--ghost — mirrors ResearchStudio-Reel: bg-elev + border-strong */
 .nav__cta .btn--ghost {
-  background: #ffffff;
+  background: var(--bg-elev);
   color: var(--ink);
-  border-color: #d3d7e0;
+  border-color: var(--border-strong);
 }
 .nav__cta .btn--ghost:hover {
-  background: #f7f8fb;
+  background: var(--bg-soft);
 }
 
 /* .btn--primary — mirrors ResearchStudio-Reel: indigo→teal gradient pill */
 .nav__cta .btn--pill {
-  background: linear-gradient(135deg, #6c5ce7 0%, #00d4a8 100%);
+  background: var(--brand-grad);
   color: #fff;
-  box-shadow: 0 8px 20px -8px color-mix(in srgb, #6c5ce7 70%, transparent);
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--brand-2) 70%, transparent);
 }
 .nav__cta .btn--pill:hover {
   color: #fff;
-  box-shadow: 0 14px 30px -10px color-mix(in srgb, #6c5ce7 75%, transparent);
+  box-shadow: 0 14px 30px -10px color-mix(in srgb, var(--brand-2) 75%, transparent);
 }
 
 @media (max-width: 760px) {
@@ -316,15 +324,18 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 .btn:hover { text-decoration: none; transform: translateY(-1px); }
 .btn.primary {
-  background: var(--ink);
+  background: var(--brand-grad);
   color: #fff;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--brand-2) 70%, transparent);
   padding: 10px 22px;
   font-size: 0.92rem;
 }
-.btn.primary:hover { background: #1e293b; }
+.btn.primary:hover {
+  color: #fff;
+  box-shadow: 0 14px 30px -10px color-mix(in srgb, var(--brand-2) 75%, transparent);
+}
 .btn.ghost {
-  background: #fff;
+  background: var(--bg-elev);
   color: var(--ink);
   border-color: var(--line);
 }
@@ -336,6 +347,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   justify-content: center;
   gap: 6px 8px;
   margin-top: 16px;
+  max-width: 100%;
 }
 .badges img { height: 20px; display: block; }
 .badges a { display: inline-flex; line-height: 0; transition: transform 0.15s ease; }
@@ -477,7 +489,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   background: linear-gradient(90deg, var(--accent-2), var(--accent));
   opacity: 0.85;
 }
-.cover-card--idea::before { background: linear-gradient(90deg, var(--accent-2), #7c6cff); }
+.cover-card--idea::before { background: linear-gradient(90deg, var(--accent-2), var(--brand-2)); }
 .cover-card--reel::before { background: linear-gradient(90deg, #0d8a72, var(--accent)); }
 
 .cover-card:hover {
@@ -574,11 +586,12 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .snippet code, .bibtex code { background: none; padding: 0; }
 .muted { color: var(--muted); font-size: 0.9rem; margin-top: 10px; }
 code {
-  background: #eef2f7;
+  background: color-mix(in srgb, var(--brand-2) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-2) 16%, transparent);
   padding: 1px 6px;
   border-radius: 6px;
   font-size: 0.86em;
-  color: #0f172a;
+  color: inherit;
 }
 
 /* ---------- Footer ---------- */
@@ -630,4 +643,36 @@ code {
   .cover-card__media-wrap { margin: 0 16px; }
   .cover-card__foot { padding: 10px 16px 16px; }
   .nav__cta .btn { padding: 8px 14px; font-size: 0.88rem; }
+}
+
+/* Tablet portrait: 16:10 GIFs read better than 16:9 when the card is wide
+   enough to make the media area feel dominant. */
+@media (max-width: 900px) {
+  .cover-card__media { aspect-ratio: 16 / 10; }
+}
+
+/* Very narrow phones: shrink the hero glow blobs so they don't wash out the
+   headline, and collapse the GitHub button to its icon so the topbar fits. */
+@media (max-width: 480px) {
+  .hero__glow--a,
+  .hero__glow--b {
+    width: 320px;
+    height: 320px;
+    opacity: .4;
+  }
+  .hero__glow--a { top: -80px; left: -80px; }
+  .hero__glow--b { top: -40px; right: -60px; }
+
+  .topbar { gap: 12px; padding: 12px 16px; }
+  .nav__cta .btn--ghost {
+    gap: 0;
+    padding: 8px 10px;
+  }
+  /* Hide the label text; keep only the GitHub SVG icon. */
+  .nav__cta .btn--ghost > :not(svg) {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
 }
