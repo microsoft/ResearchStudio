@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# Jekyll config for GitHub Pages (source: main branch, /docs folder)
+# ---------------------------------------------------------------------------
+
+# --- Site metadata ---------------------------------------------------------
+title: "ResearchStudio"
+description: >-
+  Your AI co-author, from research problem to publication.
+  A collection of Claude Code and Codex skills covering the entire
+  research lifecycle.
+author: "Microsoft"
+lang: en
+
+# --- URL configuration -----------------------------------------------------
+# For a project site (https://<user>.github.io/<repo>) set:
+#   url:      https://microsoft.github.io
+#   baseurl:  /ResearchStudio
+# For a user/org site (https://microsoft.github.io) set baseurl: ""
+url: "https://microsoft.github.io"
+baseurl: "/ResearchStudio"
+
+# --- Repository (used by github-metadata plugin) ---------------------------
+repository: microsoft/ResearchStudio
+
+# --- Build settings --------------------------------------------------------
+# No theme: we ship our own HTML/CSS under docs/, so we don't want a Jekyll
+# theme wrapping our pages. Leave `theme` unset (or set to null).
+theme: null
+
+markdown: kramdown
+highlighter: rouge
+permalink: pretty
+
+# Plugins whitelisted by GitHub Pages
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jekyll-relative-links
+
+# Let Jekyll process .md files in linked folders as pages.
+relative_links:
+  enabled: true
+  collections: true
+
+include:
+  - assets
+
+# Files/folders Jekyll should NOT copy into the built site.
+exclude:
+  - README.md
+  - LICENSE
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
+  - .github
+  - .gitignore
+
+# Keep dotfiles like .well-known if you ever add them.
+keep_files:
+  - assets
+
+# --- Defaults --------------------------------------------------------------
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: null   # our pages are self-contained HTML, no layout wrapping

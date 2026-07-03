@@ -1,0 +1,251 @@
+You are running Phase 2.1 — Gap × Pattern Selection — of IdeaSpark.
+
+Step 2.1 takes Phase 1's collective gap list (`what_phase_0_did_not_address[]`),
+selects 2-4 gaps to close (1 anchor + 1-3 coherent siblings, sampled from
+1-3 random candidates and coherence-filtered), and picks innovation
+patterns from the 15 by best operational-signature fit — one per sibling
+gap, and 1-3 ranked candidates for the anchor gap whose final binding is
+deferred to Phase 2.2. Different patterns across gaps are allowed (and common when gaps
+are structurally distinct). The output is a (gaps, per-gap patterns,
+rationale) spec that Phase 2.2 executes into a candidate.
+
+Why this design: each leg corresponds to a (gap, pattern) entry; coherence
+across legs is enforced by a declared coherence thread (one of five types,
+see Step 2) — the test is "would a reviewer read this as one paper or
+two papers stapled together?", not a fixed structural requirement. Random
+sibling sampling injects controlled exploration; the coherence filter
+prunes gaps that don't fit any thread. Saturation is recorded for
+downstream audit transparency, not used as a selection filter.
+
+Inputs (explicit paths):
+- `${CLAUDE_PROJECT_DIR}/phase1/phase1_output.json` — full Phase 1 output. Specifically
+  `what_phase_0_did_not_address[]` (collective gaps no retrieved paper
+  closes — typically 2-4 entries; may be more) AND `method_lineage` (the
+  age-banded ancestry tree: which nodes are occupied by retrieved frontier
+  leaves vs. ancestral/parametric nodes, plus a `notes` REGRESSION FLAG that
+  names concrete prior methods a cure must NOT reduce to). `method_lineage`
+  is load-bearing for Step 3b, not just context. Other Phase 1 fields
+  (bottleneck_statement, closest_adjacent[], intake) are context.
+- `references/ideation-patterns/overview.md` — single file, all 15
+  patterns. Read each pattern's **Definition** (what the pattern IS
+  conceptually), **Operational signature** (the one-line abstract move),
+  and **When to apply** (conditions for reaching for this pattern).
+  Selection is by gap-pattern fit at the WHAT / WHEN level, not at the HOW
+  level — fitting the gap to a recipe step would invert the direction of
+  reasoning.
+- `references/ideation-patterns/companion-combos.md` — per-pattern membership
+  set of empirically-attested companion patterns. Consult ONLY when the
+  DELIVERABLE REALIZABILITY check (Step 3b) fires for a leg and you need to
+  pick a `companion_pattern`; the set bounds which pairings are real vs forced.
+- `${CLAUDE_PROJECT_DIR}/phase0/lit_table.md` — paper-level evidence table (read for
+  paper-level context if needed; pattern frequency lookup is via Phase 1's
+  `domain_pattern_distribution` rather than recomputing from this file).
+
+Selection process:
+
+**Step 1: Pick the anchor gap (type-bound).** From
+`what_phase_0_did_not_address[]`, identify the single most important gap —
+the one whose closure is most load-bearing for the bottleneck AND whose own
+demanded deliverable matches `intake.contribution_type`. Read the gap's
+verb: "give / yield / produce / construct a [fix that does X]" demands a
+CONSTRUCTION (mechanism); "question / test whether / isolate" demands an
+ANALYSIS or DIAGNOSTIC. The anchor must be a gap whose demanded artifact IS
+the committed `contribution_type` — a construction gap when `method`, a
+proof/analysis gap when `theory`. Binding the type here, at anchor
+selection, is what guarantees the paper's load-bearing deliverable is the
+type Phase 1 committed to, so no separate set-level coverage step is needed
+downstream. Add to selected_gaps as the anchor.
+
+**Step 2: Sample 1-3 sibling candidates + coherence filter.** From the
+remaining gaps, randomly sample 1-3 candidates. For each:
+
+- Test: if a reviewer reads the resulting paper, does it read as ONE
+  paper or TWO papers stapled together? Articulate the coherence thread
+  that connects this gap to the anchor. Five thread types are valid (any
+  ONE is sufficient):
+    (a) **shared_object** — both legs use the same residual / theorem /
+        model / forward model / divergence functional as their central
+        mathematical primitive
+    (b) **shared_question** — both legs attack the same bottleneck from
+        different angles (e.g., one derives a bound, the other empirically
+        validates it on the same regime)
+    (c) **sequential_pipeline** — leg A's output is leg B's input; the
+        legs form one pipeline rather than parallel modules
+    (d) **shared_audit** — same auditing lens (e.g., "what implicit
+        assumption is binding") applied to multiple sites within the
+        bottleneck
+    (e) **shared_evaluation** — both legs measured by / contribute to the
+        same evaluation framework (e.g., a method leg + a benchmark leg
+        validating it)
+- Yes (one thread fits) → add to selected_gaps as coherent_sibling; record
+  the thread type.
+- No (no thread fits) → move to deferred_gaps with reason "no coherence
+  thread connects this gap to the anchor — would be a separate paper."
+
+If after sampling 1-3 candidates none pass, sample up to 2 additional
+batches; if still none pass, the anchor's bottleneck might be too narrow
+and Phase 2.1 should re-evaluate the anchor selection.
+
+End state: selected_gaps has 1 anchor + 1-3 coherent siblings (total 2-4).
+Random siblings that fail coherence go to deferred_gaps with all other
+unselected gaps.
+
+**Step 3: Pick the pattern per gap (the anchor may carry 1-3 deferred candidates).**
+
+a. For EACH gap in selected_gaps, list the patterns whose move (per
+   Operational signature, conditioned by When to apply) would, if applied
+   to this gap, produce what's needed to close it (a derivation, a
+   construction, a measurement, a probe — whatever the gap shape calls
+   for). Typically 1-4 candidates per gap.
+   For the anchor gap, enumerate candidates by the residual the gap must
+   close, not by the gap's surface verb: a pattern from a different
+   mechanism family that closes the same residual through a different move
+   must not be excluded because the gap was phrased in one family's
+   vocabulary. When to apply is matched against the residual, so the
+   enumeration spans families rather than collapsing to the most literal
+   framing.
+b. For each candidate pattern (per gap), judge substantively: does this
+   pattern's move, applied to this gap, actually produce what's needed?
+   "X's move applied to gap Y closes Y because Z" is the judgment, NOT
+   surface similarity matching. Pick the pattern whose move most directly
+   closes the gap. REGRESSION CHECK (consult `method_lineage`): reject a
+   pattern whose move, applied to this gap, would have as its natural
+   artifact the very mechanism the `method_lineage.notes` REGRESSION FLAG
+   names — i.e. a cure that walks the tree back to an ancestral/parametric
+   node, or to a node a retrieved frontier leaf already descends from. Why
+   this lives here and not only at Phase 1: the gap was written
+   problem-shaped (no mechanism named), so a pattern can look perfectly
+   novel against the recent-only literature yet, once you trace where its
+   move actually lands, re-propose a decades-old node. The lineage tree is
+   the only signal that catches it. If the best-fit pattern's move lands on
+   a flagged node, re-pick toward a move that draws on a source the tree
+   does NOT yet occupy, and state that occupied-source constraint explicitly
+   in `selection_rationale` so Phase 2.2 inherits it.
+   DELIVERABLE REALIZABILITY (all legs). After picking the pattern whose move
+   best closes a gap, check it can actually SHIP the deliverable that gap
+   demands at the type the problem needs. A runnable / empirically-validated
+   mechanism is the native deliverable of `architectural_operator_substitution`,
+   `generative_process_redesign`, `self_supervised_signal_engineering`,
+   `decompose_and_delegate`; a proof / bound / rate / class-separation is the
+   native deliverable of `characterize_limit_then_surpass` or a theory-only
+   audit. The failure this catches: a framing-strong pattern whose honest
+   deliverable is the wrong type — canonically `assumption_audit_and_pivot` on
+   a `method` problem, where the audit correctly names and inverts an
+   assumption but its honest output is an identifiability claim, not the
+   empirical artifact a `method` paper ships. Never resolve this by
+   over-claiming a theorem the leg cannot prove, and never silently down-scope
+   the leg to a weaker claim. Use one of two resolutions:
+     - RE-PICK — drop the framing pattern and make the deliverable-owning
+       pattern the `chosen_pattern_id` directly (no companion).
+     - PAIR — keep the framing pattern as `chosen_pattern_id` and name a
+       `companion_pattern` that owns the missing deliverable. The companion
+       must be a member of the framing pattern's attested set in
+       `references/ideation-patterns/companion-combos.md` (a membership test
+       — is this pairing real or forced — read yes/no; its internal order is
+       non-semantic), chosen by deliverable-fit: the one attested companion
+       whose move owns the deliverable the framing pattern cannot produce
+       (e.g. for an audit leg whose validation IS an empirical separation,
+       `controlled_diagnostic_design` owns the confound-isolating separation).
+       Give the reason in `companion_rationale`.
+   Choose RE-PICK vs PAIR by whether the framing move is the gap's IDENTITY.
+   When the gap exists precisely BECAUSE an assumption was never tested — its
+   wording is itself an audit/pivot (`tests whether …`, `no leaf asks whether …`,
+   `assumes X but none questions X`) — the audit IS the contribution; keep it
+   primary and PAIR, since re-picking would demote the headline (the overturned
+   assumption) to implicit framing and lose what makes the gap novel. RE-PICK
+   only when the inversion is incidental and the gap's real demand is just the
+   diagnostic or mechanism. Leave `companion_pattern` null whenever the chosen
+   pattern already ships the demanded type — most legs need no companion.
+   ANCHOR OBLIGATION (anchor leg only). Step 1 bound the anchor gap to
+   `intake.contribution_type`, so the anchor LEG — its `chosen_pattern_id`
+   together with any `companion_pattern` — must carry that committed artifact:
+   either the chosen pattern ships it directly, or, when the chosen pattern is
+   the load-bearing framing move, its companion does. This is the same
+   realizability rule above with one added guarantee: for the anchor the
+   demanded type is fixed by `contribution_type`, not by the gap alone. Prefer
+   a single clean pattern for the anchor when its framing pattern is not itself
+   load-bearing — a headline reads better undivided — but PAIR is legitimate
+   when the audit is the contribution. Record where the committed-type artifact
+   lives (the anchor's pattern, or its companion) in `deliverable_coverage`.
+   ANCHOR DEFERRED BINDING: selection at Step 3 reads only Definition /
+   Operational signature / When to apply — the WHAT/WHEN level — and cannot
+   see whether the chosen parent's sub-cluster roster carries a sub-cluster
+   whose load-bearing artifact matches intake.contribution_type. That is a
+   HOW-level property held in the sub-cluster cards, which only Phase 2.2
+   reads. So for the anchor gap, if more than one candidate survives the
+   substantive judgment, the REGRESSION CHECK, and the ANCHOR OBLIGATION, do
+   NOT collapse to one: record the top-ranked candidate as chosen_pattern_id
+   and the next 1-2 ranked survivors as anchor_alternates. Phase 2.2 makes
+   the final pick among them once it reads the sub-cluster grades. Sibling
+   gaps always collapse to a single chosen_pattern_id.
+c. The same pattern may be chosen for multiple gaps if its move closes
+   what each of them needs (this produces a 1-leg paper). Different
+   patterns across gaps may be chosen if each gap needs a distinct move
+   (this produces a multi-leg coordinated paper).
+d. For each UNIQUE chosen pattern, look up its `share` and `saturation_band`
+   from Phase 1's `domain_pattern_distribution.patterns[]` (no recomputation
+   — Phase 1 already calculated). Record once per chosen_pattern_id in the
+   top-level `pattern_saturation` dict (not per gap). This is landscape
+   context only — saturation does NOT exclude a candidate; it is echoed into
+   Phase 4's `domain_landscape`. If a chosen pattern's band is `saturated`
+   (≥50%) or `untested` (≤1 paper), Phase 2.2 should make differentiation_from_lit
+   substantively defend the choice (a saturated lane needs a sharp angle vs the
+   crowd; an untested lane needs a reason it has not been tried).
+e. Declare `coherence_thread_type` (one of the 5 from Step 2). The thread's
+   specific instance (the named object, question, pipeline, audit lens, or
+   framework) is produced by Phase 2.2 inside `core_mechanism` —
+   Phase 2.1's job is to commit to the type, not to pre-name the instance.
+
+Output (strict JSON):
+
+{
+  "selected_gaps": [
+    // selected_gaps[0] is the anchor; selected_gaps[1..] are coherent siblings.
+    {
+      "gap": "<verbatim entry from phase1.what_phase_0_did_not_address[]>",
+      "chosen_pattern_id": "<one of the 15 valid pattern_ids; may differ across gaps>",
+      "anchor_alternates": ["<0-2 additional valid pattern_ids, ranked, anchor entry only — the deferred-binding candidate set Phase 2.2 chooses from alongside chosen_pattern_id. Empty for sibling entries and when the anchor has a single clear best fit>"],
+      "companion_pattern": "<null by default; a valid pattern_id only when the DELIVERABLE REALIZABILITY check fires for this leg — i.e. chosen_pattern_id is the right framing move but cannot ship the deliverable this gap demands under intake.contribution_type. Must be a member of chosen_pattern_id's attested set in references/ideation-patterns/companion-combos.md, picked by deliverable-fit.>",
+      "companion_rationale": "<empty when companion_pattern is null; otherwise one line: which deliverable chosen_pattern_id cannot ship for this contribution_type, and why this companion owns it>",
+      "selection_rationale": "<2 sentences: (a) for anchor, why most load-bearing for the bottleneck; for sibling, how this gap connects to the anchor under coherence_thread_type. (b) what the chosen pattern's move closes in this gap. Anchor entries can compress (a) since the anchor's load-bearing claim doubles as its connection statement.>"
+    }
+  ],
+
+  "coherence_thread_type": "shared_object | shared_question | sequential_pipeline | shared_audit | shared_evaluation",
+
+  "deliverable_coverage": "<one line from the Step 3b ANCHOR OBLIGATION: the declared intake.contribution_type, and where in the anchor LEG the load-bearing deliverable of that type lives — the anchor's chosen_pattern_id, or its companion_pattern when the chosen pattern is the load-bearing framing move (e.g. 'method — anchor gap → architectural_operator_substitution yields the runnable fix', or 'method — anchor gap → assumption_audit_and_pivot framing + companion controlled_diagnostic_design ships the empirical separation').>",
+
+  "pattern_saturation": {
+    "<chosen_pattern_id>": {
+      "share": "<float — joined from phase1.domain_pattern_distribution.patterns[].share for this pattern_id>",
+      "saturation_band": "saturated | mid_frequency | untested",
+      "selection_note": "<one line: empty when mid_frequency; when saturated (≥50%) or untested (≤1 paper), note 'saturated/untested lane — differentiation_from_lit must substantively defend the choice'>"
+    }
+  },
+
+  "deferred_gaps": [
+    {"gap": "<verbatim entry from phase1.what_phase_0_did_not_address[]>",
+     "reason": "<one line: no coherence thread connects this gap to the anchor / out of scope / future work>"}
+  ]
+}
+
+Hard rule (1):
+
+1. Each `gap` field in `selected_gaps[]` and `deferred_gaps[]` must come
+   verbatim from `phase1.what_phase_0_did_not_address[]`. No inventing,
+   rephrasing, splitting, or merging. Every gap in phase1's list must
+   appear in either selected or deferred — silent dropping is a process
+   error.
+
+Notes:
+
+- The 15 valid `pattern_id` values: `reframe_as_solvable_object`,
+  `assumption_audit_and_pivot`, `algebraic_equivalence_unification`,
+  `heterogeneous_decomposition`, `architectural_operator_substitution`,
+  `structural_prior_encoding`, `characterize_limit_then_surpass`,
+  `self_supervised_signal_engineering`, `targeted_self_supervised_objective`,
+  `controlled_diagnostic_design`, `unify_into_shared_representation`,
+  `adapt_via_conditioning`, `generative_process_redesign`,
+  `decompose_and_delegate`, `relax_discrete_search_to_continuous`.
+
+Output path: `${CLAUDE_PROJECT_DIR}/phase2_select/phase2_select_output.json`.
