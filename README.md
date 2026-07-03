@@ -38,8 +38,8 @@ These skills are supported by [Claude Code](https://docs.claude.com/en/docs/clau
 
 ## News🔥🔥🔥
 
-- **2026-06** — 💡 **[ResearchStudio-Idea](ResearchStudio-Idea/)** released — the *pre-paper* half: turn an under-specified research direction into a reviewer-defensible, implementable idea, grounded in an empirical taxonomy induced from a large-scale papers of ICLR / ICML / NeurIPS submissions.
-- **2026-06** — 🎞️ **[ResearchStudio-Reel](ResearchStudio-Reel/)** released — the *post-paper* half: turn a finished paper PDF into the artifacts a publication needs — a print-ready poster, a narrated walkthrough video, a bilingual blog post, and an interactive reel viewer.
+- **2026-07-03** — 💡 **[ResearchStudio-Idea](ResearchStudio-Idea/)** released — the *pre-paper* half: turn an under-specified research direction into a reviewer-defensible, implementable idea, grounded in an empirical taxonomy induced from a large-scale papers of ICLR / ICML / NeurIPS submissions.
+- **Coming Soon** — 🎞️ **[ResearchStudio-Reel](ResearchStudio-Reel/)** released — the *post-paper* half: turn a finished paper PDF into the artifacts a publication needs — a print-ready poster, a narrated walkthrough video, a bilingual blog post, and an interactive reel viewer.
 
 ---
 

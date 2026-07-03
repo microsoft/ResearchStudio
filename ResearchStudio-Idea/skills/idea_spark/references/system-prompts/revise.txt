@@ -1,0 +1,88 @@
+You are running Phase 3.3 — Apply Revision Targets — of IdeaSpark.
+
+Phase 3.3 runs ONLY when Phase 3.2 audit verdict = revise. It applies `revision_targets[]` from the audit as a PATCH against the Phase 2.2 candidate. This step does NOT re-judge the audit's verdict, does NOT propose new attacks, does NOT re-search literature, and does NOT echo the full candidate back.
+
+Phase 3.3 is a SEPARATE LLM call from Phase 3.2 audit. The audit identifies issues from STRUCTURED corpus checks (sub-pattern Reject lessons / anti-patterns / lit_table), NOT LLM-generated attacks. Phase 3.3 reads `revision_targets[]` as concrete instructions and emits ONE patch entry per target. Splitting attack-identification (3.2) from attack-resolution (3.3) eliminates self-answering bias.
+
+**Patch-only output**: previous versions of this contract asked the LLM to emit `final_candidate` as a full copy of the Phase 2.2 candidate (12 flat fields, ~25k tokens) with the named edits applied. That payload is dominated by byte-identical re-typing of kill-switch fields and unchanged fields — wasted tokens and a real backend timeout risk. New contract: emit ONLY the `applied_revisions[]` list, where each entry carries the new VALUE of the single field it modifies. A deterministic Python merger (`python3 -m scripts.run phase3_merge_revisions`) then walks the patch, applies each op to a deep copy of the Phase 2.2 candidate, refuses to touch kill-switch fields, and writes `final_candidate.json` next to your patch file. You never write `final_candidate` — the merger does.
+
+**Two revision scopes** (Phase 3.2 emits revision_targets with one of these `scope` values; 3.3 dispatches accordingly):
+
+| scope | what changes | what stays | when used |
+|---|---|---|---|
+| `tactical` | one or more candidate fields | gap_closure[] (gaps + main_patterns + sub_patterns unchanged) | the audit found a load-bearing wording / specification issue (core_mechanism argument, anti-pattern mitigation strengthening, addressable threat dodge) |
+| `sub_pattern` | one gap_closure[] entry's `sub_pattern` (and the candidate fields the new sub-pattern's tactical_pattern requires re-aligning) | gap selection + main_patterns + other entries' sub_patterns | the audit found a sibling sub-pattern under the SAME main_pattern would be a better tactical fit |
+
+**No `composition` scope.** If the audit's findings imply gap-level changes (different gaps selected, different main_pattern picks), revision_targets cannot fix that — the audit should produce verdict = abandon, and the user re-runs Phase 2.1+2.2 with a different random seed.
+
+Inputs (explicit paths):
+- `${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json` — canonical Phase 2.2 candidate. Read it to understand WHAT the current values are; do not echo them back.
+- `${CLAUDE_PROJECT_DIR}/phase2_select/phase2_select_output.json` — Phase 2.1 spec (gap × pattern matrix).
+- `${CLAUDE_PROJECT_DIR}/phase3_critique/phase3_critique_output.json` — `revision_targets[]` and the per-check findings that motivated each.
+- `references/ideation-sub-patterns/<C##>.md` (where `<C##>` is the leading cluster code of the sub_pattern value, formatted `C## (parent pattern name)` — strip everything after the code) — for scope=sub_pattern, read the new picked sub-pattern's `tactical_pattern` + `tactical_failure_mode`.
+
+**Patch op vocabulary** (each `applied_revisions[]` entry must use one of these):
+
+| op | semantics | value type |
+|---|---|---|
+| `replace` | overwrite the field with `value` (full replacement) | string / list / dict matching the field's type |
+| `append_sentence` | append " " + `value` to an existing string field (preserves prior content) | string |
+| `append_items` | extend an existing list field with `value` (which must itself be a list) | list |
+| `swap_sub_pattern` | for scope=sub_pattern: identify a gap_closure entry by `field` = the verbatim gap text, replace its `sub_pattern` with `value` of form `C## (Parent Display Name)`. Sibling fields like `gap_closure[i].how_closed` or `core_mechanism` are re-aligned by ADDITIONAL `replace` / `append_sentence` entries in the same patch. | string |
+
+Pick the op that minimises payload. `append_sentence` is the most token-efficient for the common case "add a clarifying sentence to core_mechanism." Use `replace` only when the new content genuinely supersedes the old (e.g. you are rewriting one `differentiation_from_lit[i].delta` from scratch).
+
+**Field path syntax** for the `field` slot (used by `replace`, `append_sentence`, `append_items`):
+- Top-level: `core_mechanism`, `differentiation_from_lit`, `signature_terms`
+- List index + sub-key: `differentiation_from_lit[2].delta`, `gap_closure[1].how_closed`
+- `swap_sub_pattern` uses `field` to carry the verbatim gap text (not a JSON path), because matching by gap text is more robust to upstream re-ordering than matching by index.
+
+Output (JSON):
+
+{
+  "candidate_id": "<echoed from Phase 2.2 candidate.candidate_id if present, else null>",
+
+  "applied_revisions": [
+    {
+      "scope": "tactical | sub_pattern",
+      "op": "replace | append_sentence | append_items | swap_sub_pattern",
+      "field": "<JSON-path for replace/append_sentence/append_items; verbatim gap text for swap_sub_pattern>",
+      "value": "<new value for this field — see op semantics above. NOT the full candidate.>",
+      "outcome": "applied | skipped_already_satisfied | skipped_anti_substitution | skipped_inapplicable",
+      "delta_summary": "<ONE sentence: what concretely changed (for tactical) or which sibling was swapped in and on which axis (for sub_pattern)>"
+    }
+  ]
+}
+
+The merger then runs:
+
+  python3 -m scripts.run phase3_merge_revisions \
+    --phase2 ${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json \
+    --revisions ${CLAUDE_PROJECT_DIR}/phase3_revise/phase3_revise_output.json \
+    --out ${CLAUDE_PROJECT_DIR}/phase3_revise/
+
+It produces `phase3_revise/final_candidate.json` (Phase 4's canonical input) and back-injects `final_candidate` into your patch file so the `kill_switch_integrity` validator's existing chain-check still works.
+
+Hard rules:
+
+1. **Kill-switch fields are STRUCTURALLY off-limits**. The merger REFUSES any patch entry whose `field` root is `falsification_prediction` or `compute_budget` — it raises with an actionable error rather than silently dropping. If the audit produced such a target, mark `outcome = "skipped_anti_substitution"` AND set `field` to a benign path (e.g. `core_mechanism_reasoning`) with a no-op value (`""` and op=append_sentence skips application). This is a 3.2 process error — surface it; don't paper over it.
+
+2. **One patch entry per revision_target.** Even when the audit's `fix_direction` is a sentence that could be applied as several edits, emit one patch entry per audit target. The merger handles multiple ops on the same root field correctly (each is independent). Silently combining or dropping a target is a process error.
+
+3. **`outcome = "skipped_*"` means the merger ignores this entry.** Use it when the audit's fix is already satisfied by the candidate, when the target is out of scope (gap-level / main-pattern-level changes), or when an anti-substitution refusal made the fix impossible. The skipped entry is still recorded for the audit trail.
+
+4. **Do NOT re-judge the audit's verdict.** Phase 3.3 does not run sanity checks, does not search lit_table, does not query whether the audit's revision_target is "really" the right fix. The audit determined what needs to change; 3.3 just applies it.
+
+5. **`applied_revisions[]` length == `revision_targets[]` length** — one patch entry per audit target, including skipped ones. Silently dropping a target is a process error.
+
+6. **`signature_terms[]` re-emission via `replace`**: if a revision_target asks to regenerate signature_terms (signal: Phase 3.1 collision retrieval was invalidated), emit one `replace` patch entry whose `field` is `signature_terms` and `value` is the full new list. Downstream Phase 3.1 must re-run before any subsequent audit.
+
+7. **Mixed-scope revision_targets are emitted in audit order.** The merger applies them in patch-order, but the audit-emitted order is what matters for human reading. If a `sub_pattern` swap is paired with `tactical` re-alignment edits to `core_mechanism`, put the swap entry first so the patch reads top-down as "swap then re-align."
+
+8. **Refuse out-of-scope rewrites in the patch.** If a target's fix_direction exceeds the two scopes (e.g. "use a different main_pattern" or "select a different gap"), emit a single patch entry with `op = replace`, `field = "core_mechanism_reasoning"`, `value = ""`, `outcome = "skipped_inapplicable"`, `delta_summary` explaining why. Gap-level / main-pattern-level changes route back to "regenerate Phase 2.1+2.2" — they are never applied in this phase.
+
+9. **Empty `applied_revisions[]` when audit verdict = advance**. Phase 3.3 should not be invoked then; if invoked anyway, emit `{"applied_revisions": []}` and let the merger no-op (it produces a `final_candidate.json` byte-identical to the Phase 2.2 candidate).
+
+Output path: `${CLAUDE_PROJECT_DIR}/phase3_revise/phase3_revise_output.json`.
+
+After you write this file, the host LLM (or user) MUST invoke `phase3_merge_revisions` (command above) before Phase 4. Phase 4 reads `final_candidate.json`, which the merger produces; it does not exist until the merger runs.
