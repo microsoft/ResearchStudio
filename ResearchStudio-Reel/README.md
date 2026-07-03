@@ -166,21 +166,21 @@ Turn a paper into a **bilingual editorial package**: one Chinese WeChat public-a
 <div align="center">
 <table align="center">
 <tr><th>Deliverable</th><th>Open the real example</th></tr>
-<tr><td>Bilingual blog package</td><td><a href="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Reel/docs/examples/paper2blog/blog_en.docx">English DOCX</a>, <a href="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Reel/docs/examples/paper2blog/blog_cn.docx">Chinese DOCX</a></td></tr>
+<tr><td>Bilingual blog package</td><td><a href="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Reel/docs/examples/paper2blog/blog_en.docx">English DOCX</a>, <a href="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Reel/docs/examples/paper2blog/blog_zh.docx">Chinese DOCX</a></td></tr>
 </table>
 </div>
 
 **Invoke** via Claude Code — use the shared `paper2assets` bundle when available; starting from a PDF initializes the same v2 bundle shape:
 
 ```text
-# point it at a paper2assets <outdir>/  →  blog_cn.docx + blog_en.docx
+# point it at a paper2assets <outdir>/  →  blog_zh.docx + blog_en.docx
 > /paper2blog ./my_paper/
 
 # …or start from the PDF
 > /paper2blog ./my_paper.pdf
 ```
 
-**Outputs** — top-level `blog_cn.docx` and `blog_en.docx`, with outlines, QA reports, previews, and shared cropped figures under `assets/`. The two articles are not literal translations: they agree on facts and figure choices, but `_cn` is written in a restrained WeChat register while `_en` is written as a neutral research blog.
+**Outputs** — top-level `blog_zh.docx` and `blog_en.docx`, with outlines, QA reports, previews, and shared cropped figures under `assets/`. The two articles are not literal translations: they agree on facts and figure choices, but `_zh` is written in a restrained WeChat register while `_en` is written as a neutral research blog.
 
 For the full editorial workflow, image-selection rules, DOCX assembly contract, and bilingual QA gate, see Paper2Blog's [`README.md`](skills/paper2blog/README.md) and [`SKILL.md`](skills/paper2blog/SKILL.md).
 
