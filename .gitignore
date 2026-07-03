@@ -1,0 +1,37 @@
+# ─── OS ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Editor / IDE ────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── Python ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+
+# ─── Env / secrets ───────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ─── Logs ───────────────────────────────────────────────────────────
+*.log
+logs/
+.omc/
