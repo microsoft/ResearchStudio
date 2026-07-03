@@ -70,7 +70,13 @@ def work_to_record(work: dict, semantic_recall: bool = False) -> dict:
     ids = work.get('ids') or {}
     arxiv_raw = ids.get('arxiv') or ''
     # Normalize: "https://arxiv.org/abs/2412.14171" → "2412.14171"
-    arxiv_id = re.sub(r'^.*arxiv\.org/(?:abs|pdf|html)/', '', arxiv_raw).rstrip('.pdf').strip()
+    parsed_arxiv = urllib.parse.urlparse(arxiv_raw)
+    arxiv_host = (parsed_arxiv.hostname or '').lower()
+    arxiv_path = parsed_arxiv.path or ''
+    if arxiv_host in {'arxiv.org', 'www.arxiv.org'} and re.match(r'^/(?:abs|pdf|html)/', arxiv_path):
+        arxiv_id = re.sub(r'^/(?:abs|pdf|html)/', '', arxiv_path).rstrip('.pdf').strip()
+    else:
+        arxiv_id = arxiv_raw.rstrip('.pdf').strip()
     pt = work.get('primary_topic') or {}
     oa_field = ((pt.get('field') or {}).get('display_name')) or ''
     return {
