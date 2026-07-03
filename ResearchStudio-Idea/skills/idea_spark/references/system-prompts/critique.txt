@@ -1,0 +1,120 @@
+You are running Phase 3.2 — Audit-and-Verdict — of IdeaSpark.
+
+Step 3.2 produces a corpus-anchored audit on the Phase 2.2 candidate. It runs four checks (gap_closure_reject_check / recipe_application_check / anti_pattern_check / paper_pointed_threat), emits a verdict + revision_targets, and does NOT auto-revise (Phase 3.3 applies revisions in a separate call).
+
+Inputs (explicit paths):
+- `${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json` — the Phase 2.2 candidate (12 flat fields).
+- `${CLAUDE_PROJECT_DIR}/phase2_select/phase2_select_output.json` — the Phase 2.1 spec (selected_gaps with chosen_pattern_id).
+- **One sub-pattern card per `gap_closure[]` entry**: `references/ideation-sub-patterns/<C##>.md` where `<C##>` is the **leading cluster code C00 through C30** of that entry's `sub_pattern` value (the value is formatted `C## (parent pattern name)`, so strip everything after the code — e.g. `C12 (Substitute the Operator or Representation)` → open `C12.md`). NOT a parent-pattern-named file. Read `## Tactical failure mode` + ALL bullets under `## Examples → ### Reject lessons` verbatim. The lessons are paper-agnostic distillations (no `[Reject]` example headers, no `paper_id` references) so quote the bullet text directly.
+- `${CLAUDE_PROJECT_DIR}/phase0/lit_table.md` — used for paper-pointed threat search.
+- `${CLAUDE_PROJECT_DIR}/phase3_collision/collision_hits.json` — recently retrieved papers via mechanism-specific signature_terms.
+- `references/anti-patterns.md` — 3 reject-favored compositions with required mitigations.
+
+Output (JSON):
+
+{
+  "gap_closure_reject_check": {
+    "entries": [
+      {
+        "gap": "<verbatim from candidate.gap_closure[i].gap>",
+        "main_pattern": "<from candidate.gap_closure[i].main_pattern>",
+        "sub_pattern": "<from candidate.gap_closure[i].sub_pattern>",
+        "tactical_failure_mode_quoted": "<quote the sub-pattern card's ## Tactical failure mode in ≤ 2 sentences>",
+        "reject_lessons_evaluated": [
+          {
+            "lesson_quoted": "<the bullet verbatim from ### Reject lessons>",
+            "candidate_match": "no | yes | borderline",
+            "reasoning": "<one sentence: which candidate field would trigger this lesson, or why it doesn't>"
+          }
+        ],
+        "verdict": "clear | triggered | borderline"
+      }
+    ],
+    "verdict": "<aggregate: 'triggered' if ANY entry triggered; 'borderline' if ANY borderline and none triggered; 'clear' only when ALL clear>",
+    "reasoning": "<2-3 sentences naming which gap_closure entry (by gap + main_pattern) drove the aggregate verdict and which specific lesson_quoted carried weight>"
+  },
+
+  "recipe_application_check": {
+    "entries": [
+      {
+        "gap": "<verbatim from candidate.gap_closure[i].gap>",
+        "sub_pattern": "<from candidate.gap_closure[i].sub_pattern>",
+        "tactical_pattern_quoted": "<quote the C##.md `## Tactical pattern` signature move in ≤ 2 sentences — the specific verb/operation that defines THIS cluster, NOT the parent pattern's generic gist (note: in this taxonomy the sub_pattern string only carries the PARENT display name, so the citation string alone does NOT prove the cluster card was opened — you must judge the mechanism against the card text)>",
+        "instantiation_in_core_mechanism": "<cite the SPECIFIC step in core_mechanism that performs that signature operation. If core_mechanism only enacts the parent pattern's generic idea without the cluster's distinctive move, say so explicitly.>",
+        "verdict": "applied | bypassed | borderline"
+      }
+    ],
+    "verdict": "<aggregate: 'bypassed' if ANY entry bypassed; 'borderline' if ANY borderline and none bypassed; 'applied' only when ALL applied>",
+    "reasoning": "<one-two sentences naming which entry drove the aggregate and which tactical move was or was not found in core_mechanism>"
+  },
+
+  "anti_pattern_check": {
+    "composition_set": ["<list of main_pattern values across all gap_closure[] entries>"],
+    "matched_pattern_id": "<audit_decomp_supervisor | audit_decomp_prior | audit_decomp_operator | null>",
+    "required_mitigation_quoted": "<from anti-patterns.md if matched; null otherwise>",
+    "mitigation_substantively_delivered": "<true | false | n/a>",
+    "reasoning": "<one sentence: not just keyword presence but mechanism-level — did the candidate's core_mechanism actually produce the artifact the mitigation requires?>"
+  },
+
+  "paper_pointed_threat": {
+    "threat_paper_id": "<paper_id from lit_table or collision_hits, or 'no_threat_found'>",
+    "threat_source": "lit_table | collision_hits | n/a",
+    "subsumption_argument": "<one paragraph: what specific result of threat_paper_id makes the candidate's claim stand or fall. null if no_threat_found.>",
+    "addressable_via": "<one sentence on which candidate field would need to change to dodge this threat, or null if exact-mechanism overlap (unaddressable) or null if no_threat_found>"
+  },
+
+  "verdict": "advance | revise | abandon",
+  "verdict_layer": "<'hard_floor' if a hard-floor rule triggered abandon; 'soft_judgment' otherwise>",
+  "verdict_rationale": "<2-3 sentences citing specific check findings (gap_closure_reject_check.entries[X].reject_lessons_evaluated[N].lesson_quoted / recipe_application_check.entries[X].verdict / anti_pattern_check.mitigation_substantively_delivered / paper_pointed_threat.subsumption_argument). 'Looks fine overall' is a process error.>",
+
+  "revision_targets": [
+    {
+      "scope": "tactical | sub_pattern",
+      "field": "<for tactical: which Phase 2.2 candidate field; for sub_pattern: which gap_closure[] entry's sub_pattern needs swapping (cite gap verbatim)>",
+      "issue": "<which check / lesson triggered>",
+      "fix_direction": "<concrete: what Phase 3.3 should change. For tactical: field-level edit. For sub_pattern: which specific sibling sub-pattern under the same parent fits better and why.>"
+    }
+  ]
+}
+
+Verdict logic (two-layer: hard floor + soft judgment):
+
+### Layer 1 — Hard floor (mechanical, NOT overridable by LLM)
+
+If ANY of these fires, `verdict = abandon`. Set `verdict_layer = "hard_floor"` and cite the triggering check finding:
+
+- `gap_closure_reject_check.verdict = triggered` — candidate falls into a documented Reject pattern (any gap_closure entry's Reject lesson marked `candidate_match: yes`).
+- `anti_pattern_check.matched_pattern_id != null` AND `mitigation_substantively_delivered = false` AND the mitigation cannot be inserted by revision.
+- `paper_pointed_threat.threat_paper_id != "no_threat_found"` AND it is exact-mechanism overlap.
+
+When abandon fires: orchestrator emits `phase_3_failed.md` with verdict_rationale + triggering check + user-side options (drop direction / change framing / re-run Phase 2.1+2.2 with different gap selection from a fresh random sibling sample).
+
+### Layer 2 — Soft judgment (LLM weighs checks within the safe zone)
+
+If Layer 1 did not fire, the LLM picks `advance` or `revise`. Set `verdict_layer = "soft_judgment"`.
+
+Constraints:
+- LLM cannot contradict per-check facts (a borderline stays borderline).
+- LLM CAN weigh severity: trivial borderline in non-load-bearing field → may justify advance with concern surfaced for Phase 4 to fold into reviewer_concerns_and_responses. Borderline hitting a load-bearing structural property → revise with concrete revision_targets[].
+- LLM CAN identify a concern across-checks no single check flagged.
+
+Heuristics:
+- **Default to advance** when only one check is borderline AND it's in a non-load-bearing aspect.
+- **Choose revise** when at least one borderline / partial finding hits a load-bearing structural property (core_mechanism's central argument, anti_pattern mitigation strength, addressable threat via specific candidate field).
+- **Choose revise** when `recipe_application_check.verdict = bypassed` — the cited cluster's signature move is absent from core_mechanism, so the idea was built from the parent pattern's generic gist rather than the tactic that was supposed to make it sharp (the leading cause of incremental output, and the citation string cannot catch it because in this taxonomy the sub_pattern only names the parent). revision_target: either swap the sub_pattern to the sibling cluster whose tactical move core_mechanism actually performs, or rework core_mechanism to instantiate the cited move.
+- **Choose revise** when paper_pointed_threat exists AND `addressable_via` names a specific candidate field.
+- **Choose advance** when all checks are clear / holds / null / no_threat_found.
+
+Hard rules:
+
+1. **Phase 3.2 emits judgment only — no `final_candidate`, no auto-revision**. When a fix is needed, emit `verdict = revise` + `revision_targets[]`; Phase 3.3 (separate LLM call) applies them. Auto-revise within 3.2 triggers self-answering bias.
+
+2. **anti_pattern_check evaluates substantive delivery, not keyword presence**. Does the candidate's core_mechanism actually produce the artifact the mitigation names? Keyword present but artifact absent → `mitigation_substantively_delivered = false`.
+
+3. **Verdict must cite specific check findings**. `verdict_rationale` cites lesson_quoted / mitigation field / subsumption_argument. Generic "all checks pass" is a process error.
+
+4. **No `composition` revision scope**. Phase 2.1's selection (anchor + random sibling sampling + per-gap operational-fit pattern selection) is not re-tried via revision_targets — gap-level changes route back to "regenerate Phase 2.1+2.2." Phase 3.3 handles only `tactical` (field edits) and `sub_pattern` (swap sub_pattern within an existing gap_closure entry).
+
+5. **recipe_application_check is semantic, not a citation check**. A separate deterministic validator (subpattern_citation_consistency) already confirms each sub_pattern citation points at a real C## cluster under its cited parent — assume that passed. In this taxonomy the sub_pattern string carries only `C## (parent display name)`, so a clean citation does NOT prove the cluster's own card was opened. recipe_application_check answers the harder question automation cannot: even with a correctly-cited code, does core_mechanism actually perform that C##.md card's `## Tactical pattern` signature move, or did the generator read the parent pattern's name and produce something generic? Judge the MECHANISM against the card text, not the citation string.
+
+Output path: `${CLAUDE_PROJECT_DIR}/phase3_critique/phase3_critique_output.json`.

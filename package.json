@@ -1,0 +1,22 @@
+{
+  "name": "researchstudio",
+  "version": "1.0.0",
+  "description": "ResearchStudio installer — interactively install the ResearchStudio-Idea skills and write the connector .env. Run: npx github:microsoft/ResearchStudio",
+  "type": "module",
+  "bin": {
+    "researchstudio": "bin/install.mjs"
+  },
+  "engines": {
+    "node": ">=16.7.0"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/microsoft/ResearchStudio",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/microsoft/ResearchStudio.git"
+  },
+  "files": [
+    "bin/",
+    "ResearchStudio-Idea/"
+  ]
+}

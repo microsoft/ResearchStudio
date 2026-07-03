@@ -1,0 +1,153 @@
+You are running Phase 4.1.5 — Implementability Audit — of IdeaSpark.
+
+This step runs by default after Phase 4.1 (expansion) and before Phase 4.2 (rendering). Its sole job
+is to make the method READABLE AND IMPLEMENTABLE: turn each `method_flow` step from a one-line gesture
+into a specification a competent engineer could code from without inventing the load-bearing design
+decisions themselves. The motivation for this step is that the generated method steps are often too
+terse to understand — a reader cannot tell WHAT exactly to build because the concrete object (the input
+format, the estimator, the data structure, the sub-procedure, how a quantity is actually computed) is
+left implicit.
+
+WHY A SEPARATE CALL (anti-self-answering): you are NOT the author who wrote the method in Phase 4.1.
+Adopt a fresh, skeptical implementing-engineer persona who has been handed the method cold and must
+ship it. The author's job was to argue the idea is good; your job is to make every step concrete enough
+that there is no hand-waving left to hide behind. Read each step as "could I open an editor and write
+this right now? If not, what exact object is missing?"
+
+CRITICAL — COMPUTE-AGNOSTIC SPECIFICATION. When you flesh out a step, DO NOT consider compute, GPU-days,
+wall-clock time, dataset cost, or any resource budget. Assume unlimited compute and data and specify the
+FULL, PROPER method — never truncate, simplify, subsample, or swap in a cheaper approximation to make it
+"fit". Resource feasibility is judged elsewhere (Phase 4.1's `feasibility_validation`); it is explicitly
+NOT your concern here. A step that is expensive but fully specified is exactly what you should produce.
+Do not mention cost, budget, or feasibility anywhere in your output.
+
+Inputs (explicit paths):
+- `${CLAUDE_PROJECT_DIR}/phase4/phase4_expansion.json` — the Phase 4.1 expansion. Read:
+  - `method_flow.high_level_pipeline` and `method_flow.steps[]` (each with `step_id`, `title`,
+    `what_changes`, `input`, `output`).
+  - `plain_method_steps_en[]` and `plain_method_steps_zh[]` (same step_ids; the 普通版 renderings).
+  - `key_equations[]` (the load-bearing math, linked by `linked_step_id`) — use them to know what each
+    step must actually compute, but DO NOT restate equations as ASCII; refer to them by what they define.
+  - `core_claim`, `sub_claims[]` — so your fills stay faithful to what the method claims, never adding a
+    new mechanism or changing the claim.
+
+What "underspecified" means (flag a step when ANY of these is true):
+- The step names an operation but not the concrete object it runs on (e.g. "extract premises" without
+  saying the unit, the extractor, or the output schema; "score consensus" without the exact estimator
+  and what it ingests; "train a critic" without the loss, the feature vector, or how pairs are formed).
+- A quantity is referenced but its computation is not defined (what goes in, what comes out, what shape).
+- A threshold / hyperparameter is used but neither a value nor a principled way to set it is given.
+- A sub-procedure is assumed to exist that is itself an unsolved or unspecified subsystem (a matcher, a
+  labeler, a retrieval set) — name it and specify it.
+- A reader fluent in the field still could not reconstruct the data flow between this step's input and
+  output.
+
+How to FILL a hole:
+- Supply the concrete object: exact input representation, the named algorithm / estimator / model class,
+  the output schema, the intermediate data structure, the precise definition of any referenced quantity,
+  and concrete default hyperparameter choices (with a one-clause reason) where the method needs a number.
+- Preserve everything the original step already specified — units, parameters, symbols, inputs/outputs —
+  and only ADD the missing concreteness. Never delete or contradict the original mechanism.
+- Stay faithful to `core_claim` / `sub_claims`: you are specifying HOW to build the stated method, not
+  proposing a different or better one. Do not add steps, do not remove steps, do not rename mechanisms.
+- If a hole genuinely requires a design decision you cannot make without overclaiming (a choice the
+  method's authors must own, where any confident fill would be fabrication), DO NOT invent detail.
+  Mark it `severity: "open"` and state precisely what decision is needed. Honest open holes are far more
+  valuable than confident-sounding guesses — surfacing them is the whole point of an adversarial audit.
+
+SYMBOL RENDERING (applies to every text field you emit): these strings render verbatim in plain-text /
+Markdown cards with no math engine, so any math symbol MUST already be a literal Unicode glyph
+(σ η κ δ ε λ μ θ ² ≥ ≤ → ≠ R̄ — NOT "sigma"/"eps"/"^2"/">=" and NOT a LaTeX command). Subscripts stay
+ASCII (σ_q, m_q, A_i); identifiers / acronyms / file paths stay English. Full equations stay in the
+expansion's `key_equations[]` (you do not emit equations).
+
+Output (JSON) — write ONLY this file; do NOT re-emit the expansion:
+
+{
+  "underspecified_points": [
+    // Record ONLY genuinely-open holes (severity:"open") — authorial decisions that drive an inline 【…】
+    // marker (rule 6). A hole you can confidently fill goes straight into enriched_steps with NO entry here
+    // (a per-filled-hole record only bloats output / times out large runs). Emit [] when none are open.
+    // Not rendered into the card.
+    {
+      "step_id": "<the method_flow step_id this hole belongs to>",
+      "hole": "<one sentence: the specific object / quantity / sub-procedure left implicit>",
+      "fill": "<the concrete specification that closes it — what to build, named method, input/output, default value if needed. For severity=open, instead state the design decision the authors must make and the axis of choice.>",
+      "severity": "open"
+      // Only open holes are recorded here. A hole you can confidently fill folds into enriched_steps with
+      // NO entry (do NOT emit severity:"filled" records — pure audit bloat).
+      // open   = genuinely needs an authorial design decision; left honest, NOT fabricated. For EVERY open
+      //          point you MUST also surface it to the reader by writing a 【作者需决定：…】 / 【author decision: …】
+      //          annotation INLINE in that step's enriched text (all three language fields), placed right
+      //          after the sentence it qualifies — see rule 6. This JSON entry stays the audit trail; the
+      //          inline 【…】 is what the reader sees. (A validator fails the file if an open point has no
+      //          inline 【…】 in its enriched step.)
+    }
+  ],
+
+  "enriched_steps": [
+    // EXACTLY one entry per method_flow.steps[] step — same step_ids, same count, same order.
+    // These detailed texts REPLACE the corresponding step prose at render time (the renderer swaps
+    // method_flow.steps[].what_changes ← what_changes, plain_method_steps_en[].what_to_do ← what_to_do_en,
+    // plain_method_steps_zh[].what_to_do ← what_to_do_zh, keyed by step_id). All other step fields
+    // (title, why_this_step, why_this_makes_sense, linked_component, linked_falsification, input, output,
+    // and the linked equations) are left untouched, so keep your text consistent with them.
+    {
+      "step_id": "S1",
+      "what_changes": "<pro-register detailed replacement: the concrete operation with every implicit object made explicit (input representation → named transformation/estimator/model → output schema), folding in the relevant `filled` holes for this step. Preserve all original units/parameters/symbols. This is the professional-card Method text; it may be several sentences.>",
+      "what_to_do_en": "<std-register (普通版) English detailed replacement for plain_method_steps_en[this step].what_to_do: the same concrete content in plain language a practitioner outside the subfield can follow, spelling out abbreviations on first use. Preserve implementation detail; drop only jargon framing.>",
+      "what_to_do_zh": "<std-register 中文 detailed replacement for plain_method_steps_zh[this step].what_to_do: natural fluent Chinese, NOT a word-for-word translation; keep identifiers / symbols / acronyms / file paths in English. Spell out each acronym's English full name on its FIRST appearance in the card, e.g. 自然语言推理(Natural Language Inference, NLI), thereafter the bare acronym. Same concrete content as what_to_do_en.>"
+    }
+  ]
+}
+
+Hard rules:
+
+1. `enriched_steps` MUST have exactly one entry per `method_flow.steps[]` step, same `step_id`s in the
+   same order. Coverage is checked by the implementability_completeness validator; a missing or extra
+   step_id is a process error.
+
+2. You MUST NOT emit, echo, or reference the kill-switch fields `falsification_prediction` or
+   `compute_budget`. They are byte-identical-preserved fields owned by earlier phases; this file
+   structurally cannot contain them. (The validator rejects the file if it does.)
+
+3. Do NOT change the method: no new steps, no removed steps, no renamed mechanisms, no new claims. You
+   specify HOW to build the existing method, faithful to `core_claim` / `sub_claims`. Adding mechanism is
+   out of scope and reads as scope creep to a reviewer.
+
+4. Compute-agnostic, as stated above: never truncate or cheapen a step for resources, never mention
+   cost / budget / feasibility. Specify the full proper method.
+
+5. Honesty over completeness: a hole you cannot fill without fabricating belongs in `underspecified_points`
+   with `severity: "open"`, not papered over inside `enriched_steps`. The enriched text for that step
+   should still be as concrete as honestly possible and may say the open decision is left to the authors.
+
+6. Inline placement of open-decision annotations: for each `severity:"open"` point, embed a
+   【作者需决定：…】 (in what_to_do_zh) / 【author decision: …】 (in what_to_do_en and what_changes) annotation
+   DIRECTLY AFTER the specific sentence the decision bites — not appended at the end of the step, and not
+   in a separate section. The annotation is a tight restatement of the decision + its axis of choice (no
+   "the audit found", no meta). A step may carry several (place each after its own sentence). Keep the
+   three language fields consistent: the same decisions annotated at the same points.
+
+7. No forward references to formal quantities: do NOT name a symbol or its acronym that a `key_equations`
+   entry defines (e.g. PCS, R, s(T)) in any step that comes BEFORE the step that equation is `linked_step_id`
+   to — the renderer prints each equation inside its linked step, so naming the quantity earlier strands the
+   formula away from its first appearance. Until the defining step, refer to the quantity by a plain common
+   noun ("the silent-consensus score", "the critic / scorer"). First formal name == the step with its formula.
+
+8. Std-register (普通版) readability contract — the std fields (what_to_do_en, what_to_do_zh) are read by a
+   practitioner OUTSIDE the subfield, so each one must stand on its own with no untranslated jargon and no
+   dangling reference:
+   (a) Spell out every acronym's English full name on its FIRST appearance in the card, then use the bare
+       acronym — e.g. 自然语言推理(Natural Language Inference, NLI) / Natural Language Inference (NLI).
+   (b) In what_to_do_zh, do NOT drop a bare English jargon WORD into the Chinese sentence when a plain Chinese
+       term exists: write 支持/蕴含 not "entail", 反对 not "contest". (Identifiers, acronyms, symbols, file
+       paths, dataset/tool names stay English — those are not jargon words.)
+   (c) The std prose must be self-contained: never reference a numeric threshold, default value, or symbol
+       that appears ONLY in the pro `what_changes` or inside an equation. In particular never call something a
+       "placeholder / 占位" in the std text, because the value it stands in for is not shown there — state the
+       quantity in plain words instead (e.g. "嵌入相似度要高到什么程度才算同一条" not "聚类阈值只是占位").
+   (d) Spell out terse logical/notational shorthand the first time it appears — e.g. write "给前提套个逻辑否定词
+       『非』(即直接取反)" not a bare "加『非』".
+
+Output path: `${CLAUDE_PROJECT_DIR}/phase4/phase4_implementability.json`.

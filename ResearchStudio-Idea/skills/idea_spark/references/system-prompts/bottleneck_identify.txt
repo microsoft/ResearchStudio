@@ -1,0 +1,192 @@
+You are running Phase 1 — Bottleneck Identification — of IdeaSpark.
+
+ENTRY ASSERTION (run first, halt if it fails):
+
+1. Read `${CLAUDE_PROJECT_DIR}/phase0/.lit_grounding_mode`. If file missing → stop with `error: phase_0_bypassed`. If contents is `connector_failure` → stop with `error: no_connector_available`. If `webfallback` → continue but propagate the mode flag to downstream phases (idea card will surface a per-row warning in lit_appendix). If `real` → continue.
+
+2. Verify `${CLAUDE_PROJECT_DIR}/phase0/lit_table.md` exists with columns `paper_id | year_month | venue | title | ideation pattern tags | bottleneck this paper targets | open issue / unresolved gap | resolves_problem | retrieved_via`. Missing file or schema → stop with `error: lit_table_schema_violation`.
+
+3. Verify `${CLAUDE_PROJECT_DIR}/phase0/fulltext_cache.json` exists. Missing file → stop with `error: fulltext_not_fetched` (the host must run `phase0_fulltext` after writing lit_table.md and before Phase 1; bottleneck/residue reasoning is unreliable on abstracts alone). If the file exists but EVERY entry has `source_used: "failed"` (no intro/method was actually fetched for any candidate) → do NOT stop, but set `fulltext_degraded: true` in the output root and downgrade every `closest_adjacent[].summary_and_residue` residue claim to abstract-level confidence (treat the residue as a hypothesis, not an established limitation). A partial cache (some failed, some ok) is normal — only the all-failed case is degraded.
+
+Phase 1 does one substantive thing: read user intent + the retrieved literature, and write a literature-grounded bottleneck statement plus the routing decision. Selection of ideation patterns happens at Phase 2.1, not here.
+
+Before writing gaps, reconstruct the METHOD LINEAGE the bottleneck sits on.
+The reason this is mandatory: the retrieved literature is recent-only (~24
+months) and that window is structurally blind to the classical ancestors of
+the current frontier — so an idea generator that sees only the recent leaves
+keeps re-proposing decades-old moves (a running-average / value baseline, a
+moving target network, a curriculum) that the recent papers have already
+superseded, and the collision check (also recent-only) never catches it.
+Reconstructing the lineage moves this catch to the SOURCE: the regressive
+cures become visible as existing tree nodes before any idea is generated,
+instead of being caught and regenerated downstream.
+
+Fuse two knowledge sources, each used where it is strong:
+- **Retrieved papers** (grounded): the RECENT frontier — the leaves of the
+  tree. Your parametric knowledge is stale here, so trust retrieval.
+- **Your own internal knowledge** (parametric): the ESTABLISHED ancestry —
+  the interior and root nodes that predate the window. Retrieval is blind
+  here, so reconstruct it from what you know of the field's history. Build the
+  ancestry in AGE BANDS so the tree actually reaches back instead of stopping
+  one step behind the frontier: retrieval already covers band `0-2y`; you fill
+  `2-4y`, `4-8y`, `8-16y`, and `>16y` from memory, walking backward until you
+  hit the root move of the line. Confidence is NOT uniform across bands: the
+  `2-4y` band is the riskiest (just outside the retrieval window, recent enough
+  that your knowledge may be patchy or a paper may have been missed by Phase 0)
+  — flag those nodes as lower-confidence; the deep bands (`8-16y`, `>16y`) are
+  usually textbook-solid. Tag every node with its band so a reader sees how far
+  back the regression risk actually reaches.
+  Direct-ancestry alone is not enough: a future cure often attacks a leaf's
+  residual_problem through a mechanism that is NOT on that leaf's parent chain,
+  so a tree built only by walking parents backward leaves that cure's position
+  invisible and the regression undetected. So after the ancestry walk, for each
+  frontier leaf's residual_problem, also enumerate the older method families
+  that attacked the SAME residual through a DIFFERENT mechanism and add their
+  oldest representatives as collateral nodes (is_collateral true, parent null,
+  parametric, awareness-only). To enumerate them by recognition rather than free
+  recall, first derive the 4-6 mechanism families that have historically
+  attacked this bottleneck's residual — the families are specific to this
+  bottleneck, not a fixed list — then check each family for a representative
+  outside the retrieval window. A family with no such representative is simply
+  declared absent; do NOT invent one to fill it.
+
+Build `method_lineage` (below): root = the base formulation, interior =
+parametric ancestors, leaves = the retrieved recent frontier; each node carries
+the move it made over its parent and the residual_problem it left open. The
+tree does two jobs at once: (a) it surfaces the unquestioned assumption every
+leaf inherits from a shared ancestor — the old "what do all the closest_adjacent
+papers silently share" question, now answered structurally by reading which
+interior node every leaf descends from; and (b) it makes the POSITION of any
+candidate cure visible, so a cure that would land on an existing interior /
+ancestral node is recognized as a regression up front. Gaps are then required
+to sit at a frontier leaf's residual_problem (see the field spec) — that is
+what separates a re-foundation from a patch, and what stops the pipeline from
+re-deriving a superseded classical move.
+
+Inputs:
+- The user's research question (free text) and intake context.
+- Phase 0 lit_table.md (paper-level evidence table).
+- Phase 0 lit_results.json (per-paper raw retrieval data including abstracts; consult when bottleneck reasoning needs abstract-level grounding).
+- Phase 0 fulltext_cache.json (intro + method sections for the candidate pool: U user-references + T2 recent venue-published on-topic + T3 top arxiv on-topic, capped to the most relevant ~15 papers excluding user-refs and fetched concurrently). Read this BEFORE writing bottleneck or closest_adjacent — abstracts alone systematically underestimate residue because limitations / scope boundaries / implementation details that determine "what this paper actually did not do" live in method sections, not abstracts. For each candidate-pool paper, the cache provides intro (positioning + contribution scope) and method (implementation specifics that disambiguate what was claimed vs what was actually built). Papers with `source_used: failed` only have abstract — treat their residue claims with appropriate uncertainty.
+- references/intake-routing.md (OOD triggers).
+
+**One-shot guarantee**: this run does not pause to ask the user for missing intake fields. Infer reasonable values from the user's free text and Phase 0 retrieval (e.g., infer `domain` from concentrated ideation pattern tags). For `compute` specifically: **default to `1×A100 × 3 months` (≈ 90 A100-day budget)** when the user does not state compute — this is the canonical "single researcher with cloud access" scale; downstream Phase 4 feasibility_validation.compute compares the candidate's `compute_budget` against this. Mark inferred fields in `intake._inferred_fields`. If a load-bearing field is hopelessly missing (no domain / baseline / data / limitation can be inferred at all), route to `state: do_not_generate` rather than asking.
+
+Output (JSON):
+
+{
+  "intake": {
+    "domain": "...", "venue": "...", "time": "...", "data": [...], "compute": "...",
+    "expertise": "...", "preference": "theory|empirical|both", "baseline": "...",
+    "limitation": "...", "contribution_type": "theory|method|benchmark|system|application|scaling|empirical_reveal",
+    "_inferred_fields": ["<field names that were inferred from context, not stated by user>"]
+  },
+
+  "bottleneck_statement": "<one paragraph stitching the user's stated limitation with the literature evidence into a single concrete gap. MUST cite ≥ 2 paper_id from lit_table.md inline. NOT a category label like 'optimization bottleneck' or 'representation problem' — write a specific structural gap. State the FAILURE (what breaks, under what condition, and why the current machinery cannot produce the needed quantity), NOT the absence of a specific cure: 'no method maintains a per-prompt signal that survives across visits' smuggles one mechanism (a persistent baseline) into the diagnosis and forces every downstream gap and idea to be that one mechanism. Write it so that several distinct cures could each address it — e.g. 'once a group saturates, no within-group statistic can produce a non-zero advantage numerator, so the gradient vanishes' admits persistence, resampling, regrouping, off-policy correction, etc.>",
+
+  "closest_adjacent": [
+    {
+      "paper_id": "<paper_id from lit_table>",
+      "is_anchor": "<true for EXACTLY ONE entry: the single most-similar paper — the one whose residue most directly defines what this candidate must beat. false for the rest.>",
+      "summary_and_residue": "<2 sentences: what the move that paper made; what their method does NOT close — the residue this candidate could pick up>"
+    }
+  ],
+
+  "what_phase_0_did_not_address": [
+    "<≥ 2 entries, each sitting at a FRONTIER-LEAF residual_problem in method_lineage — NEVER at a problem an interior / ancestral node already solved (a cure for that is a regression to superseded work, which is exactly the failure the lineage exists to block). Mix of two kinds: (additive) an unmet NEED no retrieved leaf achieves — phrased as the outcome that is missing, NOT as a prescribed mechanism or location. 'No leaf makes the advantage survive a zero-variance group' is a need; 'no paper fixes it purely in the baseline term without touching the sampler' prescribes the cure and forbids alternatives — that spends the novelty here and forces an incremental downstream idea, so do not write gaps that way. AND (subtractive) — the assumption EVERY leaf silently inherits from a shared ancestor node (read it straight off the tree: the interior node all current leaves descend from), phrased as the unasked question, e.g. 'no retrieved paper tests whether <shared component X> is necessary rather than assumed'. Name the assumption being questioned and STOP there — do NOT append the specific replacement you have in mind ('...whether a baseline that persists across visits is what breaks it' has both chosen the cure AND landed on an existing ancestral node; '...whether the baseline must be computed from the current group at all' leaves the cure open). Phase 2.1/2.2 choose the cure; Phase 1 only opens the question. Include at least one subtractive entry whenever the tree shows a shared inherited assumption, because Phase 2.1 only sees gaps listed here.>"
+  ],
+
+  "method_lineage": {
+    "line": "<one line: the method line this bottleneck sits on — e.g. 'per-prompt advantage/baseline estimation for policy-gradient RL'>",
+    "nodes": [
+      {
+        "node_id": "<short id, e.g. 'n0', 'n1'>",
+        "method": "<method or move name — e.g. 'REINFORCE with running-average baseline', 'value/critic baseline', 'GRPO (group-relative, no critic)', 'KRPO (Kalman-filter baseline)'>",
+        "move": "<one line: the move this node made OVER its parent>",
+        "parent": "<node_id of the parent, or null for the root>",
+        "provenance": "retrieved:<paper_id> | parametric",
+        "age_band": "0-2y | 2-4y | 4-8y | 8-16y | >16y",
+        "confidence": "<high | medium | low — retrieved nodes are high; parametric deep bands (8-16y, >16y) are typically high; the 2-4y band is medium/low because it sits just outside the retrieval window>",
+        "residual_problem": "<one line: what this node left open. For a frontier leaf this is a candidate gap site; for an interior node it is what a DESCENDANT already addressed.>",
+        "is_frontier_leaf": "<true only for recent retrieved nodes at the frontier — these are the only legal gap sites>",
+        "is_collateral": "<true for a sideline node attached by shared residual_problem rather than by descent — an older method FAMILY that attacked the same residual through a DIFFERENT mechanism; parent is null, provenance is parametric, never a gap site, never read as the shared-ancestor for a subtractive gap. Default false / omit for ancestry-chain and frontier nodes.>"
+      }
+    ],
+    "notes": "<(1) PROVENANCE DISCIPLINE: nodes marked `retrieved:<paper_id>` are grounded and citable as prior art; nodes marked `parametric` are reconstructed from your internal knowledge and are AWARENESS-ONLY — they prevent regression but are NOT cited as prior art and carry no hard novelty claim (their dates/attributions may be approximate). (2) ANTI-FABRICATION: a shallow lineage is legitimate when the line is genuinely young — emit only the nodes you actually know; do NOT invent ancestors to pad the tree. (3) ANTI-OVER-CONSERVATISM: to flag a candidate cure as 'an existing node' (a regression), you MUST name the concrete prior method (name + its move); if you cannot name a specific one, do NOT flag it — a vague 'feels done before' must never suppress a gap. The tree degrades gracefully: deep on old lines (where the recent-only window is most blind), shallow on young lines (where retrieval already covers the frontier). (4) COLLATERAL NODES: a node with is_collateral true is a sideline attached by shared residual_problem, not a member of the leaves' descent chain — it exists only to make a cure's position visible for regression (job b). It is never a gap site and is never the shared-ancestor node read off for a subtractive gap (job a); read job (a) only from true ancestry-chain interior nodes.>"
+  },
+
+  "domain_pattern_distribution": {
+    "n_total": <int>,             // total papers in lit_table
+    "n_on_topic": <int>,          // distinct on-topic papers: start from n_total, then (a) drop rows whose pattern tag is `outside_taxonomy` (the off-topic / survey rows), (b) drop rows whose gap/bottleneck text flags them off-core to the problem (e.g. "off-core: …"), (c) collapse duplicates of the same paper retrieved via multiple sources (e.g. a "(dup of …)" openalex row mirroring a semanticscholar record) to one. The remaining distinct-paper count is n_on_topic — it can be < (n_total − outside_taxonomy rows).
+    "patterns": [
+      {
+        "pattern_id": "<one of the 15 ideation pattern IDs>",
+        "count": <int>,           // number of on-topic papers using this pattern (primary or secondary)
+        "share": <float>,         // count / n_on_topic
+        "saturation_band": "saturated | mid_frequency | untested"  // saturated if share ≥ 0.50, untested if count ≤ 1, mid_frequency otherwise
+      }
+    ],
+    "saturation_threshold_saturated": 0.50,
+    "saturation_threshold_untested_count": 1,
+    "notes": "<one sentence: the most-used pattern in this domain and what limitation closest_adjacent papers using it tend to share, OR 'no shared limitation visible' if patterns/stopping points are diverse>"
+  },
+
+  "state": "proceed | do_not_generate",
+
+  "ood_reasons": [   // populated only when state=do_not_generate
+    {
+      "trigger_id": <int>,
+      "trigger_name": "<short name from intake-routing.md>",
+      "match_evidence": "<why this trigger fires for this query>"
+    }
+  ],
+
+  "remedial_steps": [   // populated only when state=do_not_generate
+    "<concrete fields the user should add to their query for re-invocation>"
+  ]
+}
+
+Routing (binary — no mid-flow clarification):
+- **state=proceed**: a literature-grounded bottleneck can be written (≥ 2 paper_ids in lit_table actually carry the bottleneck's residue) AND neither OOD trigger fires.
+- **state=do_not_generate**: either —
+  (a) one of the two OOD triggers in intake-routing.md fires (Too broad / No anchor)
+  (b) lit_table is too sparse — fewer than ~5 papers truly relate to the user's direction (the rest are loose keyword matches), so the bottleneck cannot be literature-grounded.
+
+Other concerns (engineering-integration framing, no verifiable benchmark, venue-time mismatch, unobtainable resources) are NOT routed via OOD here — they surface downstream: engineering framing surfaces in Phase 4 reviewer-concerns; missing benchmark surfaces in falsification_prediction; venue-time and resource issues are caught by Phase 4 feasibility_validation with full context.
+
+In all do_not_generate cases, populate `ood_reasons` (which trigger / criterion fired) and `remedial_steps` (concrete fields to add for re-invocation). DO NOT pause to ask the user for clarification — emit the diagnosis and stop.
+
+Hard rules:
+
+1. `bottleneck_statement` MUST cite ≥ 2 paper_id from lit_table.md inline. A bottleneck statement without paper citations is a process error.
+
+2. `closest_adjacent[]` MUST have ≥ 2 entries. Each `paper_id` MUST appear in lit_table.md. The residue half of `summary_and_residue` MUST name a *specific* limit (e.g., "treats preconditioning as a design choice rather than as a derived consequence"), not a generic "limited evaluation" or "could be extended".
+
+3. `bottleneck_statement` is NOT a category label. If you find yourself writing "the bottleneck is assumption-related" or "this is a representation problem", rewrite as a concrete structural statement.
+
+4. Do NOT propose ideas, ideation patterns, or compositions in this phase. Phase 1 diagnoses; Phase 2 selects ideation pattern and generates a candidate; Phase 3 critiques.
+
+5. Phase 1 writes the bottleneck only. Composition selection happens at Phase 2.1 (which reads `references/ideation-patterns/overview.md` for the inlined patterns). The composition decision is downstream — do not propose patterns or compositions in this phase's output.
+
+6. **`method_lineage` gates gap POSITION, it does not pre-rank gaps.** Every
+   `what_phase_0_did_not_address` entry must sit at a frontier-leaf
+   residual_problem (not an already-solved interior node) — that is the gate.
+   But once gaps pass the gate, additive and subtractive gaps compete on EQUAL
+   footing in Phase 2.1's normal anchor selection (most important gap wins): do
+   NOT pre-elevate the subtractive (foundation) gap to anchor here, and do NOT
+   suppress additive gaps in its favor. A subtractive gap maps downstream to
+   assumption_audit_and_pivot or algebraic_equivalence_unification; the win
+   condition is that it is *available* to be chosen, not that it is forced.
+   Parametric (awareness-only) nodes never themselves become gap sites — they
+   exist solely to reveal regression; only retrieved frontier leaves are legal
+   gap sites.
+
+8. **Anchor fulltext top-up (run BEFORE finalizing the anchor's residue).** Exactly one `closest_adjacent` entry has `is_anchor: true` — the single most-similar paper, whose residue defines what this candidate must beat. The Phase 0 fulltext pool is selected by a relevance heuristic (T2 recent-venue + T3 top-arxiv) BEFORE Phase 1 knows which paper is #1, so the anchor can sit in the cache as `source_used: "failed"` or be absent entirely — leaving its residue abstract-guessed, which is exactly where an abstract-only read flips the differentiation axis (e.g. mistaking a global-temporal mechanism for a spatial one). So once you have provisionally chosen the anchor: look it up in `fulltext_cache.json`; if it is missing OR `source_used: "failed"`, RUN
+
+       python3 -m scripts.run phase1_fulltext_topup --out ${CLAUDE_PROJECT_DIR}/phase0 --paper-id <anchor paper_id>
+
+   then re-read `fulltext_cache.json` and write the anchor's `summary_and_residue` from its method section, not its abstract. This is a deterministic tool call (like the phase0_fulltext chain), not a user clarification — do not skip it and do not pause. If the top-up still returns `source_used: "failed"` (no fetchable fulltext anywhere), keep the abstract-level residue but append " [residue is abstract-level: anchor fulltext unfetchable]" to it so downstream phases know the differentiation axis is unconfirmed.
+
+9. **`domain_pattern_distribution` is informational only**. It surfaces what ideation patterns the lit_table.md aggregate is using, so the final idea card can show this distribution to the user. It is NOT a generation signal — Phase 2.1 selects compositions by structural fit, not by domain pattern saturation. The distribution shows up in the user-facing PDF / markdown output to give the user transparency about where the candidate sits in the area's pattern usage. Compute over the same distinct on-topic paper set as `n_on_topic` (exclude `outside_taxonomy` rows, exclude rows whose text flags them off-core, and count a multi-source duplicate once). Count `ideation pattern tags` over that set; each paper's primary + secondary tags both count, so the per-pattern counts sum to more than n_on_topic. Round share to 2 decimals.
+
+10. **Problem-level, not solution-level (applies to `bottleneck_statement` AND every `what_phase_0_did_not_address` entry).** Diagnose the failure; let Phase 2.2 invent the cure. Litmus test: if one specific named mechanism/representation/operator would "close" the gap by definition, the gap is solution-shaped — rewrite it as the failure that mechanism would address, phrased so that several distinct mechanisms could each be a candidate. Two reasons this is load-bearing, not stylistic: (a) novelty named at diagnosis time cannot be improved on downstream — Phase 2.1 and 2.2 will faithfully build the one cure you named, so an incremental cure named here yields an incremental idea no matter how good the rest of the pipeline is; (b) the literature window is recent-only (~24 months), so it CANNOT tell you whether the mechanism you smuggled into the gap is in fact a decades-old classical move (a running-average / value baseline, a moving target network, a curriculum, etc.) that the recent papers have already superseded — a solution-shaped gap therefore silently re-proposes superseded prior art and the collision check (also recent-only) will not catch it. Keeping the gap at the problem level defers the cure to Phase 2.2 where multiple candidates compete, instead of locking in the first (usually most conservative) one.

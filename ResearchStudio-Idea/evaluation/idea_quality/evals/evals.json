@@ -1,0 +1,33 @@
+{
+  "skill_name": "idea-quality",
+  "evals": [
+    {
+      "id": 0,
+      "name": "strong-idea-absolute",
+      "prompt": "Score the quality of the research idea in evals/sample_ideas/strong_grpo.md (Title/Motivation/Method). Give me the per-axis assessment and overall score.",
+      "expected_output": "Absolute A/B/C review with quoted evidence; high overall (verdict strong, no A/C-gate cap). A high (real, open foundation gap: is the critic necessary), B high with depth/soundness/feasibility decomposed in the reason, C high (group-mean baseline directly removes the critic = targets the stated gap). No prior-art search, no fabricated results.",
+      "files": ["evals/sample_ideas/strong_grpo.md"]
+    },
+    {
+      "id": 1,
+      "name": "weak-idea-absolute",
+      "prompt": "How good is the research idea in evals/sample_ideas/weak_temperature.md? Rate it.",
+      "expected_output": "Absolute A/B/C review; low overall (verdict weak). A low (vague 'a bit faster' soft target), B low (incremental one-scalar tweak), C low (a softmax temperature does not reduce inference cost — wrong-problem fit). A/C gate likely fires (A and/or C <= 2 cap at borderline, but band is already weak). No prior-art, no fabricated results.",
+      "files": ["evals/sample_ideas/weak_temperature.md"]
+    },
+    {
+      "id": 2,
+      "name": "ac-gate-mismatch",
+      "prompt": "Review the idea in evals/sample_ideas/mismatch_gate.md and give it a quality score.",
+      "expected_output": "Tests the A/C gate: A is high (memorization-threshold gap is real and open) and the method is competently specified, but C is very low (a faster dataloader does NOT address the memorization-threshold question — method solves a different problem). The verdict must NOT be 'strong' — the A/C gate caps it at borderline-or-below, with a one-line note that low problem-fit drives the cap. This is the key discriminator: an equal-weight mean would wrongly read 'strong'.",
+      "files": ["evals/sample_ideas/mismatch_gate.md"]
+    },
+    {
+      "id": 3,
+      "name": "pairwise-blind",
+      "prompt": "Compare the two research ideas in evals/sample_ideas/strong_grpo.md and evals/sample_ideas/weak_temperature.md. Which is stronger and why? Judge them blind to source.",
+      "expected_output": "Absolute block for each idea, then a pairwise verdict table over A/B/C (with B's depth/soundness/feasibility sub-winners noted) and an overall winner = the GRPO idea (strong_grpo.md), judged blind to source.",
+      "files": ["evals/sample_ideas/strong_grpo.md", "evals/sample_ideas/weak_temperature.md"]
+    }
+  ]
+}
