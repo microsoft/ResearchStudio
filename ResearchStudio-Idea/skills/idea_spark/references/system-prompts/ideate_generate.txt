@@ -126,9 +126,8 @@ Inputs (explicit paths):
   in the cache only have abstract — for those you have less evidence; flag any
   delta against them as "abstract-only inference" if it is non-obvious.
 - `references/ideation-patterns/overview.md` — NOT read at Phase 2.2
-  (Phase 2.1 already used the first three panels for selection; the
-  main-pattern Step-by-step is no longer the tactical recipe — that role
-  is now held by each picked sub-pattern's Step-by-Step).
+  (Phase 2.1 already used all three of its panels for selection; the
+  tactical recipe is held by each picked sub-pattern's Step-by-Step).
 - `references/ideation-sub-patterns/overview.md` — index of 31 sub-
   patterns under their parent main patterns. Used in sub-step a to find
   candidate sub-patterns.
