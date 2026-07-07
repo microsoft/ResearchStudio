@@ -65,6 +65,20 @@ We recommend utilizing these skills with models versions $\ge$ `claude-opus-4.6`
 
 If ResearchStudio helps your research workflow, please cite:
 
-```bibtex
-Placeholder
+```
+@article{xiao2026researchstudioreel,
+  title   = {ResearchStudio-Reel: Automate the Last Mile of Research from Paper to Poster, Video, and Blog},
+  author  = {Lingao Xiao and Yalun Dai and Yangyu Huang and Qihao Zhao and Wenshan Wu and Hugo He and Ruishuo Chen and Jin Jiang and Qianli Ma and Jiahuan Zhang and Xin Zhang and Ying Xin and Yang Ou and Yan Xia and Scarlett Li and Longbo Huang and Zhipeng Zhang and Yang He and Yap Kim Hui and Yan Lu},
+  journal = {arXiv preprint arXiv:2607.04438},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2607.04438}
+}
+
+@article{zhao2026researchstudioidea,
+  title   = {ResearchStudio-Idea: An Evidence-Grounded Research-Ideation Skill Suite from ML Conference Outcomes},
+  author  = {Qihao Zhao and Yangyu Huang and Yalun Dai and Lingao Xiao and Jianjun Gao and Xin Zhang and Wenshan Wu and Scarlett Li and Yang He and Yan Lu and Yap Kim Hui},
+  journal = {arXiv preprint arXiv:2607.04439},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2607.04439}
+}
 ```

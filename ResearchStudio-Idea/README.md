@@ -102,6 +102,12 @@ Full protocol, IdeaSpark vs the baselines, and the scoring skill are in [`evalua
 
 If ResearchStudio - Idea / IdeaSpark helps your research workflow, please cite:
 
-```bibtex
-Placeholder
+```
+@article{zhao2026researchstudioidea,
+  title   = {ResearchStudio-Idea: An Evidence-Grounded Research-Ideation Skill Suite from ML Conference Outcomes},
+  author  = {Qihao Zhao and Yangyu Huang and Yalun Dai and Lingao Xiao and Jianjun Gao and Xin Zhang and Wenshan Wu and Scarlett Li and Yang He and Yan Lu and Yap Kim Hui},
+  journal = {arXiv preprint arXiv:2607.04439},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2607.04439}
+}
 ```

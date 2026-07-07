@@ -14,12 +14,10 @@
 <a href="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Reel/docs/examples/latent_diffusion_landscape/poster.png" target="_blank" rel="noopener"><img src="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Reel/docs/figures/poster_demo.gif" alt="Paper2Poster — building a conference poster from one PDF" width="100%"></a>
 </td>
 </tr>
-
 <tr>
 <td align="center" valign="top"><sub><b>Paper2Reel</b> — presenting an interactive reel.</sub></td>
 <td align="center" valign="top"><sub><b>Paper2Poster</b> — building a poster from one PDF.</sub></td>
 </tr>
-
 </table>
 
 ---
@@ -228,6 +226,12 @@ For the full bootstrap behavior, alignment map, section-modal UI contract, brows
 
 If ResearchStudio - Reel helps your research workflow, please cite:
 
-```bibtex
-Placeholder
+```
+@article{xiao2026researchstudioreel,
+  title   = {ResearchStudio-Reel: Automate the Last Mile of Research from Paper to Poster, Video, and Blog},
+  author  = {Lingao Xiao and Yalun Dai and Yangyu Huang and Qihao Zhao and Wenshan Wu and Hugo He and Ruishuo Chen and Jin Jiang and Qianli Ma and Jiahuan Zhang and Xin Zhang and Ying Xin and Yang Ou and Yan Xia and Scarlett Li and Longbo Huang and Zhipeng Zhang and Yang He and Yap Kim Hui and Yan Lu},
+  journal = {arXiv preprint arXiv:2607.04438},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2607.04438}
+}
 ```
