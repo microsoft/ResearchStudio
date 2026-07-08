@@ -30,11 +30,11 @@
 
 | Skill | Input | Output | Built for |
 |---|---|---|---|
-| **Paper2Assets** | paper PDF or Link   | intermediate artifacts (TXT, JSON)                                                      | the **upstream extraction stage** every downstream renderer reuses |
-| **Paper2Poster** | paper PDF or assets | a narrated poster (HTML + MP3 + PDF + PNG + PPTX) | poster sessions at different venues |
-| **Paper2Video**  | paper PDF or assets | a video (MP4 + PPTX) | lightning talks, virtual conference recordings, social promotion |
-| **Paper2Blog**   | paper PDF or assets | two blogs (DOCX) | publicity push after acceptance — bilingual outreach in one pass     |
-| **Paper2Reel**   | poster + deck artifacts | an interactive reel viewer (HTML) | one scrollable view that aligns the poster with slide / video frames |
+| **[Paper2Assets](skills/paper2assets/README.md)** | paper PDF or Link   | intermediate artifacts (TXT, JSON)                                                      | the **upstream extraction stage** every downstream renderer reuses |
+| **[Paper2Poster](skills/paper2poster/README.md)** | paper PDF or assets | a narrated poster (HTML + MP3 + PDF + PNG + PPTX) | poster sessions at different venues |
+| **[Paper2Video](skills/paper2video/README.md)**  | paper PDF or assets | a video (MP4 + PPTX) | lightning talks, virtual conference recordings, social promotion |
+| **[Paper2Blog](skills/paper2blog/README.md)**   | paper PDF or assets | two blogs (DOCX) | publicity push after acceptance — bilingual outreach in one pass     |
+| **[Paper2Reel](skills/paper2reel/README.md)**   | poster + deck artifacts | an interactive reel viewer (HTML) | one scrollable view that aligns the poster with slide / video frames |
 
 Each skill is shipped as a [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) and [Codex](https://developers.openai.com/codex) **skill**.
 

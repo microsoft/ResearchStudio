@@ -16,7 +16,13 @@ These skills are supported by [Claude Code](https://docs.claude.com/en/docs/clau
 
 ---
 
-### <img src="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Reel/docs/figures/reel-wordmark.png" alt="Reel" height="16">: one research paper, all deliverables (poster, video, blog, and reel)
+### <img src="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Reel/docs/figures/reel-wordmark.png" alt="Reel" height="16">: one research paper, all deliverables (editable poster, video, blog, and reel)
+
+<div align="center">
+
+#### [📄 Paper](https://arxiv.org/abs/2607.04438) &nbsp;·&nbsp; [💻 Code](ResearchStudio-Reel/) &nbsp;·&nbsp; 🎬 $\color{gray}{\textsf{Demo (Coming Soon)}}$
+
+</div>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Reel/docs/figures/reel_demo.gif" alt="Paper2Reel — interactive reel feature demo" width="100%" align="top">
@@ -26,6 +32,12 @@ These skills are supported by [Claude Code](https://docs.claude.com/en/docs/clau
 </p>
 
 ### <img src="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Idea/docs/figures/idea-wordmark.png" alt="Idea" height="16">: one research direction, one reviewer-defensible idea card
+
+<div align="center">
+
+#### [📄 Paper](https://arxiv.org/abs/2607.04439) &nbsp;·&nbsp; [💻 Code](ResearchStudio-Idea/) &nbsp;·&nbsp; 🎬 $\color{gray}{\textsf{Demo (Coming Soon)}}$
+
+</div>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Idea/docs/figures/ideaspark_teaser.gif" alt="IdeaSpark — turning a research direction into a reviewer-defensible idea card end to end" width="100%">
@@ -37,7 +49,7 @@ These skills are supported by [Claude Code](https://docs.claude.com/en/docs/clau
 
 ## News🔥🔥🔥
 
-- [**Preview**] **[ResearchStudio-Reel](ResearchStudio-Reel/) is coming soon** — the *post-paper* half: turn a finished paper PDF into the artifacts a publication needs — a print-ready poster, a narrated walkthrough video, a bilingual blog post, and an interactive reel viewer.
+- [**2026-07-08**] **[ResearchStudio-Reel](ResearchStudio-Reel/) is released** — the *post-paper* half: turn a finished paper PDF into the artifacts a publication needs — a print-ready poster, a narrated walkthrough video, a bilingual blog post, and an interactive reel viewer.
 - [**2026-07-03**] **[ResearchStudio-Idea](ResearchStudio-Idea/) is released** — the *pre-paper* half: turn an under-specified research direction into a reviewer-defensible, implementable idea, grounded in an empirical taxonomy induced from a large-scale papers of ICLR / ICML / NeurIPS submissions.
 
 
