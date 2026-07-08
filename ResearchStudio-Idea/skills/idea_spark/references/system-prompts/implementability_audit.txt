@@ -22,7 +22,7 @@ NOT your concern here. A step that is expensive but fully specified is exactly w
 Do not mention cost, budget, or feasibility anywhere in your output.
 
 Inputs (explicit paths):
-- `${CLAUDE_PROJECT_DIR}/phase4/phase4_expansion.json` — the Phase 4.1 expansion. Read:
+- `$RUN_DIR/phase4/phase4_expansion.json` — the Phase 4.1 expansion. Read:
   - `method_flow.high_level_pipeline` and `method_flow.steps[]` (each with `step_id`, `title`,
     `what_changes`, `input`, `output`).
   - `plain_method_steps_en[]` and `plain_method_steps_zh[]` (same step_ids; the 普通版 renderings).
@@ -150,4 +150,4 @@ Hard rules:
    (d) Spell out terse logical/notational shorthand the first time it appears — e.g. write "给前提套个逻辑否定词
        『非』(即直接取反)" not a bare "加『非』".
 
-Output path: `${CLAUDE_PROJECT_DIR}/phase4/phase4_implementability.json`.
+Output path: `$RUN_DIR/phase4/phase4_implementability.json`.

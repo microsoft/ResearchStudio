@@ -103,19 +103,19 @@ Match core_mechanism's structure to the declared thread type — don't
 distort the artifacts to force a different style.
 
 Inputs (explicit paths):
-- `${CLAUDE_PROJECT_DIR}/phase1/phase1_output.json` — bottleneck_statement +
+- `$RUN_DIR/phase1/phase1_output.json` — bottleneck_statement +
   closest_adjacent[] with summary_and_residue + what_phase_0_did_not_address[]
   + intake + `method_lineage` (age-banded ancestry tree + `notes` REGRESSION
   FLAG). The mechanism you construct must NOT reduce to an ancestral/occupied
   node the flag names — see Hard rule 2. Also honor any occupied-source
   constraint Phase 2.1 recorded in `selection_rationale`.
-- `${CLAUDE_PROJECT_DIR}/phase2_select/phase2_select_output.json` — Phase 2.1 spec
+- `$RUN_DIR/phase2_select/phase2_select_output.json` — Phase 2.1 spec
   (`selected_gaps[]` with chosen_pattern_id per gap + `coherence_thread_type`
   + `deferred_gaps[]`). Your candidate's `gap_closure[]` must mirror
   `selected_gaps[]` one-for-one.
-- `${CLAUDE_PROJECT_DIR}/phase0/lit_results.json` — abstracts of closest_adjacent papers
+- `$RUN_DIR/phase0/lit_results.json` — abstracts of closest_adjacent papers
   for substantive comparison.
-- `${CLAUDE_PROJECT_DIR}/phase0/fulltext_cache.json` — intro + method
+- `$RUN_DIR/phase0/fulltext_cache.json` — intro + method
   sections for the candidate pool (U + T2 + T3). When you write
   `differentiation_from_lit[].delta` or `what_step_was_missed`, look up the
   closest_adjacent and almost_prior papers in this cache: a substantive delta
@@ -237,4 +237,4 @@ Notes:
 - `main_pattern` per entry comes from Phase 2.1; `sub_pattern` is picked
   in this phase's sub-step a. There is no separate `patterns_used[]` field.
 
-Output path: `${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json`.
+Output path: `$RUN_DIR/phase2_generate/phase2_generate_output.json`.

@@ -16,14 +16,14 @@ Phase 4 is split into three steps so the LLM's payload is bounded to authored pr
 
 ## Inputs you read
 
-- `${CLAUDE_PROJECT_DIR}/phase4/phase4_skeleton.json` — the only input you need. It already contains every mechanical field. Walk its tree and identify every string value that starts with `<TODO[`.
+- `$RUN_DIR/phase4/phase4_skeleton.json` — the only input you need. It already contains every mechanical field. Walk its tree and identify every string value that starts with `<TODO[`.
 
 You MAY also consult these for context (the skeleton was built from them, so the values are already baked in — re-reading them only helps you author higher-quality prose):
 
-- `${CLAUDE_PROJECT_DIR}/phase3_revise/final_candidate.json` (or `${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json` if Phase 3.3 did not run) — the canonical candidate's core_mechanism, core_mechanism_steps, core_mechanism_reasoning. The `method_flow.steps[]` TODO is derived from `core_mechanism_steps`.
-- `${CLAUDE_PROJECT_DIR}/phase1/phase1_output.json` — bottleneck_statement + closest_adjacent + intake. The motivation prose draws on these.
-- `${CLAUDE_PROJECT_DIR}/phase3_critique/phase3_critique_output.json` — audit report. The reviewer_concerns responses anchor in the verdict_rationale.
-- `${CLAUDE_PROJECT_DIR}/phase0/lit_table.md`, `${CLAUDE_PROJECT_DIR}/phase0/lit_results.json` — for additional cites in motivation.why_now.
+- `$RUN_DIR/phase3_revise/final_candidate.json` (or `$RUN_DIR/phase2_generate/phase2_generate_output.json` if Phase 3.3 did not run) — the canonical candidate's core_mechanism, core_mechanism_steps, core_mechanism_reasoning. The `method_flow.steps[]` TODO is derived from `core_mechanism_steps`.
+- `$RUN_DIR/phase1/phase1_output.json` — bottleneck_statement + closest_adjacent + intake. The motivation prose draws on these.
+- `$RUN_DIR/phase3_critique/phase3_critique_output.json` — audit report. The reviewer_concerns responses anchor in the verdict_rationale.
+- `$RUN_DIR/phase0/lit_table.md`, `$RUN_DIR/phase0/lit_results.json` — for additional cites in motivation.why_now.
 
 ## Output (a flat fill_map JSON)
 
@@ -45,13 +45,13 @@ Values:
 - Strings for prose fields. Use Unicode glyphs for math symbols in `plain_*` prose fields (σ η κ δ ε λ μ θ ² ≥ ≤ → ≠), NOT ASCII (`sigma`, `eta`, `>=`) or LaTeX (`\sigma`). Subscripts stay ASCII (`σ_q`, `m_q`, `A_i`).
 - Lists for the few list-typed TODOs: `sub_claims`, `method_flow.steps`, `plain_method_steps_en`, `plain_method_steps_zh`, `plain_method_modules_en`, `plain_method_modules_zh`, `key_equations`. Each list entry is a dict matching the schema documented in the TODO's hint.
 
-Output path: `${CLAUDE_PROJECT_DIR}/phase4/fill_map.json`. The assembler runs:
+Output path: `$RUN_DIR/phase4/fill_map.json`. The assembler runs:
 
 ```
 python3 -m scripts.run phase4_assemble \
-  --skeleton ${CLAUDE_PROJECT_DIR}/phase4/phase4_skeleton.json \
-  --fill-map ${CLAUDE_PROJECT_DIR}/phase4/fill_map.json \
-  --out ${CLAUDE_PROJECT_DIR}/phase4/
+  --skeleton $RUN_DIR/phase4/phase4_skeleton.json \
+  --fill-map $RUN_DIR/phase4/fill_map.json \
+  --out $RUN_DIR/phase4/
 ```
 
 It produces `phase4_expansion.json`. If your fill_map leaves any `<TODO[...]>` placeholders un-filled, the assembler warns and the `expansion_completeness` validator will fail downstream — author every prose TODO.

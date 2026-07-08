@@ -18,23 +18,26 @@ Design rationale (from the SKILL.md design doc):
   assertion (lens_probe.txt checks lit_grounding_mode + retrieved_via), bypass
   becomes mechanically detectable, not just discouraged.
 
-CLI:
+CLI (invocable from ANY working directory — run.py self-locates its skill root;
+     $SKILL_DIR = where this skill is installed, $RUN_DIR = any absolute output dir):
   # Phase 0 — literature grounding (map mode)
-  python3 -m scripts.run phase0 --query "<research question>" --out ${CLAUDE_PROJECT_DIR}/phase0/
+  python3 "$SKILL_DIR/scripts/run.py" phase0 --query "<research question>" --out $RUN_DIR/phase0/
 
   # Phase 3 Step 3.1 — collision check
-  python3 -m scripts.run phase3_collision --idea-json ${CLAUDE_PROJECT_DIR}/phase2_winner.json --out ${CLAUDE_PROJECT_DIR}/phase3_collision/
+  python3 "$SKILL_DIR/scripts/run.py" phase3_collision --idea-json $RUN_DIR/phase2_winner.json --out $RUN_DIR/phase3_collision/
 
   # Optional: explicit web-fallback (for environments with no connectors)
-  python3 -m scripts.run phase0 --query "..." --allow-webfallback
+  python3 "$SKILL_DIR/scripts/run.py" phase0 --query "..." --allow-webfallback
 
   # Sanity check connectors before running anything
-  python3 -m scripts.run check_connectors
+  python3 "$SKILL_DIR/scripts/run.py" check_connectors
+
+  # Legacy equivalent (still works): cd "$SKILL_DIR" && python3 -m scripts.run <subcommand> ...
 
 Outputs (Phase 0):
-  ${CLAUDE_PROJECT_DIR}/phase0/lit_results.json         — ~30 deduped papers (role-based retrieval target)
-  ${CLAUDE_PROJECT_DIR}/phase0/lit_table.md             — paper-level evidence table (ideation pattern tags + bottleneck + open_issue)
-  ${CLAUDE_PROJECT_DIR}/phase0/.lit_grounding_mode      — sentinel file: "real" | "webfallback" | "connector_failure"
+  $RUN_DIR/phase0/lit_results.json         — ~30 deduped papers (role-based retrieval target)
+  $RUN_DIR/phase0/lit_table.md             — paper-level evidence table (ideation pattern tags + bottleneck + open_issue)
+  $RUN_DIR/phase0/.lit_grounding_mode      — sentinel file: "real" | "webfallback" | "connector_failure"
 
 Phase 1's lens_probe enforces a hard assertion at entry that lit_grounding_mode
 is present and acceptable; if not, downstream phases stop with a clear error.
@@ -55,6 +58,16 @@ ROOT = Path(__file__).resolve().parent.parent
 # SUB aliases ROOT: the Phase 0 / 3.1 connector scripts + rubrics live in this
 # skill, so connector subprocess calls and rubric reads resolve in-skill.
 SUB = ROOT
+
+# Harness-agnostic invocation: allow `python3 /abs/path/scripts/run.py <cmd> ...`
+# from ANY working directory, not only `cd <skill> && python3 -m scripts.run`.
+# Claude Code injects a skill-dir CWD; other harnesses (Codex CLI, plain shells,
+# cron) do not, so the `-m scripts.run` form and the in-package
+# `from scripts.X import` / `-m scripts.X` subprocess calls would fail to resolve
+# the `scripts` package. Putting the skill root on sys.path makes both work
+# regardless of the caller's CWD. Idempotent; no effect under the `-m` form.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def _load_env_file() -> None:
@@ -94,17 +107,20 @@ _load_env_file()
 # --- robustness guards (cross-platform) ------------------------------------
 
 def _guard_project_path(raw: str, argname: str) -> None:
-    """Fail loud + early when a path argument came from an UNEXPANDED
-    `${CLAUDE_PROJECT_DIR}` (the single most common onboarding break).
+    """Fail loud + early when a path argument came from a mis-set run-dir
+    variable (the single most common onboarding break).
 
-    Two failure shapes are caught:
-      1. The literal string `${CLAUDE_PROJECT_DIR}` / `$CLAUDE_PROJECT_DIR`
-         survived into the path — the host never set the variable, so the
-         shell passed it through verbatim.
-      2. The variable expanded to the EMPTY string, so `${CLAUDE_PROJECT_DIR}/phase0`
+    Three failure shapes are caught:
+      1. An UNEXPANDED shell variable (`$RUN_DIR`, `${CLAUDE_PROJECT_DIR}`,
+         any spelling) survived into the path — the host never set it, so
+         the shell passed it through verbatim.
+      2. The variable expanded to the EMPTY string, so `$RUN_DIR/phase0`
          collapsed to an absolute `/phase0` (or `/phaseN...`) at filesystem root.
          That is never an intended output location and otherwise surfaces only
          as a confusing `FileNotFoundError: /phase0/...` deep in a later phase.
+      3. A RELATIVE `--out`, which would resolve against the caller's CWD —
+         not stable across harnesses (Claude Code injects a skill-dir CWD;
+         Codex CLI / plain shells / cron do not).
 
     Works identically on macOS and Linux (pure string / path-shape checks, no
     platform-specific assumptions).
@@ -112,24 +128,40 @@ def _guard_project_path(raw: str, argname: str) -> None:
     if raw is None:
         return
     s = str(raw)
-    if 'CLAUDE_PROJECT_DIR' in s:
+    # An unexpanded shell variable of ANY name survived into the path (the host
+    # never set it, so the shell passed the literal `$VAR` / `${VAR}` through).
+    # Checking for `$` generically covers $RUN_DIR, $CLAUDE_PROJECT_DIR,
+    # $IDEA_SPARK_PROJECT_DIR, and any future spelling with one rule.
+    if '$' in s:
         sys.stderr.write(
-            f'\nERROR: {argname}={s!r} still contains an unexpanded '
-            f'${{CLAUDE_PROJECT_DIR}}.\n'
-            f'  The CLAUDE_PROJECT_DIR environment variable is not set in this shell.\n'
-            f'  Fix: export an absolute run directory first, e.g.\n'
-            f'      export CLAUDE_PROJECT_DIR="$PWD" && mkdir -p "$CLAUDE_PROJECT_DIR"\n'
-            f'  then re-run with the variable set (or pass an explicit absolute --out).\n')
+            f'\nERROR: {argname}={s!r} contains an unexpanded shell variable.\n'
+            f'  The variable is not set in this shell, so it was passed through\n'
+            f'  literally instead of expanding to a directory.\n'
+            f'  Fix: pick any absolute run directory and set the variable first, e.g.\n'
+            f'      RUN_DIR="$PWD/idea_run" && mkdir -p "$RUN_DIR"\n'
+            f'  then re-run with an absolute --out (the run dir is just an output\n'
+            f'  location you choose; the variable name does not matter).\n')
         sys.exit(2)
     # Root-level /phaseN means the var expanded empty.
     import re as _re
     if _re.match(r'^/phase[0-9]', s) or _re.match(r'^/(phase[0-9_a-z]*)/?$', s):
         sys.stderr.write(
             f'\nERROR: {argname}={s!r} resolves to filesystem root — this almost\n'
-            f'  always means ${{CLAUDE_PROJECT_DIR}} expanded to the empty string.\n'
-            f'  Fix: export CLAUDE_PROJECT_DIR to an absolute run directory, e.g.\n'
-            f'      export CLAUDE_PROJECT_DIR="$PWD" && mkdir -p "$CLAUDE_PROJECT_DIR"\n'
+            f'  always means a run-dir variable expanded to the empty string.\n'
+            f'  Fix: point the run dir at an absolute path, e.g.\n'
+            f'      export IDEA_SPARK_PROJECT_DIR="$PWD/idea_run" && mkdir -p "$IDEA_SPARK_PROJECT_DIR"\n'
             f'  then re-run (or pass an explicit absolute --out).\n')
+        sys.exit(2)
+    # A relative --out resolves against the process CWD, which differs between
+    # harnesses (Claude Code injects a skill-dir CWD; Codex/plain shells do not),
+    # so outputs would silently land in the wrong place. Catch the set-but-wrong
+    # case the empty/literal checks above miss.
+    if argname == '--out' and not Path(s).is_absolute():
+        sys.stderr.write(
+            f'\nERROR: {argname}={s!r} is a RELATIVE path.\n'
+            f'  It would resolve against the current working directory, which is not\n'
+            f'  stable across harnesses. Pass an ABSOLUTE run directory, e.g.\n'
+            f'      --out "$IDEA_SPARK_PROJECT_DIR/phase0/"\n')
         sys.exit(2)
 
 
@@ -929,7 +961,7 @@ def main():
                      help='collision_hits.json from Phase 3.1 (optional; if absent the '
                           'literature_breakdown.phase3_collision list is empty).')
     psk.add_argument('--out', required=True,
-                     help='Output dir for phase4_skeleton.json (typically ${CLAUDE_PROJECT_DIR}/phase4/).')
+                     help='Output dir for phase4_skeleton.json (typically $RUN_DIR/phase4/).')
     def _cmd_phase4_skeleton(args):
         from scripts.phase4_skeleton import build_skeleton, parse_lit_table
         out_dir = Path(args.out).resolve(); out_dir.mkdir(parents=True, exist_ok=True)
@@ -1039,7 +1071,7 @@ def main():
     pv.set_defaults(func=cmd_validate)
 
     args = ap.parse_args()
-    # Guard every path-bearing arg against an unexpanded/empty ${CLAUDE_PROJECT_DIR}
+    # Guard every path-bearing arg against an unexpanded/empty run-dir variable
     # before any command runs — catches the #1 onboarding break up front with an
     # actionable message instead of a confusing FileNotFoundError mid-phase.
     for _attr in ('out', 'idea_json', 'expansion', 'implementability',

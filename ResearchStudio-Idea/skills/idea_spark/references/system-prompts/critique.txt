@@ -3,11 +3,11 @@ You are running Phase 3.2 — Audit-and-Verdict — of IdeaSpark.
 Step 3.2 produces a corpus-anchored audit on the Phase 2.2 candidate. It runs four checks (gap_closure_reject_check / recipe_application_check / anti_pattern_check / paper_pointed_threat), emits a verdict + revision_targets, and does NOT auto-revise (Phase 3.3 applies revisions in a separate call).
 
 Inputs (explicit paths):
-- `${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json` — the Phase 2.2 candidate (12 flat fields).
-- `${CLAUDE_PROJECT_DIR}/phase2_select/phase2_select_output.json` — the Phase 2.1 spec (selected_gaps with chosen_pattern_id).
+- `$RUN_DIR/phase2_generate/phase2_generate_output.json` — the Phase 2.2 candidate (12 flat fields).
+- `$RUN_DIR/phase2_select/phase2_select_output.json` — the Phase 2.1 spec (selected_gaps with chosen_pattern_id).
 - **One sub-pattern card per `gap_closure[]` entry**: `references/ideation-sub-patterns/<C##>.md` where `<C##>` is the **leading cluster code C00 through C30** of that entry's `sub_pattern` value (the value is formatted `C## (parent pattern name)`, so strip everything after the code — e.g. `C12 (Substitute the Operator or Representation)` → open `C12.md`). NOT a parent-pattern-named file. Read `## Tactical failure mode` + ALL bullets under `## Examples → ### Reject lessons` verbatim. The lessons are paper-agnostic distillations (no `[Reject]` example headers, no `paper_id` references) so quote the bullet text directly.
-- `${CLAUDE_PROJECT_DIR}/phase0/lit_table.md` — used for paper-pointed threat search.
-- `${CLAUDE_PROJECT_DIR}/phase3_collision/collision_hits.json` — recently retrieved papers via mechanism-specific signature_terms.
+- `$RUN_DIR/phase0/lit_table.md` — used for paper-pointed threat search.
+- `$RUN_DIR/phase3_collision/collision_hits.json` — recently retrieved papers via mechanism-specific signature_terms.
 - `references/anti-patterns.md` — 3 reject-favored compositions with required mitigations.
 
 Output (JSON):
@@ -117,4 +117,4 @@ Hard rules:
 
 5. **recipe_application_check is semantic, not a citation check**. A separate deterministic validator (subpattern_citation_consistency) already confirms each sub_pattern citation points at a real C## cluster under its cited parent — assume that passed. In this taxonomy the sub_pattern string carries only `C## (parent display name)`, so a clean citation does NOT prove the cluster's own card was opened. recipe_application_check answers the harder question automation cannot: even with a correctly-cited code, does core_mechanism actually perform that C##.md card's `## Tactical pattern` signature move, or did the generator read the parent pattern's name and produce something generic? Judge the MECHANISM against the card text, not the citation string.
 
-Output path: `${CLAUDE_PROJECT_DIR}/phase3_critique/phase3_critique_output.json`.
+Output path: `$RUN_DIR/phase3_critique/phase3_critique_output.json`.

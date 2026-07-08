@@ -843,16 +843,17 @@ def render_one(expansion: dict, out_dir: Path) -> Path:
 
 
 def _resolve_input(p):
-    """Resolve an input path, falling back to $CLAUDE_PROJECT_DIR for relatives.
+    """Resolve an input path, falling back to the run-dir env var for relatives.
 
-    The skill documents every path as ${CLAUDE_PROJECT_DIR}/... but argparse/Path
-    resolve a bare relative path against the process cwd, which may not be the run
-    dir. If the as-given path is missing and the path is relative, retry under
-    $CLAUDE_PROJECT_DIR before giving up.
+    The skill documents every path under a run dir, but argparse/Path resolve a
+    bare relative path against the process cwd, which may not be the run dir. If
+    the as-given path is missing and relative, retry under the run-dir variable
+    (IDEA_SPARK_PROJECT_DIR, or legacy CLAUDE_PROJECT_DIR) before giving up.
     """
     path = Path(p)
     if not path.exists() and not path.is_absolute():
-        base = os.environ.get('CLAUDE_PROJECT_DIR')
+        base = (os.environ.get('IDEA_SPARK_PROJECT_DIR')
+                or os.environ.get('CLAUDE_PROJECT_DIR'))
         if base:
             alt = Path(base) / p
             if alt.exists():

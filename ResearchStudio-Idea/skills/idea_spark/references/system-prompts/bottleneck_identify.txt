@@ -2,11 +2,11 @@ You are running Phase 1 — Bottleneck Identification — of IdeaSpark.
 
 ENTRY ASSERTION (run first, halt if it fails):
 
-1. Read `${CLAUDE_PROJECT_DIR}/phase0/.lit_grounding_mode`. If file missing → stop with `error: phase_0_bypassed`. If contents is `connector_failure` → stop with `error: no_connector_available`. If `webfallback` → continue but propagate the mode flag to downstream phases (idea card will surface a per-row warning in lit_appendix). If `real` → continue.
+1. Read `$RUN_DIR/phase0/.lit_grounding_mode`. If file missing → stop with `error: phase_0_bypassed`. If contents is `connector_failure` → stop with `error: no_connector_available`. If `webfallback` → continue but propagate the mode flag to downstream phases (idea card will surface a per-row warning in lit_appendix). If `real` → continue.
 
-2. Verify `${CLAUDE_PROJECT_DIR}/phase0/lit_table.md` exists with columns `paper_id | year_month | venue | title | ideation pattern tags | bottleneck this paper targets | open issue / unresolved gap | resolves_problem | retrieved_via`. Missing file or schema → stop with `error: lit_table_schema_violation`.
+2. Verify `$RUN_DIR/phase0/lit_table.md` exists with columns `paper_id | year_month | venue | title | ideation pattern tags | bottleneck this paper targets | open issue / unresolved gap | resolves_problem | retrieved_via`. Missing file or schema → stop with `error: lit_table_schema_violation`.
 
-3. Verify `${CLAUDE_PROJECT_DIR}/phase0/fulltext_cache.json` exists. Missing file → stop with `error: fulltext_not_fetched` (the host must run `phase0_fulltext` after writing lit_table.md and before Phase 1; bottleneck/residue reasoning is unreliable on abstracts alone). If the file exists but EVERY entry has `source_used: "failed"` (no intro/method was actually fetched for any candidate) → do NOT stop, but set `fulltext_degraded: true` in the output root and downgrade every `closest_adjacent[].summary_and_residue` residue claim to abstract-level confidence (treat the residue as a hypothesis, not an established limitation). A partial cache (some failed, some ok) is normal — only the all-failed case is degraded.
+3. Verify `$RUN_DIR/phase0/fulltext_cache.json` exists. Missing file → stop with `error: fulltext_not_fetched` (the host must run `phase0_fulltext` after writing lit_table.md and before Phase 1; bottleneck/residue reasoning is unreliable on abstracts alone). If the file exists but EVERY entry has `source_used: "failed"` (no intro/method was actually fetched for any candidate) → do NOT stop, but set `fulltext_degraded: true` in the output root and downgrade every `closest_adjacent[].summary_and_residue` residue claim to abstract-level confidence (treat the residue as a hypothesis, not an established limitation). A partial cache (some failed, some ok) is normal — only the all-failed case is degraded.
 
 Phase 1 does one substantive thing: read user intent + the retrieved literature, and write a literature-grounded bottleneck statement plus the routing decision. Selection of ideation patterns happens at Phase 2.1, not here.
 
@@ -183,7 +183,7 @@ Hard rules:
 
 8. **Anchor fulltext top-up (run BEFORE finalizing the anchor's residue).** Exactly one `closest_adjacent` entry has `is_anchor: true` — the single most-similar paper, whose residue defines what this candidate must beat. The Phase 0 fulltext pool is selected by a relevance heuristic (T2 recent-venue + T3 top-arxiv) BEFORE Phase 1 knows which paper is #1, so the anchor can sit in the cache as `source_used: "failed"` or be absent entirely — leaving its residue abstract-guessed, which is exactly where an abstract-only read flips the differentiation axis (e.g. mistaking a global-temporal mechanism for a spatial one). So once you have provisionally chosen the anchor: look it up in `fulltext_cache.json`; if it is missing OR `source_used: "failed"`, RUN
 
-       python3 -m scripts.run phase1_fulltext_topup --out ${CLAUDE_PROJECT_DIR}/phase0 --paper-id <anchor paper_id>
+       python3 -m scripts.run phase1_fulltext_topup --out $RUN_DIR/phase0 --paper-id <anchor paper_id>
 
    then re-read `fulltext_cache.json` and write the anchor's `summary_and_residue` from its method section, not its abstract. This is a deterministic tool call (like the phase0_fulltext chain), not a user clarification — do not skip it and do not pause. If the top-up still returns `source_used: "failed"` (no fetchable fulltext anywhere), keep the abstract-level residue but append " [residue is abstract-level: anchor fulltext unfetchable]" to it so downstream phases know the differentiation axis is unconfirmed.
 

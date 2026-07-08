@@ -18,7 +18,7 @@ prunes gaps that don't fit any thread. Saturation is recorded for
 downstream audit transparency, not used as a selection filter.
 
 Inputs (explicit paths):
-- `${CLAUDE_PROJECT_DIR}/phase1/phase1_output.json` — full Phase 1 output. Specifically
+- `$RUN_DIR/phase1/phase1_output.json` — full Phase 1 output. Specifically
   `what_phase_0_did_not_address[]` (collective gaps no retrieved paper
   closes — typically 2-4 entries; may be more) AND `method_lineage` (the
   age-banded ancestry tree: which nodes are occupied by retrieved frontier
@@ -37,7 +37,7 @@ Inputs (explicit paths):
   set of empirically-attested companion patterns. Consult ONLY when the
   DELIVERABLE REALIZABILITY check (Step 3b) fires for a leg and you need to
   pick a `companion_pattern`; the set bounds which pairings are real vs forced.
-- `${CLAUDE_PROJECT_DIR}/phase0/lit_table.md` — paper-level evidence table (read for
+- `$RUN_DIR/phase0/lit_table.md` — paper-level evidence table (read for
   paper-level context if needed; pattern frequency lookup is via Phase 1's
   `domain_pattern_distribution` rather than recomputing from this file).
 
@@ -248,4 +248,4 @@ Notes:
   `adapt_via_conditioning`, `generative_process_redesign`,
   `decompose_and_delegate`, `relax_discrete_search_to_continuous`.
 
-Output path: `${CLAUDE_PROJECT_DIR}/phase2_select/phase2_select_output.json`.
+Output path: `$RUN_DIR/phase2_select/phase2_select_output.json`.

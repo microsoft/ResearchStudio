@@ -16,9 +16,9 @@ Phase 3.3 is a SEPARATE LLM call from Phase 3.2 audit. The audit identifies issu
 **No `composition` scope.** If the audit's findings imply gap-level changes (different gaps selected, different main_pattern picks), revision_targets cannot fix that — the audit should produce verdict = abandon, and the user re-runs Phase 2.1+2.2 with a different random seed.
 
 Inputs (explicit paths):
-- `${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json` — canonical Phase 2.2 candidate. Read it to understand WHAT the current values are; do not echo them back.
-- `${CLAUDE_PROJECT_DIR}/phase2_select/phase2_select_output.json` — Phase 2.1 spec (gap × pattern matrix).
-- `${CLAUDE_PROJECT_DIR}/phase3_critique/phase3_critique_output.json` — `revision_targets[]` and the per-check findings that motivated each.
+- `$RUN_DIR/phase2_generate/phase2_generate_output.json` — canonical Phase 2.2 candidate. Read it to understand WHAT the current values are; do not echo them back.
+- `$RUN_DIR/phase2_select/phase2_select_output.json` — Phase 2.1 spec (gap × pattern matrix).
+- `$RUN_DIR/phase3_critique/phase3_critique_output.json` — `revision_targets[]` and the per-check findings that motivated each.
 - `references/ideation-sub-patterns/<C##>.md` (where `<C##>` is the leading cluster code of the sub_pattern value, formatted `C## (parent pattern name)` — strip everything after the code) — for scope=sub_pattern, read the new picked sub-pattern's `tactical_pattern` + `tactical_failure_mode`.
 
 **Patch op vocabulary** (each `applied_revisions[]` entry must use one of these):
@@ -57,9 +57,9 @@ Output (JSON):
 The merger then runs:
 
   python3 -m scripts.run phase3_merge_revisions \
-    --phase2 ${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json \
-    --revisions ${CLAUDE_PROJECT_DIR}/phase3_revise/phase3_revise_output.json \
-    --out ${CLAUDE_PROJECT_DIR}/phase3_revise/
+    --phase2 $RUN_DIR/phase2_generate/phase2_generate_output.json \
+    --revisions $RUN_DIR/phase3_revise/phase3_revise_output.json \
+    --out $RUN_DIR/phase3_revise/
 
 It produces `phase3_revise/final_candidate.json` (Phase 4's canonical input) and back-injects `final_candidate` into your patch file so the `kill_switch_integrity` validator's existing chain-check still works.
 
@@ -83,6 +83,6 @@ Hard rules:
 
 9. **Empty `applied_revisions[]` when audit verdict = advance**. Phase 3.3 should not be invoked then; if invoked anyway, emit `{"applied_revisions": []}` and let the merger no-op (it produces a `final_candidate.json` byte-identical to the Phase 2.2 candidate).
 
-Output path: `${CLAUDE_PROJECT_DIR}/phase3_revise/phase3_revise_output.json`.
+Output path: `$RUN_DIR/phase3_revise/phase3_revise_output.json`.
 
 After you write this file, the host LLM (or user) MUST invoke `phase3_merge_revisions` (command above) before Phase 4. Phase 4 reads `final_candidate.json`, which the merger produces; it does not exist until the merger runs.

@@ -1,6 +1,6 @@
 ---
 name: idea-spark
-description: "Generate ONE reviewer-defensible, implementable research idea — with a concrete method and a falsification plan, calibrated against the patterns of Oral-accepted papers — from a user's research direction. Diagnoses the bottleneck against retrieved literature, selects 1-3 of 15 induced ideation patterns that structurally fit the bottleneck (with corpus-derived anti-pattern guard), generates a single candidate, runs collision check + critique, and expands into a structured idea card. **One-shot guarantee**: one user input produces one of three outputs — the rendered idea-card markdown (returned inline as the run's final response, with the LaTeX side artifact + per-phase JSON left under `${CLAUDE_PROJECT_DIR}/`), a `do_not_generate.md` (Phase 1 OOD), or a `phase_3_failed.md` (audit abandons) — never asking the user mid-flow. Use when the user asks for a research idea, novelty analysis, or paper-shape suggestion within a stated direction. Skip for code review, debugging, or pure brainstorming without research context."
+description: Generate ONE reviewer-defensible, implementable research idea — with a concrete method and a falsification plan, calibrated against the patterns of Oral-accepted papers — from a user's research direction. Diagnoses the bottleneck against retrieved literature, selects 1-3 of 15 induced ideation patterns that structurally fit the bottleneck (with corpus-derived anti-pattern guard), generates a single candidate, runs collision check + critique, and expands into a structured idea card. **One-shot guarantee**: one user input produces one of three outputs — the rendered idea-card markdown (returned inline as the run's final response, with the LaTeX side artifact + per-phase JSON left under the run directory), a `do_not_generate.md` (Phase 1 OOD), or a `phase_3_failed.md` (audit abandons) — never asking the user mid-flow. Use when the user asks for a research idea, novelty analysis, or paper-shape suggestion within a stated direction. Skip for code review, debugging, or pure brainstorming without research context.
 ---
 
 # Idea Spark Skill
@@ -44,11 +44,12 @@ Convert an under-specified research direction into ONE reviewer-defensible Oral-
 
 The skill's Phase 0 + Phase 3.1 retrieval needs API credentials for 2 of the 4 connectors. Without them the affected connectors are skipped and the orchestrator continues with whichever connectors are available — but it now prints a prominent **CONNECTORS DEGRADED** banner and writes a `.connectors_degraded` marker so a partial run is never mistaken for a full one.
 
-0. **Set the run dir** (this is the #1 onboarding break): the orchestrator's `${CLAUDE_PROJECT_DIR}` paths only work if that variable is set in your shell. Claude Code normally injects it, but in a plain terminal / background / cron shell it is often EMPTY, which silently collapses `${CLAUDE_PROJECT_DIR}/phase0` to `/phase0` and breaks every phase. Set it explicitly once per session:
+0. **Set two shell variables once per session** — where this skill is installed, and where run outputs should go. Neither depends on the harness:
    ```bash
-   export CLAUDE_PROJECT_DIR="$PWD" && mkdir -p "$CLAUDE_PROJECT_DIR"
+   SKILL_DIR=~/.claude/skills/idea-spark            # Claude Code default; Codex CLI: ~/.codex/skills/idea_spark; else wherever this folder lives
+   RUN_DIR="$PWD/idea_run" && mkdir -p "$RUN_DIR"   # ANY absolute directory you want the per-phase outputs in
    ```
-   The orchestrator now hard-fails early with an actionable message if it sees an unexpanded/empty `${CLAUDE_PROJECT_DIR}`, instead of a confusing `FileNotFoundError` mid-run.
+   `RUN_DIR` is purely an output anchor — the orchestrator only ever sees the absolute `--out` paths you pass, so the variable *name* does not matter (Claude Code sessions can reuse the injected `CLAUDE_PROJECT_DIR` as their `RUN_DIR`). The orchestrator hard-fails early with an actionable message when a path argument contains an unexpanded `$variable`, collapses to filesystem root (empty expansion, e.g. `/phase0`), or is a relative `--out` — instead of a confusing `FileNotFoundError` mid-run.
 1. **Install the skill**: `idea-spark` — Phase 0 literature search runs from its bundled connector scripts (no separate sub-skill).
 2. **Install Python deps** (cross-platform — macOS & Linux): `python3 -m pip install feedparser openreview-py beautifulsoup4 pymupdf`. Four lean packages (`feedparser`, `openreview-py`, `beautifulsoup4`, `pymupdf`). Skipping this is the most common first-run failure: `arxiv` errors with `package not installed`, and missing `pymupdf`/`beautifulsoup4` silently degrades every full-text fetch to abstract-only.
    - **PEP 668 systems** (recent macOS/Homebrew & Ubuntu 23.04+) reject a bare `pip install` with `externally-managed-environment`. Two safe options:
@@ -65,7 +66,7 @@ The skill's Phase 0 + Phase 3.1 retrieval needs API credentials for 2 of the 4 c
 | `SEMANTICSCHOLAR_API_KEY` | Semantic Scholar connector at usable rate. Anonymous tier (~100 req/5min) hits 429 on Phase 0 multi-query batches; with key it's stable at 1 req/s. | Free apply at https://www.semanticscholar.org/product/api#api-key-form (≈24h review). Connector still runs anonymously without it but will frequently 429. |
 | `OPENALEX_API_KEY` | Optional, premium rate. Polite-pool already works for typical Phase 0 load. | Apply at openalex.org if you exceed polite limits. |
 
-5. **Verify** (from the SAME shell/venv you will launch phases from): `cd .claude/skills/idea_spark && python3 -m scripts.run check_connectors` — should show ✅ for all 4 connectors AND the two full-text fetch deps (`pymupdf`, `beautifulsoup4`). If you verify in one shell but run phases in another, the package set can differ — keep it one shell.
+5. **Verify** (from the SAME shell/venv you will launch phases from): `python3 "$SKILL_DIR/scripts/run.py" check_connectors` — should show ✅ for all 4 connectors AND the two full-text fetch deps (`pymupdf`, `beautifulsoup4`). If you verify in one shell but run phases in another, the package set can differ — keep it one shell.
 6. **The orchestrator auto-loads `.env`** at runtime (walks up from skill dir to find `.env`), so you do NOT need to `source .env` in your shell. Shell-set env vars take precedence over `.env` values, so you can override on the fly.
 
 If a connector shows ❌, it's either missing creds (fix in `.env`) or missing the pip package (the error message tells you which `pip install` to run). If a full-text dep shows ⚠️, run `pip install feedparser openreview-py beautifulsoup4 pymupdf`.
@@ -89,25 +90,25 @@ If your host exposes a task/todo tool (e.g., Claude Code's TodoWrite), seed it w
 
 **Context discipline (REQUIRED — see the "Context discipline" section below for full rules).** Every LLM-driven phase (1 / 2.1 / 2.2 / 3.2 / 3.3 / 4.fill / 4.1.5) must run in a fresh sub-agent (or compacted host context) with file-path inputs only, `Write`-to-disk outputs, and no inline JSON paraphrase. Running these phases inline in the parent context routinely hits the API request timeout once cumulative state exceeds ~150-180k tokens.
 
-Three outcomes per run: the rendered idea-card markdown returned inline (advance OR revise→3.3 path; LaTeX side artifact + per-phase JSON left under `${CLAUDE_PROJECT_DIR}/`), a `do_not_generate.md` (Phase 1 OOD), or a `phase_3_failed.md` (audit abandons). The user gets one of these three from one input — no mid-flow clarification. **One-shot guarantee preserved** even when audit triggers revise: Phase 3.3 mechanically applies the revision_targets and Phase 4 proceeds without user re-invocation.
+Three outcomes per run: the rendered idea-card markdown returned inline (advance OR revise→3.3 path; LaTeX side artifact + per-phase JSON left under the run directory), a `do_not_generate.md` (Phase 1 OOD), or a `phase_3_failed.md` (audit abandons). The user gets one of these three from one input — no mid-flow clarification. **One-shot guarantee preserved** even when audit triggers revise: Phase 3.3 mechanically applies the revision_targets and Phase 4 proceeds without user re-invocation.
 
 ### How phases run (orchestrator vs. host LLM)
 
 Two phases need real external retrieval and run via `scripts/run.py`:
 
-### Working-directory contract (host LLMs read this first)
+### Invocation contract (host LLMs read this first)
 
-**Every orchestrator command requires CWD = the skill's root directory.** On Claude Code installs the skill is at `${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark/` (a symlink to wherever the repo lives — the symlink is portable across Mac and Linux). Always invoke with the explicit cd inline so each Bash call is self-contained:
+**No `cd` is required.** `scripts/run.py` self-locates its skill root (it inserts the skill directory into `sys.path` at startup), so every orchestrator command can be invoked from ANY working directory by absolute script path:
 
 ```bash
-cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && python3 -m scripts.run <subcommand> ...
+python3 "$SKILL_DIR/scripts/run.py" <subcommand> --out "$RUN_DIR/<phase>/" ...
 ```
 
-Do NOT use brittle relative forms like `cd skills/ResearchStudio-Idea && ...` — the relative path only works if your starting CWD is the project root, which is not guaranteed across host-LLM Bash invocations.
+The legacy form `cd "$SKILL_DIR" && python3 -m scripts.run <subcommand> ...` still works identically. Do NOT use relative script or `--out` paths — CWD is not stable across host-LLM Bash invocations, and the orchestrator rejects a relative `--out` outright.
 
 **Exit codes 10 and 11 are NOT errors — they are sentinel handshakes.** When the orchestrator can't call an LLM itself (no `NOVELTY_LLM_CLASSIFY_FAST_CMD` env var), it writes a sentinel JSON file describing what the host LLM should do next, then exits with rc=10 (intent / pattern-summary) or rc=11 (signature_terms). The host LLM:
 
-1. `cat ${CLAUDE_PROJECT_DIR}/<phase>/.<step>_pending` to read the sentinel
+1. `cat $RUN_DIR/<phase>/.<step>_pending` to read the sentinel
 2. Read the file at the sentinel's `rubric_file` field (an absolute path)
 3. Produce the expected output per the rubric
 4. Re-invoke per the sentinel's `re_invocation` field
@@ -118,38 +119,44 @@ If the host LLM treats rc=10/11 as failure and stops, the run stalls. Do not sto
 
 A full Idea-Spark run accumulates ~180-250k tokens of intermediate state (lit_table, fulltext_cache, per-phase JSONs, audit reports). If the host LLM carries that state in its own conversation context across phases, the Phase 1 / Phase 2.2 / Phase 4.fill calls — each of which produces a multi-kilobyte structured JSON on top of an already-large prompt — routinely hit the backend request timeout and surface as `[API Error · Request timed out · Retrying...]` to the user. The retry runs against the same context and tends to time out again, producing a stuck run with zero artifact output. Three rules together prevent this; apply all three on every run, not "if the run feels heavy":
 
-**Rule 1 — Delegate every LLM-driven phase to a fresh sub-agent.** Phase 1 / 2.1 / 2.2 / 3.2 / 3.3 / 4.fill / 4.1.5 are independent JSON-producing steps with well-defined inputs (a system prompt + 1-3 disk artifacts) and a well-defined output (one JSON written to disk). Spawn an `Agent` (or your harness's equivalent isolated sub-call) per phase, passing ONLY the file paths the prompt lists at its top — not the conversation history, not the lit_table contents inline, not prior phase outputs as prose. The sub-agent reads from disk, writes back to disk, and returns ≤ 250 words confirming the output path + the routing/verdict signal the parent needs. The parent host LLM stays at ≤ 30k tokens for the whole 5-phase run because it never holds a phase's structured output in its own turns. This is structurally what the skill assumes when `NOVELTY_LLM_REASONING_LARGE_CMD` is set; sub-agents are the in-harness equivalent when that env var is unset.
+**Rule 1 — Run every LLM-driven phase in an ISOLATED context.** Phase 1 / 2.1 / 2.2 / 3.2 / 3.3 / 4.fill / 4.1.5 are independent JSON-producing steps with well-defined inputs (a system prompt + 1-3 disk artifacts) and a well-defined output (one JSON written to disk), so no phase needs the conversation that produced an earlier one. Three interchangeable isolation mechanisms — use the FIRST one your harness supports:
 
-**Rule 2 — `Write` every phase artifact directly to disk; never paraphrase it into chat.** The output schema for each LLM-driven phase is fixed (see the `Output:` section of the matching `references/system-prompts/<phase>.txt`) and the convention is `${CLAUDE_PROJECT_DIR}/<phase>/<phase>_output.json`. Use the `Write` tool with that exact path; do NOT `cat <<EOF > file` (a Bash heredoc with a multi-KB JSON triggers permission prompts and can be silently truncated), do NOT `echo` the JSON, and crucially do NOT paste the JSON into your reply for the parent to read — `Write` to disk and report the path. Downstream phases re-read from that path. Tool-result captures from large extraction commands (e.g. printing every paper's abstract for inspection) should also go through `head -c 4000` / `jq` / `sed` to bound the captured payload to ≤ 4 KB; never `Read` a >10 KB intermediate dump back into the prompt — that was the specific anti-pattern that pushed prior runs into timeout (the dump itself is small, but `Read`ing it caches it into every subsequent turn).
+- **(a) Subprocess LLM — harness-agnostic, the skill's native mode.** Set `NOVELTY_LLM_REASONING_LARGE_CMD` (and `NOVELTY_LLM_CLASSIFY_FAST_CMD`) to any CLI that reads a `<<SYSTEM>>...<<USER>>` prompt on stdin and emits JSON on stdout (see § Configuration). The orchestrator then runs each LLM-driven phase as its own subprocess — a fresh context per phase by construction, on any harness (Codex CLI, cron, plain shells).
+- **(b) Sub-agent tool — Claude Code and harnesses with an equivalent.** Spawn an `Agent` per phase, passing ONLY the file paths the phase prompt lists at its top — not the conversation history, not the lit_table contents inline, not prior phase outputs as prose. The sub-agent reads from disk, writes back to disk, and returns ≤ 250 words confirming the output path + the routing/verdict signal the parent needs.
+- **(c) Manual context reset — any interactive harness with neither (a) nor (b).** Run the phase inline, but clear/compact the conversation at the four compact points named in Rule 3 before starting the next phase. Every phase re-reads its inputs from disk, so clearing loses nothing; what it costs is discipline, not information.
 
-**Rule 3 — Compact between phases.** Each phase's output is persisted under `${CLAUDE_PROJECT_DIR}/<phase>/`, so the conversation that produced it carries no information the next phase needs. The natural compact points are: **after Phase 0+** (drops lit_table + fulltext exploration), **after Phase 1** (drops bottleneck reasoning), **after Phase 2.2** (drops sub-pattern reading), **after Phase 3.2** (drops audit reasoning). Each phase re-reads its disk inputs and proceeds. If your harness exposes `/compact`, invoke it at those four points; otherwise the same effect is achieved by Rule 1 alone (each sub-agent is already a fresh context).
+Whichever mechanism you use, the parent context stays ≤ ~30k tokens for the whole 5-phase run because it never holds a phase's structured output in its own turns.
 
-**Diagnostic if you see "Request timed out" mid-phase.** Open the session's project jsonl (`~/.claude/projects/<project-slug>/<session-id>.jsonl`); look for an entry with `isApiErrorMessage: true`. The two-line context above it (the prior `tool_use` and its `tool_result`) tells you which prompt got too big to inference inside the request budget. The fix is always one of the three rules above — usually Rule 1: re-issue the timed-out step as a sub-agent with only the file paths it needs.
+**Rule 2 — `Write` every phase artifact directly to disk; never paraphrase it into chat.** The output schema for each LLM-driven phase is fixed (see the `Output:` section of the matching `references/system-prompts/<phase>.txt`) and the convention is `$RUN_DIR/<phase>/<phase>_output.json`. Use the `Write` tool with that exact path; do NOT `cat <<EOF > file` (a Bash heredoc with a multi-KB JSON triggers permission prompts and can be silently truncated), do NOT `echo` the JSON, and crucially do NOT paste the JSON into your reply for the parent to read — `Write` to disk and report the path. Downstream phases re-read from that path. Tool-result captures from large extraction commands (e.g. printing every paper's abstract for inspection) should also go through `head -c 4000` / `jq` / `sed` to bound the captured payload to ≤ 4 KB; never `Read` a >10 KB intermediate dump back into the prompt — that was the specific anti-pattern that pushed prior runs into timeout (the dump itself is small, but `Read`ing it caches it into every subsequent turn).
+
+**Rule 3 — Compact between phases.** Each phase's output is persisted under `$RUN_DIR/<phase>/`, so the conversation that produced it carries no information the next phase needs. The natural compact points are: **after Phase 0+** (drops lit_table + fulltext exploration), **after Phase 1** (drops bottleneck reasoning), **after Phase 2.2** (drops sub-pattern reading), **after Phase 3.2** (drops audit reasoning). Each phase re-reads its disk inputs and proceeds. If your harness exposes `/compact`, invoke it at those four points; otherwise the same effect is achieved by Rule 1 alone (each sub-agent is already a fresh context).
+
+**Diagnostic if you see "Request timed out" mid-phase.** Inspect your harness's session transcript/log (Claude Code: `~/.claude/projects/<project-slug>/<session-id>.jsonl`, look for `isApiErrorMessage: true`; other harnesses: their session-log equivalent). The context just above the error (the prior tool call and its result) tells you which prompt got too big to inference inside the request budget. The fix is always one of the three rules above — usually Rule 1: re-issue the timed-out step in an isolated context with only the file paths it needs.
 
 ### Phase entry points
 
-| Phase | Entry point (run with `cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && ...` prefix) | Why orchestrator |
+| Phase | Entry point (`python3 "$SKILL_DIR/scripts/run.py" ...`, any CWD) | Why orchestrator |
 |---|---|---|
-| Phase 0 (literature grounding) | `python3 -m scripts.run phase0 --query "..." --out ${CLAUDE_PROJECT_DIR}/phase0/` | probes 4 connectors (arxiv, openalex, semanticscholar, openreview), runs role-based retrieval, dedups; auto-loads `.env` for OPENREVIEW_USER/PASS + SEMANTICSCHOLAR_API_KEY |
-| Phase 0+ (full-text fetch — **mandatory**, run right after `lit_table.md` is written) | `python3 -m scripts.run phase0_fulltext --out ${CLAUDE_PROJECT_DIR}/phase0/` | caps the on-topic pool to the most relevant ~15 (+U user refs), fetches intro+method concurrently into `fulltext_cache.json`; Phase 1 hard-gates on this output |
-| Phase 3.1 (collision check) | `python3 -m scripts.run phase3_collision --idea-json <p2.2-output> --out ${CLAUDE_PROJECT_DIR}/phase3_collision/` | re-uses all 4 connectors with the candidate's signature_terms |
-| Phase 3.3 merger (after the LLM emits the revise patch) | `python3 -m scripts.run phase3_merge_revisions --phase2 <p2.2-output> --revisions <p3.3-patch> --out ${CLAUDE_PROJECT_DIR}/phase3_revise/` | applies the LLM's `applied_revisions[]` patch deterministically; refuses kill-switch writes; writes `final_candidate.json`; back-injects `final_candidate` into the patch file so the legacy `kill_switch_integrity` chain-check still works |
-| Phase 4 skeleton (runs BEFORE the Phase 4 LLM call) | `python3 -m scripts.run phase4_skeleton --candidate <final_candidate-or-p2.2> --phase1 ... --phase2-select ... --phase3-critique ... [--phase3-revise ...] --phase0-dir ${CLAUDE_PROJECT_DIR}/phase0/ [--collision ...] --out ${CLAUDE_PROJECT_DIR}/phase4/` | populates every mechanical field of the expansion (kill-switch echoes, venue_year lookups, lit_table group-by, candidate_uses, reviewer_concerns lifts, compute verdict); leaves prose fields as `<TODO[path]>` placeholders for the LLM to author |
-| Phase 4 assembler (runs AFTER the Phase 4 LLM call) | `python3 -m scripts.run phase4_assemble --skeleton ${CLAUDE_PROJECT_DIR}/phase4/phase4_skeleton.json --fill-map ${CLAUDE_PROJECT_DIR}/phase4/fill_map.json --out ${CLAUDE_PROJECT_DIR}/phase4/` | merges the LLM's flat `{path: value}` fill_map into the skeleton; refuses any fill_map key whose root is `falsification_prediction` or `compute_budget`; writes `phase4_expansion.json` |
-| Phase 4.render (idea-card rendering) | `python3 -m scripts.run phase4_render --expansion ${CLAUDE_PROJECT_DIR}/phase4/phase4_expansion.json --out ${CLAUDE_PROJECT_DIR}/phase4/` | templating only — writes `idea.std.{en,zh}.md` + `idea.detail.en.md` (returned inline) + `idea.std.{en,zh}.tex` side artifacts, and auto-compiles `.pdf` when `xelatex`/`tectonic` is on PATH (skipped with a hint otherwise) |
-| Validators | `python3 -m scripts.run validate ...` | static contract checks |
+| Phase 0 (literature grounding) | `python3 "$SKILL_DIR/scripts/run.py" phase0 --query "..." --out $RUN_DIR/phase0/` | probes 4 connectors (arxiv, openalex, semanticscholar, openreview), runs role-based retrieval, dedups; auto-loads `.env` for OPENREVIEW_USER/PASS + SEMANTICSCHOLAR_API_KEY |
+| Phase 0+ (full-text fetch — **mandatory**, run right after `lit_table.md` is written) | `python3 "$SKILL_DIR/scripts/run.py" phase0_fulltext --out $RUN_DIR/phase0/` | caps the on-topic pool to the most relevant ~15 (+U user refs), fetches intro+method concurrently into `fulltext_cache.json`; Phase 1 hard-gates on this output |
+| Phase 3.1 (collision check) | `python3 "$SKILL_DIR/scripts/run.py" phase3_collision --idea-json <p2.2-output> --out $RUN_DIR/phase3_collision/` | re-uses all 4 connectors with the candidate's signature_terms |
+| Phase 3.3 merger (after the LLM emits the revise patch) | `python3 "$SKILL_DIR/scripts/run.py" phase3_merge_revisions --phase2 <p2.2-output> --revisions <p3.3-patch> --out $RUN_DIR/phase3_revise/` | applies the LLM's `applied_revisions[]` patch deterministically; refuses kill-switch writes; writes `final_candidate.json`; back-injects `final_candidate` into the patch file so the legacy `kill_switch_integrity` chain-check still works |
+| Phase 4 skeleton (runs BEFORE the Phase 4 LLM call) | `python3 "$SKILL_DIR/scripts/run.py" phase4_skeleton --candidate <final_candidate-or-p2.2> --phase1 ... --phase2-select ... --phase3-critique ... [--phase3-revise ...] --phase0-dir $RUN_DIR/phase0/ [--collision ...] --out $RUN_DIR/phase4/` | populates every mechanical field of the expansion (kill-switch echoes, venue_year lookups, lit_table group-by, candidate_uses, reviewer_concerns lifts, compute verdict); leaves prose fields as `<TODO[path]>` placeholders for the LLM to author |
+| Phase 4 assembler (runs AFTER the Phase 4 LLM call) | `python3 "$SKILL_DIR/scripts/run.py" phase4_assemble --skeleton $RUN_DIR/phase4/phase4_skeleton.json --fill-map $RUN_DIR/phase4/fill_map.json --out $RUN_DIR/phase4/` | merges the LLM's flat `{path: value}` fill_map into the skeleton; refuses any fill_map key whose root is `falsification_prediction` or `compute_budget`; writes `phase4_expansion.json` |
+| Phase 4.render (idea-card rendering) | `python3 "$SKILL_DIR/scripts/run.py" phase4_render --expansion $RUN_DIR/phase4/phase4_expansion.json --out $RUN_DIR/phase4/` | templating only — writes `idea.std.{en,zh}.md` + `idea.detail.en.md` (returned inline) + `idea.std.{en,zh}.tex` side artifacts, and auto-compiles `.pdf` when `xelatex`/`tectonic` is on PATH (skipped with a hint otherwise) |
+| Validators | `python3 "$SKILL_DIR/scripts/run.py" validate ...` | static contract checks |
 
-The remaining phases — **Phase 1 bottleneck identification, Phase 2.1 ideation pattern selection, Phase 2.2 candidate generation, Phase 3.2 critique, Phase 3.3 revise (patch-only — the merger then turns it into `final_candidate.json`), Phase 4.fill (prose-only, on top of the skeleton), Phase 4.1.5 implementability audit** — are LLM-driven and run *manually* by the host LLM (or user) reading the corresponding system prompt under `references/system-prompts/`, providing the listed inputs, and writing the JSON output to the conventional `${CLAUDE_PROJECT_DIR}/<phase>/...` location. There is no orchestrator subcommand for these because adding one would just be a thin `cat <prompt> + <inputs> | llm` wrapper — no validation work happens between input assembly and the LLM call. Wrapping it in Bash would add fragility (env vars, CLI shape, JSON post-processing) without buying determinism.
+The remaining phases — **Phase 1 bottleneck identification, Phase 2.1 ideation pattern selection, Phase 2.2 candidate generation, Phase 3.2 critique, Phase 3.3 revise (patch-only — the merger then turns it into `final_candidate.json`), Phase 4.fill (prose-only, on top of the skeleton), Phase 4.1.5 implementability audit** — are LLM-driven and run *manually* by the host LLM (or user) reading the corresponding system prompt under `references/system-prompts/`, providing the listed inputs, and writing the JSON output to the conventional `$RUN_DIR/<phase>/...` location. There is no orchestrator subcommand for these because adding one would just be a thin `cat <prompt> + <inputs> | llm` wrapper — no validation work happens between input assembly and the LLM call. Wrapping it in Bash would add fragility (env vars, CLI shape, JSON post-processing) without buying determinism.
 
 **Each of these phases MUST be run under the "Context discipline" rules above** — fresh sub-agent, `Write`-to-disk output, no inline JSON paraphrase. Phase 4.fill is the largest single output and the most timeout-prone; do not run it in the parent context.
 
-The convention each manual phase follows: read the prompt at `references/system-prompts/<phase>.txt`, gather inputs listed at the top of the prompt, produce the JSON described under `Output:`, save it to `${CLAUDE_PROJECT_DIR}/<phase>/<phase>_output.json`. Downstream phases read that filename.
+The convention each manual phase follows: read the prompt at `references/system-prompts/<phase>.txt`, gather inputs listed at the top of the prompt, produce the JSON described under `Output:`, save it to `$RUN_DIR/<phase>/<phase>_output.json`. Downstream phases read that filename.
 
 ### CRITICAL: Literature grounding mode
 
 Phase 0 and Phase 3.1 collision require **real external retrieval** via the in-skill connector scripts (`scripts/search_*.py`, bundled in this skill). Two states (simplified from earlier 4-state design): `lit_grounding_mode = real` (any connector worked, including webfallback with per-paper retrieved_via tagging) vs `connector_failure` (no connector, no fallback flag — orchestrator halts with diagnostic). Without at least one working connector, the skill halts cleanly rather than degrading silently.
 
-In Claude Code: install `idea-spark`; Phase 0 retrieval runs from its bundled connector scripts (no separate sub-skill to install).
+Install the skill in your harness's skill directory (Claude Code: `idea-spark`; Codex CLI / others: clone or copy this folder anywhere and point `SKILL_DIR` at it); Phase 0 retrieval runs from its bundled connector scripts (no separate sub-skill to install).
 
 ---
 
@@ -158,8 +165,7 @@ In Claude Code: install `idea-spark`; Phase 0 retrieval runs from its bundled co
 Phase 0 runs via a single Bash command — the orchestrator at `scripts/run.py`. This physically narrows tool choice to one path; alternative paths (WebSearch, ad-hoc fetch) produce unstructured output that downstream phases reject.
 
 ```bash
-cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && \
-python3 -m scripts.run phase0 --query "<user's research question>" --out ${CLAUDE_PROJECT_DIR}/phase0/
+python3 "$SKILL_DIR/scripts/run.py" phase0 --query "<user's research question>" --out $RUN_DIR/phase0/
 ```
 
 **What the orchestrator does internally**:
@@ -180,18 +186,17 @@ python3 -m scripts.run phase0 --query "<user's research question>" --out ${CLAUD
 5. Dedups across sources with file-order priority (semanticscholar > openalex > openreview > arxiv) — SS first because its `externalIds` (DOI + ArXiv + DBLP keys) makes it the highest-quality cross-source anchor.
 6. **pattern_summary** (LLM step) tags each paper with ideation pattern + bottleneck + open_issue + retrieved_via, producing `lit_table.md`. Without an external LLM CLI, emits `.pattern_summary_pending` sentinel for the host LLM to fill.
 7. Writes one gate sentinel: `.lit_grounding_mode = real`.
-8. **User-reference extraction** (regex on query string at phase0 entry): scans the user query for arxiv URLs / arxiv IDs (`arxiv:2401.12345`) / OpenReview URLs / DOIs and writes them to `${CLAUDE_PROJECT_DIR}/phase0/user_refs.json`. The intent-extraction sentinel also asks the host LLM to append paper-title references (e.g., "based on the LoRA paper") to the same file. These become the **U tier** of the full-text fetch pool used in step 9.
+8. **User-reference extraction** (regex on query string at phase0 entry): scans the user query for arxiv URLs / arxiv IDs (`arxiv:2401.12345`) / OpenReview URLs / DOIs and writes them to `$RUN_DIR/phase0/user_refs.json`. The intent-extraction sentinel also asks the host LLM to append paper-title references (e.g., "based on the LoRA paper") to the same file. These become the **U tier** of the full-text fetch pool used in step 9.
 
 9. **Full-text fetch for the candidate pool** — **MANDATORY, not optional**. This is a separate orchestrator subcommand, but it is *bound to the moment `lit_table.md` is written*: the instant step 6's `lit_table.md` lands on disk, run this command before touching Phase 1. It is its own subcommand (not folded into `phase0`) only because it depends on the host-LLM-produced `lit_table.md` to know which papers are on-topic — that dependency is why it cannot run inside the same `phase0` Bash call. Phase 1 **hard-gates** on `fulltext_cache.json` (stops with `error: fulltext_not_fetched` if it is missing), so skipping this step halts the pipeline rather than silently degrading to abstract-only reasoning — which was the previous failure mode.
 
    ```bash
-   cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && \
-   python3 -m scripts.run phase0_fulltext --out ${CLAUDE_PROJECT_DIR}/phase0/
+      python3 "$SKILL_DIR/scripts/run.py" phase0_fulltext --out $RUN_DIR/phase0/
    ```
 
    This selects a small candidate pool — **U** (user refs from `user_refs.json`, always included, never capped) + **T2** (papers from OpenAlex/Semantic Scholar where lit_table tag ≠ `outside_taxonomy`, up to `--t2-top` = 10, method-first with cross-source round-robin) + **T3** (arxiv on-topic papers, method-first, up to `--t3-top` = 5) — with a hard ceiling of `--max-pool` = 15 total fetches **excluding** user refs, so the pool stays at the most relevant ~15 (+U) papers rather than the full on-topic set. Ordering is **method-first**: papers whose only innovation tag is `controlled_diagnostic_design` (eval/benchmark-only, low fulltext value) sink below method-bearing papers, and within each tier sources are interleaved round-robin so a single high-`DEDUP_PRIORITY` source (e.g. Semantic Scholar) cannot crowd out OpenAlex; same-paper duplicates retrieved from two sources are collapsed via `title_norm`. All papers are fetched **concurrently** (ThreadPoolExecutor, ≤15 workers) with a per-paper budget (`pdf_timeout` 30s, `per_paper_budget_s` 75s) so a few slow/unreachable PDFs cannot stall the whole step. Because the fetch is concurrent, this budget caps the **wall-clock** at roughly the slowest single paper rather than the sum, so it is set generously to avoid dropping fetchable content. It fetches intro + method sections for each. The HTML path (`arxiv.org/html/<id>`) is tried first (works for ~85% of 2024+ ML preprints); for papers without HTML or non-arxiv sources, the PDF is downloaded and parsed via pymupdf. Section extraction targets headings Introduction / Method / Methodology / Approach / Model Architecture / Main Results (positional fallback handles theory papers where the canonical "Method" name is absent). Limitations is intentionally not extracted — author-written limitation paragraphs are often weaker than what the audit synthesizes from method + experiments.
 
-   Output: `${CLAUDE_PROJECT_DIR}/phase0/fulltext_cache.json` — keyed by paper_id, each entry `{tier, intro, method, source_used, warning}`. Fetch failures degrade gracefully to abstract + warning; the pipeline never halts on a fetch error. Phase 1 reads the full cache when writing `bottleneck_statement` + `closest_adjacent[]`; Phase 2.2 reads only the closest_adjacent entries when writing `differentiation_from_lit[].delta` and `core_mechanism`'s quantitative claims (which must cross-check against any disagreeing values in the cache).
+   Output: `$RUN_DIR/phase0/fulltext_cache.json` — keyed by paper_id, each entry `{tier, intro, method, source_used, warning}`. Fetch failures degrade gracefully to abstract + warning; the pipeline never halts on a fetch error. Phase 1 reads the full cache when writing `bottleneck_statement` + `closest_adjacent[]`; Phase 2.2 reads only the closest_adjacent entries when writing `differentiation_from_lit[].delta` and `core_mechanism`'s quantitative claims (which must cross-check against any disagreeing values in the cache).
 
 **Host-LLM handshake** (when `NOVELTY_LLM_CLASSIFY_FAST_CMD` is unset — typical when running inside a host LLM): the orchestrator emits sentinel files in a common schema rather than silently substituting model knowledge. Three sentinel sites in Phase 0 + 3.1:
 
@@ -217,7 +222,7 @@ Single LLM call. Use [references/system-prompts/bottleneck_identify.txt](referen
 
 Phase 1 does one substantive thing: read user query + lit_table.md + intake, write a literature-grounded bottleneck statement plus the routing decision.
 
-**Inputs**: user query, intake context, `${CLAUDE_PROJECT_DIR}/phase0/lit_table.md`, `${CLAUDE_PROJECT_DIR}/phase0/fulltext_cache.json` (intro+method for the candidate pool — read BEFORE writing bottleneck/closest_adjacent; the entry assertion **hard-gates** on this file: missing → stop `fulltext_not_fetched`, all-failed → continue with `fulltext_degraded: true` + abstract-level residue confidence), `${CLAUDE_PROJECT_DIR}/phase0/lit_results.json` (for abstract-level grounding when needed).
+**Inputs**: user query, intake context, `$RUN_DIR/phase0/lit_table.md`, `$RUN_DIR/phase0/fulltext_cache.json` (intro+method for the candidate pool — read BEFORE writing bottleneck/closest_adjacent; the entry assertion **hard-gates** on this file: missing → stop `fulltext_not_fetched`, all-failed → continue with `fulltext_degraded: true` + abstract-level residue confidence), `$RUN_DIR/phase0/lit_results.json` (for abstract-level grounding when needed).
 
 **Output schema**: see `bottleneck_identify.txt`. Key fields:
 - `intake` (with `_inferred_fields[]` listing fields not stated by user)
@@ -241,9 +246,9 @@ Phase 1 does one substantive thing: read user query + lit_table.md + intake, wri
 Use [references/system-prompts/ideate_select.txt](references/system-prompts/ideate_select.txt).
 
 **Inputs**:
-- `${CLAUDE_PROJECT_DIR}/phase1/phase1_output.json` — `what_phase_0_did_not_address[]` is the load-bearing field (2-4 collective gaps no retrieved paper closes); `bottleneck_statement` + `closest_adjacent[]` + `intake` for context.
+- `$RUN_DIR/phase1/phase1_output.json` — `what_phase_0_did_not_address[]` is the load-bearing field (2-4 collective gaps no retrieved paper closes); `bottleneck_statement` + `closest_adjacent[]` + `intake` for context.
 - `references/ideation-patterns/overview.md` — read each of the 15 patterns' **Definition + Operational signature + When to apply** panels. Selection at WHAT/WHEN level, not HOW.
-- `${CLAUDE_PROJECT_DIR}/phase0/lit_table.md` — to compute pattern frequency for saturation-aware selection.
+- `$RUN_DIR/phase0/lit_table.md` — to compute pattern frequency for saturation-aware selection.
 
 **Selection process**:
 1. **Pick anchor gap** — the single most important gap from `what_phase_0_did_not_address[]`.
@@ -257,9 +262,9 @@ Use [references/system-prompts/ideate_select.txt](references/system-prompts/idea
 Use [references/system-prompts/ideate_generate.txt](references/system-prompts/ideate_generate.txt).
 
 **Inputs**:
-- `${CLAUDE_PROJECT_DIR}/phase2_select/phase2_select_output.json` — the gap × pattern spec.
-- `${CLAUDE_PROJECT_DIR}/phase1/phase1_output.json` — bottleneck + closest_adjacent + intake.
-- `${CLAUDE_PROJECT_DIR}/phase0/lit_results.json` — abstracts of closest_adjacent for substantive comparison.
+- `$RUN_DIR/phase2_select/phase2_select_output.json` — the gap × pattern spec.
+- `$RUN_DIR/phase1/phase1_output.json` — bottleneck + closest_adjacent + intake.
+- `$RUN_DIR/phase0/lit_results.json` — abstracts of closest_adjacent for substantive comparison.
 - `references/ideation-sub-patterns/<cluster>.md` — for each picked sub-pattern, read **`tactical_pattern` + `Step-by-Step` + `when_to_pick_this_one` + `differentiation_within_parent`**. The Step-by-Step is your tactical recipe (5 abstract structural-move steps; not paper-mimicry).
 
 **Sub-step a — pick sub-pattern under each gap's main pattern**: open `ideation-sub-patterns/overview.md` to find candidates per parent; compare `when_to_pick_this_one + differentiation_within_parent` panels; pick ONE per gap; then read picked sub-pattern's `tactical_pattern + Step-by-Step`.
@@ -286,8 +291,7 @@ Use [references/system-prompts/ideate_generate.txt](references/system-prompts/id
 **Citation gate (deterministic, MANDATORY before Phase 3).** The instant the candidate JSON is written, run the `subpattern_citation_consistency` validator. It is a hard gate: a fabricated `gap_closure[].sub_pattern` (a hallucinated parent slug, a C## whose real parent differs from the cited `main_pattern`, or an invented parenthetical name) must be caught here, before any retrieval / audit / expansion work is spent on it.
 
 ```bash
-cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && \
-python3 -m scripts.run validate --phase2 ${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json
+python3 "$SKILL_DIR/scripts/run.py" validate --phase2 $RUN_DIR/phase2_generate/phase2_generate_output.json
 ```
 
 If it reports any `fail`, the citation was written from the parent pattern's gist rather than read from `overview.md`. Do NOT proceed to Phase 3. Re-open `references/ideation-sub-patterns/overview.md`, fix the `main_pattern` / `sub_pattern` to a real cluster row (or regenerate Step 2.2 with the card actually open), and re-run the gate until it passes. This guard proves only parent-consistency; whether `core_mechanism` performs the cluster's actual tactic is judged later by Phase 3.2's `recipe_application_check`.
@@ -301,8 +305,7 @@ If it reports any `fail`, the citation was written from the parent pattern's gis
 Run via the orchestrator:
 
 ```bash
-cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && \
-python3 -m scripts.run phase3_collision --idea-json ${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json --out ${CLAUDE_PROJECT_DIR}/phase3_collision/
+python3 "$SKILL_DIR/scripts/run.py" phase3_collision --idea-json $RUN_DIR/phase2_generate/phase2_generate_output.json --out $RUN_DIR/phase3_collision/
 ```
 
 Orchestrator probes all 4 connectors (arXiv / OpenAlex / Semantic Scholar / OpenReview) and runs each available one with a 6-month window using the candidate's `signature_terms[]`, dedups across sources, writes `collision_hits.json`.
@@ -353,11 +356,10 @@ LLM step: use [references/system-prompts/revise.txt](references/system-prompts/r
 Merger step (mandatory, runs immediately after the LLM call):
 
 ```bash
-cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && \
-python3 -m scripts.run phase3_merge_revisions \
-  --phase2 ${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json \
-  --revisions ${CLAUDE_PROJECT_DIR}/phase3_revise/phase3_revise_output.json \
-  --out ${CLAUDE_PROJECT_DIR}/phase3_revise/
+python3 "$SKILL_DIR/scripts/run.py" phase3_merge_revisions \
+  --phase2 $RUN_DIR/phase2_generate/phase2_generate_output.json \
+  --revisions $RUN_DIR/phase3_revise/phase3_revise_output.json \
+  --out $RUN_DIR/phase3_revise/
 ```
 
 The merger writes `phase3_revise/final_candidate.json` (Phase 4's canonical input) and back-injects `final_candidate` into the patch file so the `kill_switch_integrity` validator's existing chain-check still works without modification.
@@ -368,7 +370,7 @@ The merger writes `phase3_revise/final_candidate.json` (Phase 4's canonical inpu
 - `append_items` — extend an existing list field with `value` (must itself be a list)
 - `swap_sub_pattern` — for scope=sub_pattern: identify a gap_closure entry by `field` = the verbatim gap text, replace its `sub_pattern` with `value`; sibling `how_closed` / `core_mechanism` re-alignment is emitted as additional `replace` / `append_sentence` patch entries
 
-**Output schema** (`${CLAUDE_PROJECT_DIR}/phase3_revise/phase3_revise_output.json`):
+**Output schema** (`$RUN_DIR/phase3_revise/phase3_revise_output.json`):
 ```json
 {
   "candidate_id": "...",
@@ -408,19 +410,18 @@ Phase 4 runs in **three steps**: a deterministic skeleton builder (orchestrator)
 #### Step 4.skeleton — Build the deterministic skeleton (orchestrator)
 
 ```bash
-cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && \
-python3 -m scripts.run phase4_skeleton \
-  --candidate ${CLAUDE_PROJECT_DIR}/phase3_revise/final_candidate.json \
-  --phase1 ${CLAUDE_PROJECT_DIR}/phase1/phase1_output.json \
-  --phase2-select ${CLAUDE_PROJECT_DIR}/phase2_select/phase2_select_output.json \
-  --phase3-critique ${CLAUDE_PROJECT_DIR}/phase3_critique/phase3_critique_output.json \
-  --phase3-revise ${CLAUDE_PROJECT_DIR}/phase3_revise/phase3_revise_output.json \
-  --phase0-dir ${CLAUDE_PROJECT_DIR}/phase0/ \
-  --collision ${CLAUDE_PROJECT_DIR}/phase3_collision/collision_hits.json \
-  --out ${CLAUDE_PROJECT_DIR}/phase4/
+python3 "$SKILL_DIR/scripts/run.py" phase4_skeleton \
+  --candidate $RUN_DIR/phase3_revise/final_candidate.json \
+  --phase1 $RUN_DIR/phase1/phase1_output.json \
+  --phase2-select $RUN_DIR/phase2_select/phase2_select_output.json \
+  --phase3-critique $RUN_DIR/phase3_critique/phase3_critique_output.json \
+  --phase3-revise $RUN_DIR/phase3_revise/phase3_revise_output.json \
+  --phase0-dir $RUN_DIR/phase0/ \
+  --collision $RUN_DIR/phase3_collision/collision_hits.json \
+  --out $RUN_DIR/phase4/
 ```
 
-Pass `--candidate ${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json` on the advance path (Phase 3.3 did not run); omit `--phase3-revise` in that case.
+Pass `--candidate $RUN_DIR/phase2_generate/phase2_generate_output.json` on the advance path (Phase 3.3 did not run); omit `--phase3-revise` in that case.
 
 The skeleton writes `phase4_skeleton.json` with every mechanical field fully populated and every prose field marked `<TODO[path]: hint>`. Mechanically populated fields:
 - `falsification_prediction`, `compute_budget` (byte-identical from the candidate)
@@ -437,7 +438,7 @@ The skeleton writes `phase4_skeleton.json` with every mechanical field fully pop
 
 Use [references/system-prompts/expand.txt](references/system-prompts/expand.txt). The LLM reads `phase4_skeleton.json`, finds every `<TODO[path]: hint>` placeholder, and outputs ONE flat JSON whose keys are the placeholder paths and whose values are the prose to substitute. The LLM does NOT touch any non-TODO field; the assembler refuses any fill_map key whose root is `falsification_prediction` or `compute_budget`.
 
-Output path: `${CLAUDE_PROJECT_DIR}/phase4/fill_map.json`. Schema:
+Output path: `$RUN_DIR/phase4/fill_map.json`. Schema:
 ```json
 {
   "abstract_draft": "...",
@@ -454,11 +455,10 @@ LLM payload drops from ~30 fields (~20k tokens) to ~12 prose-only fields (~8k to
 #### Step 4.assemble — Merge fill into expansion (orchestrator)
 
 ```bash
-cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && \
-python3 -m scripts.run phase4_assemble \
-  --skeleton ${CLAUDE_PROJECT_DIR}/phase4/phase4_skeleton.json \
-  --fill-map ${CLAUDE_PROJECT_DIR}/phase4/fill_map.json \
-  --out ${CLAUDE_PROJECT_DIR}/phase4/
+python3 "$SKILL_DIR/scripts/run.py" phase4_assemble \
+  --skeleton $RUN_DIR/phase4/phase4_skeleton.json \
+  --fill-map $RUN_DIR/phase4/fill_map.json \
+  --out $RUN_DIR/phase4/
 ```
 
 Produces `phase4_expansion.json` (the canonical input to `phase4_render`). The assembler validates: each fill_map path resolves to a real TODO in the skeleton; no fill_map path targets a kill-switch root. It warns when any `<TODO[...]>` placeholder remains un-filled — the `expansion_completeness` validator will reject the run otherwise.
@@ -481,17 +481,16 @@ Single LLM call, run by default after 4.1 and before 4.2. Use [references/system
 
 **How it reaches the cards.** Step 4.2 auto-detects the sibling `phase4_implementability.json` and merges `enriched_steps` into the rendered Method by `step_id` (replacing `method_flow.steps[].what_changes` for the pro card and `plain_method_steps_{en,zh}[].what_to_do` for the std cards). Everything else (titles, why_*, linked_*, equations, kill-switch fields) is untouched. The merge is deterministic and a no-op when the file is absent, so older runs still render. `underspecified_points[]` stays in JSON as the audit trail — the card itself stays lean (Title + Motivation + Method).
 
-**Output path**: `${CLAUDE_PROJECT_DIR}/phase4/phase4_implementability.json`.
+**Output path**: `$RUN_DIR/phase4/phase4_implementability.json`.
 
 #### Step 4.2 — Idea-card rendering
 
 Templating only, no model call. `render_pdf.py` builds the Markdown and LaTeX inline and compiles a PDF when `xelatex` or `tectonic` is available. Failure modes go to `phase_3_failed.md`.
 
 ```bash
-cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && \
-python3 -m scripts.run phase4_render \
-  --expansion ${CLAUDE_PROJECT_DIR}/phase4/phase4_expansion.json \
-  --out ${CLAUDE_PROJECT_DIR}/phase4/
+python3 "$SKILL_DIR/scripts/run.py" phase4_render \
+  --expansion $RUN_DIR/phase4/phase4_expansion.json \
+  --out $RUN_DIR/phase4/
 ```
 
 Each successful run writes **three audience-targeted markdown surfaces** plus per-card LaTeX side artifacts:
@@ -502,7 +501,7 @@ Each successful run writes **three audience-targeted markdown surfaces** plus pe
 
 The host LLM reads **all three markdown files** and returns them as the run's final response to the user, each under a clear heading (中文版 / English / Reviewer version). A PDF is compiled automatically when `xelatex` or `tectonic` is available (cross-platform TeX paths + an available CJK font are auto-detected); when no engine is present the `.md`/`.tex` are still written and only the PDF is skipped, with an install hint.
 
-Other Phase outputs (`${CLAUDE_PROJECT_DIR}/phase0/`, `${CLAUDE_PROJECT_DIR}/phase1/`, `${CLAUDE_PROJECT_DIR}/phase2_*/`, `${CLAUDE_PROJECT_DIR}/phase3_*/`, `${CLAUDE_PROJECT_DIR}/phase4/phase4_expansion.json`) remain on disk for inspection but are not echoed to the user.
+Other Phase outputs (`$RUN_DIR/phase0/`, `$RUN_DIR/phase1/`, `$RUN_DIR/phase2_*/`, `$RUN_DIR/phase3_*/`, `$RUN_DIR/phase4/phase4_expansion.json`) remain on disk for inspection but are not echoed to the user.
 
 Failed runs write `do_not_generate.md` (Phase 1 OOD) or `phase_3_failed.md` (Phase 3 abandon) with concrete remedial steps; the host LLM surfaces those instead.
 
@@ -514,20 +513,18 @@ Run after Phase 4 to verify the contracts the prompts assert:
 
 ```bash
 # When Phase 3.2 verdict = advance (no Phase 3.3 ran)
-cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && \
-python3 -m scripts.run validate \
-  --phase2 ${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json \
-  --phase3 ${CLAUDE_PROJECT_DIR}/phase3_critique/phase3_critique_output.json \
-  --phase4 ${CLAUDE_PROJECT_DIR}/phase4/phase4_expansion.json \
-  --phase4-impl ${CLAUDE_PROJECT_DIR}/phase4/phase4_implementability.json
+python3 "$SKILL_DIR/scripts/run.py" validate \
+  --phase2 $RUN_DIR/phase2_generate/phase2_generate_output.json \
+  --phase3 $RUN_DIR/phase3_critique/phase3_critique_output.json \
+  --phase4 $RUN_DIR/phase4/phase4_expansion.json \
+  --phase4-impl $RUN_DIR/phase4/phase4_implementability.json
 
 # When Phase 3.2 verdict = revise (Phase 3.3 produced final_candidate)
-cd ${CLAUDE_PROJECT_DIR}/.claude/skills/idea_spark && \
-python3 -m scripts.run validate \
-  --phase2 ${CLAUDE_PROJECT_DIR}/phase2_generate/phase2_generate_output.json \
-  --phase3 ${CLAUDE_PROJECT_DIR}/phase3_revise/phase3_revise_output.json \
-  --phase4 ${CLAUDE_PROJECT_DIR}/phase4/phase4_expansion.json \
-  --phase4-impl ${CLAUDE_PROJECT_DIR}/phase4/phase4_implementability.json
+python3 "$SKILL_DIR/scripts/run.py" validate \
+  --phase2 $RUN_DIR/phase2_generate/phase2_generate_output.json \
+  --phase3 $RUN_DIR/phase3_revise/phase3_revise_output.json \
+  --phase4 $RUN_DIR/phase4/phase4_expansion.json \
+  --phase4-impl $RUN_DIR/phase4/phase4_implementability.json
 ```
 
 (`--phase4-impl` is optional; supply it to enable `implementability_completeness`. Omit it for runs that skipped Step 4.1.5.)
