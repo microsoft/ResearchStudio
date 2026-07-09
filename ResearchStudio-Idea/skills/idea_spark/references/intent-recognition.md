@@ -47,21 +47,27 @@ Output:
 }
 ```
 
-## Collision mode — signature extraction
+## Collision mode — signature + alias extraction
 
 Use the same [CLASSIFY_FAST] LLM with this prompt:
 
 ```
-You read a candidate research idea and extract 3-5 signature terms — tightly worded phrases for phrase matching.
+You read a candidate research idea and extract TWO term sets: 3-5 signature terms (the candidate's own vocabulary) and 2-4 alias terms (other communities' names for the same mechanism).
 
-Return JSON: {"signature_terms": ["...", "..."]}
+Return JSON: {"signature_terms": ["...", "..."], "alias_terms": ["...", "..."]}
 
-Rules:
+signature_terms rules:
 - Each term is 3-7 words.
 - Cover (a) the mechanism, (b) the claim, (c) the setting/setup. One term per facet, plus 1-2 specific identifiers (e.g. dataset name, theorem name).
 - Avoid generic terms ("deep learning", "transformer") — they retrieve too much noise.
 - Prefer noun phrases over verb phrases.
-- These terms will be sent verbatim to a BM25 retriever AND embedded for cosine search.
+- These terms will be sent verbatim to a BM25 retriever AND embedded for cosine search, over a RECENT window (scoop risk).
+
+alias_terms rules:
+- Each term is 3-7 words, naming the SAME core mechanism in a vocabulary the candidate's own community does not use.
+- This is a parametric-knowledge step: "if a reward-modeling / classical-CV / RL / NLP / theory group had built this mechanism 2-3 years ago, what would their titles call it?" Same-mechanism ancestors usually exist under a different name — a "goal-image conditioned scorer for task completion" is elsewhere a "goal-conditioned success detector" or "goal-image reward model".
+- Do NOT paraphrase signature_terms — a paraphrase retrieves what the signature channel already retrieves. Change the community, not the wording.
+- These terms run over a MULTI-YEAR window (renamed-ancestor risk).
 ```
 
 ### Worked example
@@ -82,6 +88,11 @@ Output:
     "score function singularity boundary",
     "training-free sampling acceleration",
     "EDM truncated training"
+  ],
+  "alias_terms": [
+    "annealed Langevin early stopping",
+    "SDE solver step-size adaptivity bound",
+    "curriculum over noise levels"
   ]
 }
 ```

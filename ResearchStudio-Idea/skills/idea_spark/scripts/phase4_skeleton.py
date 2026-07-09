@@ -364,6 +364,26 @@ def build_reviewer_concerns(phase3_critique: dict,
             'fields_changed_to_address': [],  # filled below from phase3_revise.applied_revisions[]
         })
 
+    # 1b. paper_pointed_threat.parametric_family_concern — the audit's soft signal
+    # that an older, named mechanism family exists outside the retrieved pool.
+    # Never gates the verdict; here it becomes an explicit "run a scoop-check on
+    # this vocabulary before investing" reviewer concern so the card carries the
+    # known blind spot instead of silently claiming full novelty coverage.
+    pfc = ppt.get('parametric_family_concern')
+    if pfc and isinstance(pfc, str) and pfc.strip().lower() not in ('null', 'none', 'n/a'):
+        entries.append({
+            'attack': (f"Un-retrieved mechanism family flagged by the audit (parametric "
+                       f"knowledge, not in the retrieved pool): {pfc.strip()} — novelty vs "
+                       f"this family is UNVERIFIED; run a targeted scoop-check on that "
+                       f"vocabulary before investing."),
+            'severity': 'non_blocking',
+            'response': TODO(f'reviewer_concerns_and_responses[{len(entries)}].response',
+                             '1-2 sentences: state what a scoop-check on the named family must '
+                             'establish for the candidate\'s delta to survive (do NOT claim the '
+                             'check already passed)'),
+            'fields_changed_to_address': [],
+        })
+
     # 2. gap_closure_reject_check borderline entries
     gcrc = phase3_critique.get('gap_closure_reject_check') or {}
     for j, entry in enumerate(gcrc.get('entries', [])):

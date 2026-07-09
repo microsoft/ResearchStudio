@@ -6,12 +6,13 @@ Phase 3.3 is a SEPARATE LLM call from Phase 3.2 audit. The audit identifies issu
 
 **Patch-only output**: previous versions of this contract asked the LLM to emit `final_candidate` as a full copy of the Phase 2.2 candidate (12 flat fields, ~25k tokens) with the named edits applied. That payload is dominated by byte-identical re-typing of kill-switch fields and unchanged fields — wasted tokens and a real backend timeout risk. New contract: emit ONLY the `applied_revisions[]` list, where each entry carries the new VALUE of the single field it modifies. A deterministic Python merger (`python3 -m scripts.run phase3_merge_revisions`) then walks the patch, applies each op to a deep copy of the Phase 2.2 candidate, refuses to touch kill-switch fields, and writes `final_candidate.json` next to your patch file. You never write `final_candidate` — the merger does.
 
-**Two revision scopes** (Phase 3.2 emits revision_targets with one of these `scope` values; 3.3 dispatches accordingly):
+**Three revision scopes** (Phase 3.2 emits revision_targets with one of these `scope` values; 3.3 dispatches accordingly):
 
 | scope | what changes | what stays | when used |
 |---|---|---|---|
 | `tactical` | one or more candidate fields | gap_closure[] (gaps + main_patterns + sub_patterns unchanged) | the audit found a load-bearing wording / specification issue (core_mechanism argument, anti-pattern mitigation strengthening, addressable threat dodge) |
 | `sub_pattern` | one gap_closure[] entry's `sub_pattern` (and the candidate fields the new sub-pattern's tactical_pattern requires re-aligning) | gap selection + main_patterns + other entries' sub_patterns | the audit found a sibling sub-pattern under the SAME main_pattern would be a better tactical fit |
+| `falsification` | `falsification_prediction` ONLY, via the dedicated `rewrite_falsification` op | the experiment, the outcome metric, the claim, `compute_budget`, every other field | the audit's `falsification_structure_check` = deficient (missing load-bearing variable / tautological negative control / unnamed minimal experiment or metric direction). The ONLY sanctioned route into a kill-switch field; the merger verifies the audit authorized it and the rewrite is re-audited before Phase 4. |
 
 **No `composition` scope.** If the audit's findings imply gap-level changes (different gaps selected, different main_pattern picks), revision_targets cannot fix that — the audit should produce verdict = abandon, and the user re-runs Phase 2.1+2.2 with a different random seed.
 
@@ -29,6 +30,7 @@ Inputs (explicit paths):
 | `append_sentence` | append " " + `value` to an existing string field (preserves prior content) | string |
 | `append_items` | extend an existing list field with `value` (which must itself be a list) | list |
 | `swap_sub_pattern` | for scope=sub_pattern: identify a gap_closure entry by `field` = the verbatim gap text, replace its `sub_pattern` with `value` of form `C## (Parent Display Name)`. Sibling fields like `gap_closure[i].how_closed` or `core_mechanism` are re-aligned by ADDITIONAL `replace` / `append_sentence` entries in the same patch. | string |
+| `rewrite_falsification` | for scope=falsification ONLY: replace `falsification_prediction` wholesale with `value` — a single 3-5 sentence paragraph that keeps the SAME minimal experiment, SAME outcome metric + direction, and SAME claim, repairing only the structural deficiency the audit named (name the ONE load-bearing variable; make the negative control intervene on that variable and predict the DOWNSTREAM outcome metric returns to baseline — never the variable's own value). `field` must be exactly `falsification_prediction`. The merger REFUSES this op unless the Phase 3.2 audit emitted a scope=falsification revision_target (pass `--critique` to the merger). At most ONE such entry per patch. | string |
 
 Pick the op that minimises payload. `append_sentence` is the most token-efficient for the common case "add a clarifying sentence to core_mechanism." Use `replace` only when the new content genuinely supersedes the old (e.g. you are rewriting one `differentiation_from_lit[i].delta` from scratch).
 
@@ -44,12 +46,12 @@ Output (JSON):
 
   "applied_revisions": [
     {
-      "scope": "tactical | sub_pattern",
-      "op": "replace | append_sentence | append_items | swap_sub_pattern",
-      "field": "<JSON-path for replace/append_sentence/append_items; verbatim gap text for swap_sub_pattern>",
+      "scope": "tactical | sub_pattern | falsification",
+      "op": "replace | append_sentence | append_items | swap_sub_pattern | rewrite_falsification",
+      "field": "<JSON-path for replace/append_sentence/append_items; verbatim gap text for swap_sub_pattern; 'falsification_prediction' for rewrite_falsification>",
       "value": "<new value for this field — see op semantics above. NOT the full candidate.>",
       "outcome": "applied | skipped_already_satisfied | skipped_anti_substitution | skipped_inapplicable",
-      "delta_summary": "<ONE sentence: what concretely changed (for tactical) or which sibling was swapped in and on which axis (for sub_pattern)>"
+      "delta_summary": "<ONE sentence: what concretely changed (for tactical) or which sibling was swapped in and on which axis (for sub_pattern) or which structural element was repaired (for falsification)>"
     }
   ]
 }
@@ -59,13 +61,16 @@ The merger then runs:
   python3 -m scripts.run phase3_merge_revisions \
     --phase2 $RUN_DIR/phase2_generate/phase2_generate_output.json \
     --revisions $RUN_DIR/phase3_revise/phase3_revise_output.json \
+    --critique $RUN_DIR/phase3_critique/phase3_critique_output.json \
     --out $RUN_DIR/phase3_revise/
+
+(`--critique` is what authorizes a `rewrite_falsification` entry — the merger cross-checks the audit actually emitted a scope=falsification revision_target. Patches without that op run fine without the flag.)
 
 It produces `phase3_revise/final_candidate.json` (Phase 4's canonical input) and back-injects `final_candidate` into your patch file so the `kill_switch_integrity` validator's existing chain-check still works.
 
 Hard rules:
 
-1. **Kill-switch fields are STRUCTURALLY off-limits**. The merger REFUSES any patch entry whose `field` root is `falsification_prediction` or `compute_budget` — it raises with an actionable error rather than silently dropping. If the audit produced such a target, mark `outcome = "skipped_anti_substitution"` AND set `field` to a benign path (e.g. `core_mechanism_reasoning`) with a no-op value (`""` and op=append_sentence skips application). This is a 3.2 process error — surface it; don't paper over it.
+1. **Kill-switch fields are STRUCTURALLY off-limits — with exactly ONE audited exception**. The merger REFUSES any patch entry whose `field` root is `falsification_prediction` or `compute_budget` under the generic ops (`replace` / `append_sentence` / `append_items`) — it raises with an actionable error rather than silently dropping. The single exception: a scope=falsification revision_target from the audit's falsification_structure_check is applied via the dedicated `rewrite_falsification` op (merger-verified against the audit report; see the op table). `compute_budget` has NO exception under any op or scope. If the audit produced a kill-switch target OUTSIDE the falsification route (e.g. a tactical target on falsification_prediction, or any target on compute_budget), mark `outcome = "skipped_anti_substitution"` AND set `field` to a benign path (e.g. `core_mechanism_reasoning`) with a no-op value (`""` and op=append_sentence skips application). That is a 3.2 process error — surface it; don't paper over it. After a rewrite_falsification is applied, the host MUST run the falsification re-audit (critique.txt "Falsification re-audit mode") before Phase 4.
 
 2. **One patch entry per revision_target.** Even when the audit's `fix_direction` is a sentence that could be applied as several edits, emit one patch entry per audit target. The merger handles multiple ops on the same root field correctly (each is independent). Silently combining or dropping a target is a process error.
 

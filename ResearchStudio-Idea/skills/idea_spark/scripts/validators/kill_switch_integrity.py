@@ -15,6 +15,15 @@ Phase 2 → Phase 3.3 final_candidate → Phase 4 in the revise path.
 This validator accepts phase3_path optionally: if Phase 3 contains a final_candidate (3.3 ran),
 it validates the 3-link chain; otherwise it treats Phase 3 as passthrough and checks Phase 2 → Phase 4.
 
+Audited falsification rewrite (the ONE sanctioned kill-switch change): when the Phase 3.2
+audit's falsification_structure_check found the paragraph structurally deficient, Phase 3.3
+may carry a `rewrite_falsification` op that the merger applies under audit authorization and
+records as `falsification_rewritten: true` in the patch doc. On that path this validator
+checks `falsification_prediction` byte-identity on the Phase 3.3 final_candidate → Phase 4
+link (the rewritten paragraph is the new commitment) instead of Phase 2 → Phase 4, and it
+FAILS if the rewrite marker is present without an actual applied rewrite_falsification entry
+(or vice versa). `compute_budget` keeps the full Phase 2 → 3.3 → 4 byte-identity always.
+
 Why it matters: a misbehaving Phase 3.3 / Phase 4 model could substitute the kill-switch
 experiment with an easier one ("we'll use a simpler dataset / smaller compute"), making the
 candidate look more feasible than the original Phase 2 candidate committed to. This validator
@@ -136,8 +145,37 @@ def validate_kill_switch_integrity(phase2_path, phase3_path, phase4_path) -> lis
     has_phase3_chain = (final_candidate is not None and isinstance(final_candidate, dict)
                        and isinstance(final_candidate.get('falsification_prediction'), str))
 
+    # Audited falsification rewrite detection: the merger stamps `falsification_rewritten`
+    # into the patch doc AND the patch must carry a matching applied rewrite_falsification
+    # entry. Marker/entry disagreement is a hard fail (someone hand-edited the patch).
+    rewrite_marker = bool(isinstance(p3, dict) and p3.get('falsification_rewritten'))
+    rewrite_entries = [
+        r for r in (p3.get('applied_revisions') or [])
+        if isinstance(r, dict) and r.get('op') == 'rewrite_falsification'
+        and not str(r.get('outcome', '')).startswith('skipped_')
+    ] if isinstance(p3, dict) else []
+    if rewrite_marker != bool(rewrite_entries):
+        findings.append({
+            'severity': 'fail', 'validator': 'kill_switch_integrity',
+            'message': ('falsification_rewritten marker and applied rewrite_falsification patch '
+                        'entries disagree (marker={}, entries={}) — the patch file was modified '
+                        'outside the merger; re-run phase3_merge_revisions').format(
+                            rewrite_marker, len(rewrite_entries)),
+        })
+    falsification_rewritten = rewrite_marker and bool(rewrite_entries)
+    if falsification_rewritten and not has_phase3_chain:
+        findings.append({
+            'severity': 'fail', 'validator': 'kill_switch_integrity',
+            'message': 'falsification_rewritten is set but Phase 3 carries no well-typed '
+                       'final_candidate — merger output is incomplete',
+        })
+
     for field_path in KILL_SWITCH_FIELDS:
         field_name = '.'.join(field_path)
+        # The audited rewrite re-bases falsification_prediction's commitment at Phase 3.3:
+        # the byte-identity anchor becomes the final_candidate, not the Phase 2 candidate.
+        rebased = falsification_rewritten and field_name == 'falsification_prediction' and has_phase3_chain
+
         v2, p2_finding = _check_kill_switch_value(winner_candidate, field_path, 'Phase 2 candidate', field_name)
         if p2_finding is not None:
             findings.append(p2_finding)
@@ -145,6 +183,29 @@ def validate_kill_switch_integrity(phase2_path, phase3_path, phase4_path) -> lis
         v4, p4_finding = _check_kill_switch_value(p4, field_path, 'Phase 4 expansion', field_name)
         if p4_finding is not None:
             findings.append(p4_finding)
+            continue
+
+        if rebased:
+            v3, p3_finding = _check_kill_switch_value(final_candidate, field_path, 'Phase 3 final_candidate', field_name)
+            if p3_finding is not None:
+                findings.append(p3_finding)
+                continue
+            if v3 == v2:
+                findings.append({
+                    'severity': 'fail', 'validator': 'kill_switch_integrity',
+                    'message': f'{field_name}: falsification_rewritten is set but Phase 3 '
+                               f'final_candidate is byte-identical to Phase 2 — no rewrite '
+                               f'actually landed; re-run phase3_merge_revisions',
+                })
+                continue
+            if v3 != v4:
+                findings.append({
+                    'severity': 'fail', 'validator': 'kill_switch_integrity',
+                    'message': f'{field_name} drifted between Phase 3 final_candidate (audited '
+                               f'rewrite) and Phase 4 expansion',
+                    'phase3_value': v3[:120] + ('…' if len(v3) > 120 else ''),
+                    'phase4_value': v4[:120] + ('…' if len(v4) > 120 else ''),
+                })
             continue
 
         # Primary check: Phase 2 → Phase 4 byte-identical
@@ -171,6 +232,12 @@ def validate_kill_switch_integrity(phase2_path, phase3_path, phase4_path) -> lis
                 })
 
     if not findings:
-        chain_desc = 'Phase 2 → 3.3 final_candidate → 4 (revise path)' if has_phase3_chain else 'Phase 2 → 4 (Phase 3 passthrough, advance path)'
+        if falsification_rewritten:
+            chain_desc = ('Phase 2 → 3.3 → 4 (revise path; falsification_prediction re-based at '
+                          '3.3 via audited rewrite, compute_budget full-chain)')
+        elif has_phase3_chain:
+            chain_desc = 'Phase 2 → 3.3 final_candidate → 4 (revise path)'
+        else:
+            chain_desc = 'Phase 2 → 4 (Phase 3 passthrough, advance path)'
         findings.append({'severity': 'pass', 'validator': 'kill_switch_integrity', 'message': f'All 2 kill-switch fields byte-identical across {chain_desc}'})
     return findings

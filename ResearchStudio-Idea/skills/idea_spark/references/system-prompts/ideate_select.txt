@@ -40,6 +40,19 @@ Inputs (explicit paths):
 - `$RUN_DIR/phase0/lit_table.md` — paper-level evidence table (read for
   paper-level context if needed; pattern frequency lookup is via Phase 1's
   `domain_pattern_distribution` rather than recomputing from this file).
+- **OPTIONAL — retry only**: `$RUN_DIR/attempt_1/phase3_critique/phase3_critique_output.json`
+  — present ONLY when this is the run's single internal retry after a Phase 3.2
+  `abandon` verdict (the host archives the failed attempt under `attempt_1/`).
+  When present, treat the prior audit as NEGATIVE CONSTRAINTS: (a) do NOT
+  re-select the same sibling-gap set the archived
+  `attempt_1/phase2_select/phase2_select_output.json` chose (the anchor may
+  stay if it is genuinely the most load-bearing gap — vary the siblings and/or
+  the pattern bindings); (b) read the audit's `verdict_rationale` and the
+  triggering check findings, and avoid gap×pattern combinations that would
+  re-walk into the same documented Reject lesson / anti-pattern composition /
+  exact-mechanism collision; (c) prefer promoting a gap from the archived
+  attempt's `deferred_gaps[]` when it coheres with the anchor. Do not mention
+  the failed attempt in your output fields — it shapes selection, not prose.
 
 Selection process:
 

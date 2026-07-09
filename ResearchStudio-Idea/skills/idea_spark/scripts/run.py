@@ -233,6 +233,21 @@ PHASE0_CONNECTOR_CONFIG = {
     'openreview':      {'window_min': 0, 'window_max': 6,  'max_results': 10, 'max_per_query': 50,  'extra_args': [], 'timeout': 600},
 }
 
+# Phase 3.1 collision retrieval windows (months). Two channels:
+#   - signature channel: the candidate's OWN vocabulary (signature_terms) over a
+#     recent window — catches contemporaneous scoops. Phase 0's broad-domain
+#     queries cover 0-24mo but by TOPIC, not mechanism; 10mo (up from 6) narrows
+#     the mechanism-specific gap at negligible retrieval cost.
+#   - alias channel: OTHER communities' names for the same mechanism (alias_terms,
+#     produced from parametric knowledge at Phase 2.2) over a multi-year window —
+#     catches renamed ancestors. Widening the signature window alone cannot do
+#     this: a same-mechanism paper from another community 2-3 years back uses
+#     vocabulary the signature terms never contain (the "goal-conditioned success
+#     detector vs goal-image conditioned scorer" failure mode), so the blind spot
+#     is lexical, not temporal.
+COLLISION_WINDOW_MONTHS = 10
+ALIAS_COLLISION_WINDOW_MONTHS = 48
+
 # Dedup priority when the same paper appears in multiple connectors.
 # Higher priority means: keep this connector's record, drop the others.
 # Semantic Scholar wins because its `externalIds` block (DOI + ArXiv + DBLP keys all in one record)
@@ -469,10 +484,11 @@ def cmd_phase0(args) -> int:
                     'most-similar-problem, optional query 4 application-angle, optional query 5 '
                     'venue-insider. ALSO: scan user_query for paper-title references the user '
                     'intends as anchors (e.g., "based on Sora", "extending CycleResearcher", '
-                    '"the LoRA paper") and write them to `user_refs.json` in out_dir, appending '
-                    'to whatever URL/ID-based refs the regex pass already populated. Each title '
-                    'entry: {"type": "title", "value": "<full title>", "raw_match": "<user phrasing>"}. '
-                    'Skip this step if no titles are mentioned (URL/ID refs are handled by regex). '
+                    '"the LoRA paper") and register each via '
+                    '`python3 <skill>/scripts/run.py add_user_ref --out <out_dir> --title "<full title>" '
+                    '--raw-match "<user phrasing>"` (deterministic merge into user_refs.json; do NOT '
+                    'hand-edit the file). Skip this step if no titles are mentioned (URL/ID refs are '
+                    'handled by regex). '
                     'Apply the OOD short-circuit: if user_query matches the parent skill\'s '
                     'intake-routing.md trigger #1 (Too broad) or #2 (No anchor), return '
                     '{"ood": true, "trigger_id": ..., "trigger_quote": ..., "match_evidence": ...} '
@@ -658,48 +674,93 @@ def cmd_phase3_collision(args) -> int:
         print('ERROR: no connector available for collision check.', file=sys.stderr)
         return 2
 
-    # Build collision query from signature_terms. If the idea.json is missing them,
-    # emit a sentinel for the host LLM to fill in (same pattern as Phase 0 intent extraction).
-    # Falling back to [title, core_mechanism, novelty_claim] is dangerous because those are
-    # long sentences that fail URL encoding at the connector layer (recurring Bug A pattern).
+    # Build collision queries from signature_terms (+ alias_terms). If the idea.json is
+    # missing signature_terms, emit a sentinel for the host LLM to fill in (same pattern as
+    # Phase 0 intent extraction). Falling back to [title, core_mechanism, novelty_claim] is
+    # dangerous because those are long sentences that fail URL encoding at the connector layer.
     sig = idea.get('signature_terms')
     if not sig:
         return emit_host_llm_sentinel(
             out_dir, step_name='signature_extraction',
             rubric_file=SUB / 'references' / 'intent-recognition.md',
             inputs={'idea_json': args.idea_json, 'mode': 'collision'},
-            expected_outputs=['edit idea_json to add signature_terms[]'],
+            expected_outputs=['edit idea_json to add signature_terms[] AND alias_terms[]'],
             instruction=(
                 'Read the rubric file whose absolute path is in this sentinel\'s `rubric_file` '
-                'field (Collision mode). Produce 3-5 signature_terms from the idea (mechanism + '
-                'claim + setting + 1-2 specific identifiers, each 3-7 words). Add a '
-                '`signature_terms` field to idea_json and re-invoke. Long sentences (title / '
-                'core_mechanism / novelty_claim verbatim) fail URL encoding at the connector — '
-                'keep terms tight.'
+                'field (Collision mode). Produce BOTH term sets: 3-5 signature_terms (mechanism + '
+                'claim + setting + 1-2 specific identifiers, each 3-7 words, the candidate\'s own '
+                'vocabulary) AND 2-4 alias_terms (other communities\' names for the same mechanism '
+                '— parametric knowledge, not paraphrase). Add both fields to idea_json and '
+                're-invoke. Long sentences (title / core_mechanism verbatim) fail URL encoding at '
+                'the connector — keep terms tight.'
             ),
             re_invocation=f'python3 -m scripts.run phase3_collision --idea-json {args.idea_json} --out {out_dir}',
             exit_code=11,
         )
-    queries_json = json.dumps([s for s in sig if s])
-    hits_files = []
-    for label, module_path in available:
-        out_path = out_dir / f'{label}_collision.json'
-        # Inherit per-connector timeout from PHASE0_CONNECTOR_CONFIG (notably: openreview gets 600s,
-        # not the function-default 300s, since iterate-notes cost is the same in collision retrieval).
-        timeout = PHASE0_CONNECTOR_CONFIG.get(label, {}).get('timeout', 300)
-        ok = run_connector_subprocess(module_path, queries_json, 6, out_path, f'{label}_6mo', timeout=timeout, as_of=as_of)
-        if ok:
-            hits_files.append(out_path)
+    alias = [a for a in (idea.get('alias_terms') or []) if a]
+    if not alias:
+        print('\nWARNING: candidate has no alias_terms[] — the cross-vocabulary collision channel '
+              f'(same mechanism under other communities\' names, {ALIAS_COLLISION_WINDOW_MONTHS}mo '
+              'window) is SKIPPED. Renamed same-mechanism ancestors will NOT be checked. Add '
+              'alias_terms[] to the candidate JSON (rubric: intent-recognition.md Collision mode) '
+              'and re-run to close this blind spot.\n', file=sys.stderr)
 
-    if not hits_files:
+    def _run_channel(terms: list, window_months: int, suffix: str) -> list:
+        queries_json = json.dumps([t for t in terms if t])
+        files = []
+        for label, module_path in available:
+            out_path = out_dir / f'{label}_{suffix}.json'
+            # Inherit per-connector timeout from PHASE0_CONNECTOR_CONFIG (notably: openreview
+            # gets 600s, since iterate-notes cost is the same in collision retrieval).
+            timeout = PHASE0_CONNECTOR_CONFIG.get(label, {}).get('timeout', 300)
+            if run_connector_subprocess(module_path, queries_json, window_months, out_path,
+                                        f'{label}_{suffix}_{window_months}mo',
+                                        timeout=timeout, as_of=as_of):
+                files.append(out_path)
+        return files
+
+    sig_files = _run_channel(sig, COLLISION_WINDOW_MONTHS, 'collision')
+    alias_files = _run_channel(alias, ALIAS_COLLISION_WINDOW_MONTHS, 'alias_collision') if alias else []
+
+    if not sig_files and not alias_files:
         print('ERROR: all collision retrievals failed.', file=sys.stderr)
         return 3
 
-    # Dedup-merge to a single collision_hits.json. Phase 3.1 = retrieval + dedup only;
-    # Phase 3.2 audit's paper-pointed threat search does subsumption judgment.
+    # Dedup each channel, then cross-channel merge with per-hit channel tags (signature wins
+    # on overlap — a paper found by the candidate's own vocabulary is the stronger threat
+    # signal for the audit). Phase 3.1 = retrieval + dedup only; Phase 3.2 audit's
+    # paper-pointed threat search does subsumption judgment.
+    def _dedup_channel(files: list, out_name: str) -> list:
+        if not files:
+            return []
+        merged = out_dir / out_name
+        cmd = [sys.executable, '-m', 'scripts.dedup_merge', '--inputs'] + \
+              [str(f) for f in files] + ['--out', str(merged)]
+        subprocess.run(cmd, cwd=str(SUB), check=True, capture_output=True, text=True, timeout=120)
+        try:
+            return json.loads(merged.read_text())
+        except Exception:
+            return []
+
+    def _title_norm(t) -> str:
+        return ' '.join(''.join(c.lower() if c.isalnum() else ' ' for c in (t or '')).split())
+
+    sig_hits = _dedup_channel(sig_files, '.sig_channel_hits.json')
+    alias_hits = _dedup_channel(alias_files, '.alias_channel_hits.json')
+    for h in sig_hits:
+        h['collision_channel'] = 'signature'
+    seen_titles = {_title_norm(h.get('title')) for h in sig_hits}
+    n_alias_new = 0
+    for h in alias_hits:
+        if _title_norm(h.get('title')) not in seen_titles:
+            h['collision_channel'] = 'alias'
+            sig_hits.append(h)
+            n_alias_new += 1
     merged_out = out_dir / 'collision_hits.json'
-    dedup_cmd = [sys.executable, '-m', 'scripts.dedup_merge', '--inputs'] + [str(f) for f in hits_files] + ['--out', str(merged_out)]
-    subprocess.run(dedup_cmd, cwd=str(SUB), check=True, capture_output=True, text=True, timeout=120)
+    merged_out.write_text(json.dumps(sig_hits, ensure_ascii=False, indent=1))
+    print(f'  channels: signature={len(sig_hits) - n_alias_new} hits '
+          f'({COLLISION_WINDOW_MONTHS}mo), alias=+{n_alias_new} unique hits '
+          f'({ALIAS_COLLISION_WINDOW_MONTHS}mo{", SKIPPED" if not alias else ""})', file=sys.stderr)
 
     # Slim collision_hits.json for the LLM-facing reader (Phase 3.2 audit). Full
     # abstracts (~1.5k chars x ~275 papers) blow the audit prompt to ~200k tokens;
@@ -710,7 +771,8 @@ def cmd_phase3_collision(args) -> int:
         _hits = json.loads(merged_out.read_text())
         if _COLLISION_MAX_HITS:
             _hits = sorted(_hits, key=lambda x: -(x.get('semantic_recall') or 0))[:_COLLISION_MAX_HITS]
-        _keep = ('title', 'paper_id', 'venue', 'year', 'tldr', 'semantic_recall', 'source')
+        _keep = ('title', 'paper_id', 'venue', 'year', 'tldr', 'semantic_recall', 'source',
+                 'collision_channel')
         def _slim(h):
             o = {k: h[k] for k in _keep if h.get(k) is not None}
             a = h.get('abstract') or ''
@@ -1044,23 +1106,99 @@ def main():
     pm.add_argument('--revisions', required=True,
                     help='Path to phase3_revise_output.json containing applied_revisions[]. '
                          'The file is updated in place to add a `final_candidate` key.')
+    pm.add_argument('--critique', default=None,
+                    help='Path to phase3_critique_output.json. Required to authorize a '
+                         '`rewrite_falsification` patch op (the merger verifies the audit '
+                         'emitted a scope=falsification revision_target). Optional otherwise.')
     pm.add_argument('--out', required=True,
                     help='Output dir for final_candidate.json (typically the same dir as --revisions).')
     def _cmd_phase3_merge(args):
         from scripts.merge_revisions import merge_phase3_revisions
         try:
-            final_path, _ = merge_phase3_revisions(
+            final_path, revisions_path = merge_phase3_revisions(
                 Path(args.phase2).resolve(),
                 Path(args.revisions).resolve(),
                 Path(args.out).resolve(),
+                critique_path=Path(args.critique).resolve() if args.critique else None,
             )
         except ValueError as e:
             print(f'ERROR: {e}', file=sys.stderr)
             return 1
         print(f'✅ Phase 3.3 merge complete. Wrote {final_path}', file=sys.stderr)
         print(f'   Back-injected `final_candidate` into {args.revisions} for legacy consumers.', file=sys.stderr)
+        try:
+            if json.loads(Path(revisions_path).read_text()).get('falsification_rewritten'):
+                print('   ⚠️  falsification_prediction was REWRITTEN (audited exception). '
+                      'Before Phase 4, run the falsification re-audit '
+                      '(critique.txt "Falsification re-audit mode") → '
+                      'phase3_critique/falsification_reaudit.json with verdict=advance.',
+                      file=sys.stderr)
+        except Exception:
+            pass
         return 0
     pm.set_defaults(func=_cmd_phase3_merge)
+
+    pu = sub.add_parser('add_user_ref',
+                        help='Merge a user-named paper reference into phase0/user_refs.json '
+                             '(deterministic JSON merge, dedup on type:value; creates the file '
+                             'if absent). Use this for TITLE-based references the phase0 regex '
+                             'cannot extract ("based on the LoRA paper") — it avoids the host '
+                             'Write-tool read-before-overwrite rule entirely. Run BEFORE '
+                             'phase0_fulltext so the ref lands in the U fetch tier.')
+    pu.add_argument('--out', required=True,
+                    help='Phase 0 output dir containing user_refs.json (dir created if missing)')
+    pu.add_argument('--title', action='append', default=[],
+                    help='Paper title reference (repeatable for multiple papers)')
+    pu.add_argument('--id', action='append', default=[], dest='ref_id',
+                    help='arxiv id / DOI / OpenReview id / URL (repeatable); type auto-detected '
+                         'via the same extractor phase0 uses on the query string')
+    pu.add_argument('--raw-match', default='',
+                    help='The user phrasing that named the paper (provenance; recorded when '
+                         'exactly one --title is given)')
+    def _cmd_add_user_ref(args):
+        if not args.title and not args.ref_id:
+            print('nothing to add: pass --title and/or --id', file=sys.stderr)
+            return 2
+        out_dir = Path(args.out).resolve()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / 'user_refs.json'
+        try:
+            existing = json.loads(path.read_text()) if path.exists() else []
+        except Exception:
+            existing = []
+        if not isinstance(existing, list):
+            existing = []
+        new = []
+        for t in args.title:
+            entry = {'type': 'title', 'value': t}
+            if args.raw_match and len(args.title) == 1:
+                entry['raw_match'] = args.raw_match
+            new.append(entry)
+        if args.ref_id:
+            from scripts.extract_user_refs import extract_refs_from_query
+            for rid in args.ref_id:
+                hits = extract_refs_from_query(rid)
+                new.extend(hits if hits else [{'type': 'title', 'value': rid,
+                                               'raw_match': 'unrecognized id format; stored as title'}])
+        seen = {f"{r.get('type', '')}:{r.get('value', '')}" for r in existing if isinstance(r, dict)}
+        added = [r for r in new if f"{r.get('type', '')}:{r.get('value', '')}" not in seen]
+        path.write_text(json.dumps(existing + added, indent=2, ensure_ascii=False))
+        print(f"added {len(added)} ref(s), skipped {len(new) - len(added)} duplicate(s) → {path}",
+              file=sys.stderr)
+        return 0
+    pu.set_defaults(func=_cmd_add_user_ref)
+
+    pn = sub.add_parser('next',
+                        help='Run-state navigator: inspect the run dir\'s artifacts and print '
+                             'EXACTLY the next step (a bash command, or an LLM sub-agent spec '
+                             'with prompt/inputs/output paths). Read-only. The host loop is: '
+                             '`next` → do what it says → `next` again, until a terminal state.')
+    pn.add_argument('--dir', required=True, help='The run dir (the --out root all phases write under)')
+    pn.add_argument('--query', default='', help='The user research question (only used to fill in the phase0 command hint)')
+    def _cmd_next(args):
+        from scripts.next_step import cmd_next
+        return cmd_next(args)
+    pn.set_defaults(func=_cmd_next)
 
     pv = sub.add_parser('validate', help='Run validators on phase outputs')
     pv.add_argument('--phase1', help='phase1_output.json path (required for V3 evidence-chain)')
@@ -1076,9 +1214,9 @@ def main():
     # actionable message instead of a confusing FileNotFoundError mid-phase.
     for _attr in ('out', 'idea_json', 'expansion', 'implementability',
                   'phase1', 'phase2', 'phase3', 'phase4', 'phase4_impl',
-                  'revisions', 'candidate', 'phase2_select', 'phase3_critique',
+                  'revisions', 'critique', 'candidate', 'phase2_select', 'phase3_critique',
                   'phase3_revise', 'phase0_dir', 'collision',
-                  'skeleton', 'fill_map'):
+                  'skeleton', 'fill_map', 'dir'):
         _val = getattr(args, _attr, None)
         if _val:
             _guard_project_path(_val, f'--{_attr.replace("_", "-")}')

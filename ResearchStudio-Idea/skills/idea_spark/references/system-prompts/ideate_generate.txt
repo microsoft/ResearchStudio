@@ -198,6 +198,11 @@ Output (strict JSON):
     "<3-5 entries total; each a 3-7 word phrase>",
     "<3-7 word phrase>",
     "..."
+  ],
+
+  "alias_terms": [
+    "<2-4 entries; each a 3-7 word phrase naming the SAME core mechanism in ANOTHER community's vocabulary>",
+    "..."
   ]
 }
 
@@ -233,7 +238,19 @@ Notes:
 - `signature_terms[]`: 3-5 entries, 3-7 words each. Cover (a) the mechanism,
   (b) the claim, (c) the setting/setup. No verbatim title strings. No
   generic terms ("deep learning", "transformer"). These get sent verbatim to
-  the BM25 retriever in Phase 3.1 collision check.
+  the BM25 retriever in Phase 3.1 collision check (recent window).
+- `alias_terms[]`: 2-4 entries, 3-7 words each — how OTHER research
+  communities would name this candidate's core mechanism. This is a
+  PARAMETRIC-KNOWLEDGE step, not a paraphrase step: ask "if a reward-modeling
+  / classical-CV / RL / NLP / theory group had built this same mechanism 2-3
+  years ago, what would their papers' titles call it?" and write those names
+  (e.g. a "goal-image conditioned scorer for task completion" is, in other
+  vocabularies, a "goal-conditioned success detector" / "goal-image reward
+  model"). Do NOT reuse signature_terms vocabulary or the candidate's own
+  domain wording — the whole point is the words your community does NOT use.
+  Phase 3.1 runs these over a multi-year window to catch same-mechanism
+  ancestors that renamed the idea; a paraphrased signature term catches
+  nothing the signature channel didn't already catch.
 - `main_pattern` per entry comes from Phase 2.1; `sub_pattern` is picked
   in this phase's sub-step a. There is no separate `patterns_used[]` field.
 
