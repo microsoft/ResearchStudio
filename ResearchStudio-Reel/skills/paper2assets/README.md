@@ -41,7 +41,7 @@ Deliverables reference assets by **root-relative** paths (`assets/figures/…`),
 > /paper2assets my_paper.pdf
 ```
 
-Outputs land in `<outdir>/`, defaulting to `papers/<pdf_stem>/`. Pass an explicit second path to override.
+Outputs land in `<outdir>/`, defaulting to `<input_pdf_dir>/<pdf_stem>/`. Pass an explicit second path to override.
 
 ## How it works
 

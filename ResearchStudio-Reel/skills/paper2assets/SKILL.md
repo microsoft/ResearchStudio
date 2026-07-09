@@ -97,7 +97,7 @@ Re-extracting a paper costs ~5-10 min of Claude tokens (figure-cleanup
 visual review + spec synthesis) and risks clobbering edits the user may
 have made to `paper_spec.md`, `metadata.json`, or cropped figures.
 Before starting, **check whether the assets already exist** under the
-default outdir convention (`outdir = papers/<pdf_stem>/`) or
+default outdir convention (`outdir = <input_pdf_dir>/<pdf_stem>/`) or
 the caller-supplied outdir:
 
 ```bash
@@ -131,7 +131,7 @@ Re-extract ONLY when:
 
 Required argument: path to a `.pdf` file. If the file doesn't exist or isn't a PDF, abort with a clear message.
 
-Default outdir convention: `outdir = papers/<pdf_stem>/` — a folder under `papers/` named after the input PDF's basename (no extension). Example: `papers/8008_Ink3D_Sculpting_3D_Assets.pdf` → `papers/8008_Ink3D_Sculpting_3D_Assets/`. The caller may override with an explicit outdir argument.
+Default outdir convention: `outdir = <input_pdf_dir>/<pdf_stem>/` — a folder under `papers/` named after the input PDF's basename (no extension). Example: `/work/job/ResearchStudio-Reel.pdf` → `/work/job/ResearchStudio-Reel/`. The caller may override with an explicit outdir argument.
 
 Create `<outdir>/` if missing.
 
