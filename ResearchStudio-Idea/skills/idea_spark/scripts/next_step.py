@@ -267,7 +267,18 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                            '`verdict` (pass | patched) + any `unrepaired[]` blocking findings.',
                      run_dir=d)
     p2c_doc = _read_json(p2c) or {}
-    if p2c_doc.get('verdict') == 'patched' and not refined.exists():
+    p2c_verdict = p2c_doc.get('verdict')
+    if p2c.exists() and p2c_verdict not in ('pass', 'patched'):
+        # Malformed / truncated 2.3 output must not silently bypass the gate.
+        return _emit('Coherence output exists but its verdict is invalid '
+                     f'({p2c_verdict!r}) — the gate did not complete.',
+                     'Redo Phase 2.3 — coherence gate (dry-run trace)', 'llm_subagent',
+                     prompt=str(prompts / 'coherence_trace.txt'),
+                     inputs=[str(p2g), str(p2s)],
+                     output=str(p2c) + ' (overwrite the malformed file)',
+                     notes='MUST be a FRESH context. Valid verdicts: pass | patched.',
+                     run_dir=d)
+    if p2c_verdict == 'patched' and not refined.exists():
         return _emit('Coherence gate emitted repairs; merger not yet run.',
                      'Phase 2.3 merger (deterministic)', 'bash',
                      run=[skill_cd + 'phase3_merge_revisions '
@@ -275,8 +286,9 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                           f'--out "{p2c_dir}/" --out-name refined_candidate.json'],
                      run_dir=d)
     # Canonical candidate for every later phase: the coherence-repaired file when
-    # a repair happened, else the Phase 2.2 output.
-    canonical = refined if refined.exists() else p2g
+    # THIS gate run patched (verdict-bound, so a stale refined file from an
+    # earlier round can never shadow a later pass verdict), else the 2.2 output.
+    canonical = refined if (p2c_verdict == 'patched' and refined.exists()) else p2g
 
     # ---- Phase 3.1 collision ---------------------------------------------------
     p3c_dir = d / 'phase3_collision'
