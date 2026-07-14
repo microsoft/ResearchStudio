@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,9 +8,37 @@
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <link rel="preconnect" href="https://rsms.me/" />
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+  <script>
+    (() => {
+      let theme;
+      try { theme = localStorage.getItem('researchstudio-theme'); } catch (_) {}
+      if (theme !== 'light' && theme !== 'dark') {
+        const localHour = new Date().getHours();
+        theme = localHour >= 7 && localHour < 19 ? 'light' : 'dark';
+      }
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
   <link rel="stylesheet" href="assets/style.css" />
 </head>
 <body>
+  <div class="page-controls">
+    <details class="mode-control">
+      <summary data-i18n="theme_label">Theme</summary>
+      <div class="mode-options" aria-label="Theme options">
+        <button type="button" data-theme-option="light" data-i18n="theme_light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-option="dark" data-i18n="theme_dark" aria-pressed="true">Dark</button>
+      </div>
+    </details>
+    <details class="language-control">
+      <summary data-i18n="language_label">Language</summary>
+      <div class="language-options" aria-label="Language options">
+        <button type="button" data-language-option="en" lang="en" data-i18n="language_en">English</button>
+        <button type="button" data-language-option="zh" lang="zh-CN" data-i18n="language_zh">Chinese</button>
+        <button type="button" data-language-option="es" lang="es" data-i18n="language_es">Spanish</button>
+      </div>
+    </details>
+  </div>
   <div class="topbar-wrap">
     <nav class="topbar">
       <a class="brand" href="#top">
@@ -18,13 +46,17 @@
         <span>ResearchStudio</span>
       </a>
       <ul class="nav-links">
-        <li><a href="https://github.com/microsoft/ResearchStudio/tree/main/ResearchStudio-Idea">Explore Idea</a></li>
-        <li><a href="https://github.com/microsoft/ResearchStudio/tree/main/ResearchStudio-Reel">Explore Reel</a></li>
+        <li><a href="https://github.com/microsoft/ResearchStudio/tree/main/ResearchStudio-Idea"><span data-i18n="nav_idea">Explore Idea</span></a></li>
+        <li><a href="https://github.com/microsoft/ResearchStudio/tree/main/ResearchStudio-Reel"><span data-i18n="nav_reel">Explore Reel</span></a></li>
       </ul>
       <div class="nav__cta">
         <a class="btn btn--ghost" href="https://github.com/microsoft/ResearchStudio" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1.01-.02-1.99-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.97.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.06 0 0 .97-.31 3.19 1.18a11.1 11.1 0 0 1 5.81 0c2.22-1.49 3.19-1.18 3.19-1.18.63 1.59.23 2.77.11 3.06.74.81 1.19 1.84 1.19 3.1 0 4.43-2.69 5.4-5.26 5.69.41.36.78 1.07.78 2.16 0 1.56-.01 2.81-.01 3.19 0 .31.21.68.8.56 4.56-1.52 7.85-5.83 7.85-10.91C23.5 5.65 18.35.5 12 .5z"/></svg>
-          Open on GitHub
+          <span data-i18n="github">Open on GitHub</span>
+        </a>
+        <a class="github-stars-badge" id="github-stars-badge" href="https://github.com/microsoft/ResearchStudio/stargazers" target="_blank" rel="noopener" hidden>
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z"/></svg>
+          <strong id="github-stars-count"></strong>
         </a>
       </div>
     </nav>
@@ -39,8 +71,8 @@
     <div class="container">
       <div class="hero-body" id="top">
         <h1>
-          Your AI Co-author,<br />
-          <span class="grad">from Research Problem to<br />Final Publication</span>
+          <span>Your AI Co-author,</span><br />
+          <span class="grad"><span>from Research Problem to</span><br /><span>Final Publication</span></span>
         </h1>
         <div class="badges" aria-label="Project badges">
           <a href="https://github.com/microsoft/ResearchStudio" target="_blank" rel="noopener"><img alt="Code" src="https://img.shields.io/badge/Code-GitHub-181717.svg?logo=github" /></a>
@@ -59,28 +91,28 @@
         <div class="card-grid two-col">
           <a id="idea" class="cover-card cover-card--idea" href="https://github.com/microsoft/ResearchStudio/tree/main/ResearchStudio-Idea" rel="noopener">
             <div class="cover-card__head">
-              <span class="tag tag-idea"><span class="tag__emoji" aria-hidden="true">💡</span> Pre-paper</span>
+              <span class="tag tag-idea"><span class="tag__emoji" aria-hidden="true">💡</span><span data-i18n="pre_paper">Pre-paper</span></span>
               <h2 class="cover-card__title">ResearchStudio–Idea</h2>
             </div>
             <div class="cover-card__media-wrap">
               <img class="cover-card__media" src="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Idea/docs/figures/ideaspark_teaser.gif" alt="ResearchStudio-Idea — IdeaSpark teaser" loading="lazy" />
             </div>
             <div class="cover-card__foot">
-              <p>Automating the <strong>first mile</strong> of research — from a research problem to a reviewer-defensible idea card.</p>
-              <span class="cover-card__cta">View Detail →</span>
+              <p><span data-i18n="idea_prefix">Automating the</span> <strong data-i18n="idea_emphasis">first mile</strong> <span data-i18n="idea_suffix">of research — from a research problem to a reviewer-defensible idea card.</span></p>
+              <span class="cover-card__cta" data-i18n="view_detail">View Detail →</span>
             </div>
           </a>
           <a id="reel" class="cover-card cover-card--reel" href="https://github.com/microsoft/ResearchStudio/tree/main/ResearchStudio-Reel" rel="noopener">
             <div class="cover-card__head">
-              <span class="tag tag-reel"><span class="tag__emoji" aria-hidden="true">🎞️</span> Post-paper</span>
+              <span class="tag tag-reel"><span class="tag__emoji" aria-hidden="true">🎞️</span><span data-i18n="post_paper">Post-paper</span></span>
               <h2 class="cover-card__title">ResearchStudio–Reel</h2>
             </div>
             <div class="cover-card__media-wrap">
               <img class="cover-card__media" src="https://raw.githubusercontent.com/ai-nuts/Storage/main/ResearchStudio/ResearchStudio-Reel/docs/figures/reel_demo.gif" alt="ResearchStudio-Reel — Reel demo" loading="lazy" />
             </div>
             <div class="cover-card__foot">
-              <p>Automating the <strong>last mile</strong> of research — from paper to poster, video, blog, and reel.</p>
-              <span class="cover-card__cta">View Detail →</span>
+              <p><span data-i18n="reel_prefix">Automating the</span> <strong data-i18n="reel_emphasis">last mile</strong> <span data-i18n="reel_suffix">of research — from paper to poster, video, blog, and reel.</span></p>
+              <span class="cover-card__cta" data-i18n="view_detail">View Detail →</span>
             </div>
           </a>
         </div>
@@ -100,5 +132,156 @@
       </div>
     </div>
   </footer>
+
+  <script>
+    (() => {
+      const copy = {
+        en: {
+          title: 'ResearchStudio — Your AI co-author, from research problem to publication',
+          description: 'ResearchStudio is a collection of Claude Code and Codex skills covering the entire research lifecycle — from a vague research direction to a published paper.',
+          nav_idea: 'Explore Idea', nav_reel: 'Explore Reel', github: 'Open on GitHub',
+          theme_label: 'Theme', theme_light: 'Light', theme_dark: 'Dark',
+          language_label: 'Language', language_en: 'English', language_zh: 'Chinese', language_es: 'Spanish', github_stars: 'GitHub stars',
+          pre_paper: 'Pre-paper', post_paper: 'Post-paper',
+          idea_prefix: 'Automating the', idea_emphasis: 'first mile',
+          idea_suffix: 'of research — from a research problem to a reviewer-defensible idea card.',
+          reel_prefix: 'Automating the', reel_emphasis: 'last mile',
+          reel_suffix: 'of research — from paper to poster, video, blog, and reel.',
+          view_detail: 'View Detail →'
+        },
+        zh: {
+          title: 'ResearchStudio — 从研究问题到最终发表的 AI 研究伙伴',
+          description: 'ResearchStudio 是覆盖完整科研生命周期的 Claude Code 与 Codex 技能集合——从模糊的研究方向到正式发表的论文。',
+          nav_idea: '探索 Idea', nav_reel: '探索 Reel', github: '在 GitHub 查看',
+          theme_label: '主题', theme_light: '浅色', theme_dark: '深色',
+          language_label: '语言', language_en: '英语', language_zh: '中文', language_es: '西班牙语', github_stars: 'GitHub 星标',
+          pre_paper: '论文前', post_paper: '论文后',
+          idea_prefix: '自动化科研的', idea_emphasis: '最初一公里',
+          idea_suffix: '——从研究问题到经得住评审的创意卡片。',
+          reel_prefix: '自动化科研的', reel_emphasis: '最后一公里',
+          reel_suffix: '——从论文到海报、视频、博客和短片。',
+          view_detail: '查看详情 →'
+        },
+        es: {
+          title: 'ResearchStudio — Tu coautor de IA, del problema de investigación a la publicación',
+          description: 'ResearchStudio es una colección de habilidades de Claude Code y Codex que cubre todo el ciclo de vida de la investigación, desde una dirección vaga hasta un artículo publicado.',
+          nav_idea: 'Explorar Idea', nav_reel: 'Explorar Reel', github: 'Ver en GitHub',
+          theme_label: 'Tema', theme_light: 'Claro', theme_dark: 'Oscuro',
+          language_label: 'Idioma', language_en: 'Inglés', language_zh: 'Chino', language_es: 'Español', github_stars: 'Estrellas de GitHub',
+          pre_paper: 'Prepublicación', post_paper: 'Pospublicación',
+          idea_prefix: 'Automatizando la', idea_emphasis: 'primera etapa',
+          idea_suffix: 'de la investigación: desde un problema de investigación hasta una tarjeta de idea defendible ante revisores.',
+          reel_prefix: 'Automatizando la', reel_emphasis: 'etapa final',
+          reel_suffix: 'de la investigación: del artículo al póster, vídeo, blog y reel.',
+          view_detail: 'Ver detalles →'
+        }
+      };
+
+      const languageControl = document.querySelector('.language-control');
+      const modeControl = document.querySelector('.mode-control');
+      const languageOptions = document.querySelectorAll('[data-language-option]');
+      const themeOptions = document.querySelectorAll('[data-theme-option]');
+      const description = document.querySelector('meta[name="description"]');
+      let language;
+      try { language = localStorage.getItem('researchstudio-language'); } catch (_) {}
+      if (!['en', 'zh', 'es'].includes(language)) {
+        const browserLanguage = navigator.language.toLowerCase();
+        language = browserLanguage.startsWith('zh') ? 'zh' : browserLanguage.startsWith('es') ? 'es' : 'en';
+      }
+
+      function applyLanguage(nextLanguage) {
+        language = nextLanguage;
+        document.documentElement.lang = language === 'zh' ? 'zh-CN' : language === 'es' ? 'es' : 'en';
+        document.title = copy[language].title;
+        description.content = copy[language].description;
+        document.querySelectorAll('[data-i18n]').forEach(element => {
+          element.textContent = copy[language][element.dataset.i18n];
+        });
+        languageOptions.forEach(option => {
+          option.setAttribute('aria-pressed', String(option.dataset.languageOption === language));
+        });
+        try { localStorage.setItem('researchstudio-language', language); } catch (_) {}
+        renderGithubStars();
+      }
+
+      languageOptions.forEach(option => {
+        option.addEventListener('click', () => {
+          applyLanguage(option.dataset.languageOption);
+          languageControl.open = false;
+        });
+      });
+
+      function applyTheme(theme, persist = false) {
+        document.documentElement.dataset.theme = theme;
+        themeOptions.forEach(option => {
+          option.setAttribute('aria-pressed', String(option.dataset.themeOption === theme));
+        });
+        if (persist) {
+          try { localStorage.setItem('researchstudio-theme', theme); } catch (_) {}
+        }
+      }
+
+      themeOptions.forEach(option => {
+        option.addEventListener('click', () => {
+          applyTheme(option.dataset.themeOption, true);
+          modeControl.open = false;
+        });
+      });
+
+      modeControl.addEventListener('toggle', () => {
+        if (modeControl.open) languageControl.open = false;
+      });
+      languageControl.addEventListener('toggle', () => {
+        if (languageControl.open) modeControl.open = false;
+      });
+
+      const githubStarsBadge = document.getElementById('github-stars-badge');
+      const githubStarsCount = document.getElementById('github-stars-count');
+      const githubStarsCacheKey = 'researchstudio-github-stars';
+      let githubStars = null;
+      let shouldRefreshGithubStars = true;
+
+      function renderGithubStars() {
+        if (!Number.isInteger(githubStars) || githubStars < 0) return;
+        const locale = language === 'zh' ? 'zh-CN' : language === 'es' ? 'es-ES' : 'en-US';
+        githubStarsCount.textContent = new Intl.NumberFormat(locale).format(githubStars);
+        githubStarsBadge.setAttribute('aria-label', copy[language].github_stars + ': ' + githubStarsCount.textContent);
+        githubStarsBadge.hidden = false;
+      }
+
+      try {
+        const cached = JSON.parse(localStorage.getItem(githubStarsCacheKey));
+        if (Number.isInteger(cached?.count) && cached.count >= 0) {
+          githubStars = cached.count;
+          renderGithubStars();
+          shouldRefreshGithubStars = Date.now() - cached.updatedAt >= 60 * 60 * 1000;
+        }
+      } catch (_) {}
+
+      if (shouldRefreshGithubStars) {
+        fetch('https://api.github.com/repos/microsoft/ResearchStudio', {
+          headers: { Accept: 'application/vnd.github+json' }
+        })
+          .then(response => {
+            if (!response.ok) throw new Error('GitHub API request failed');
+            return response.json();
+          })
+          .then(payload => {
+            if (!Number.isInteger(payload.stargazers_count)) throw new Error('Invalid GitHub star count');
+            githubStars = payload.stargazers_count;
+            renderGithubStars();
+            try {
+              localStorage.setItem(githubStarsCacheKey, JSON.stringify({
+                count: githubStars,
+                updatedAt: Date.now()
+              }));
+            } catch (_) {}
+          })
+          .catch(() => {});
+      }
+      applyTheme(document.documentElement.dataset.theme);
+      applyLanguage(language);
+    })();
+  </script>
 </body>
 </html>
