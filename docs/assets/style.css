@@ -807,35 +807,3 @@ html[data-theme="dark"] .cover-card--reel .cover-card__cta { color: var(--brand-
   .mode-control summary,
   .language-control summary { font-size: 12px; }
 }
-
-
-/* GitHub star count */
-.github-stars-badge {
-  height: 46px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  color: var(--fg-muted);
-  background: var(--bg-elev);
-  font-size: 14.5px;
-  font-weight: 600;
-  line-height: 1;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: transform .15s ease, background .15s ease, border-color .15s ease;
-}
-.github-stars-badge[hidden] { display: none; }
-.github-stars-badge svg { flex: none; color: #d6a514; }
-.github-stars-badge strong { color: var(--fg); font-weight: 700; }
-.github-stars-badge:hover {
-  color: var(--fg);
-  background: var(--bg-soft);
-  text-decoration: none;
-  transform: translateY(-1px);
-}
-@media (max-width: 480px) {
-  .github-stars-badge { height: 36px; padding: 0 9px; font-size: 12px; }
-}

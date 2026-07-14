@@ -4,12 +4,11 @@
 
 > Our AI co-author, from research problem to final publication.
 
+[![Code](https://img.shields.io/github/stars/microsoft/ResearchStudio?style=flat&amp;logo=github&amp;label=Code&amp;color=black)](https://github.com/microsoft/ResearchStudio)
 [![arXiv-Idea](https://img.shields.io/badge/arXiv-Idea%3A%202607.04439-b31b1b.svg)](https://arxiv.org/abs/2607.04439)
 [![arXiv-Reel](https://img.shields.io/badge/arXiv-Reel%3A%202607.04438-b31b1b.svg)](https://arxiv.org/abs/2607.04438)
-[![Code](https://img.shields.io/badge/Code-GitHub-181717.svg?logo=github)](https://github.com/microsoft/ResearchStudio)
-![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Status: Active](https://img.shields.io/badge/Status-Active-brightgreen)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://raw.githubusercontent.com/microsoft/ResearchStudio/refs/heads/main/LICENSE)
+[![Status: Active](https://img.shields.io/badge/Status-Active-brightgreen)](https://aka.ms/ResearchStudio)
 
 ResearchStudio is a collection of skills covering the **entire research lifecycle** — from an under-specified research direction to a published paper.
 The skills run on [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) and [Codex](https://developers.openai.com/codex).
