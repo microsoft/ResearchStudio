@@ -139,21 +139,42 @@ class SettleResult:
     the ``$…$`` is most likely prose, not math)."""
 
 
-# JS shim: when the poster uses paper2poster's conventional class names
+# JS shim: where the poster uses paper2poster's conventional class names
 # (.poster, .col, .section, .titlebar/.banner, .footer-strip/.footer)
-# but lacks any `data-measure-role` attributes, copy the role over from
-# the class so `slack`/`polish` can still reason about it. No-op when
-# any `data-measure-role` already exists on the page — explicit markup
-# wins. Paper2layout-style cards are `.section`, not `.card`; we map
-# both. Headlines/titlebar map to `banner`/`header` so the alignment
-# spread isn't anchored by the title strip.
+# but the element carries no `data-measure-role`, copy the role over from
+# the class so `slack`/`polish` can reason about it. Explicit markup wins
+# PER ELEMENT: an element that declares a role is never re-tagged, but a
+# declared role elsewhere does not switch the shim off (see the comment
+# in _COMPAT_ROLES_JS). Paper2layout-style cards are `.section`, not
+# `.card`; we map both. Headlines/titlebar map to `banner`/`header` so
+# the alignment spread isn't anchored by the title strip.
 _COMPAT_ROLES_JS = r"""
 () => {
-  if (document.querySelector('[data-measure-role]')) return false;
+  // Fill in a role for every conventional-class element that does not
+  // already declare one. This used to bail entirely the moment ANY
+  // data-measure-role existed anywhere in the document, which broke on
+  // `assets/layouts_portrait/full.html`: it declares exactly one
+  // (`column`, on .method-hero) and leaves poster/columns/cards to
+  // classes, so the shim did nothing, poster+card resolved to zero, and
+  // `polish` hard-failed its "poster/columns/cards required" precondition
+  // on a template this skill ships (while `slack --with-polish` silently
+  // skipped the polish pass).
+  //
+  // An explicit role is ADDITIVE, not exclusive -- this mirrors slack's own
+  // selector (`.columns > .col, .columns > .mid-wide,
+  // [data-measure-role="column"]`), where .method-hero's declared role adds
+  // a column that no class matches, rather than declaring itself the only
+  // one. So do NOT skip a role just because some element already has it:
+  // that would leave portrait's ordinary `.col`s unmeasured by every gate
+  // that keys off the role (Gate C's space-between scan, for one). The
+  // per-element `hasAttribute` guard below is what protects author intent:
+  // an element that declares a role is never re-tagged.
+  let injected = false;
   const set = (sel, role) => {
     document.querySelectorAll(sel).forEach(el => {
       if (!el.hasAttribute('data-measure-role')) {
         el.setAttribute('data-measure-role', role);
+        injected = true;
       }
     });
   };
@@ -164,18 +185,61 @@ _COMPAT_ROLES_JS = r"""
   set('.col > .section, .section', 'card');
   set('.footer-strip', 'footer-strip');
   set('footer, .footer', 'footer');
-  return true;
+  return injected;
 }
 """
 
 
 def inject_class_fallback_roles(page) -> bool:
-    """Add `data-measure-role` attributes based on conventional class
-    names when the page has none. Returns True if any were injected."""
+    """Add `data-measure-role` attributes, from conventional class names,
+    to elements that do not already declare one. Additive: a document that
+    declares some roles still gets the shim for the elements it left
+    untagged. Returns True if any were injected."""
     try:
         return bool(page.evaluate(_COMPAT_ROLES_JS))
     except Exception:
         return False
+
+
+def count_roles(page) -> dict[str, int]:
+    """Exact per-role element counts on the LIVE page, after the shim has run.
+
+    ``preflight.has_required_roles_in_html`` only estimates from the file
+    text, so it is only safe as a cheap pre-browser fail-fast. Once the
+    browser is open there is no reason to guess: a gate that needs to know
+    whether the poster really has cards should ask the DOM.
+
+    Counts are keyed on the RAW attribute value, so they mean exactly what
+    the gates' `[data-measure-role="…"]` selectors mean -- see the note in the
+    query below.
+
+    A required role is ABSENT whenever its key is missing -- which covers
+    both a poster that declares nothing and one whose values do not match
+    (an empty attribute keys ``""``, a padded one keys ``" card "``).
+    ``{}`` additionally means the query itself failed. Callers must FAIL
+    CLOSED on all of these -- a gate that cannot confirm the poster has
+    anything to measure has no basis for passing it, and conflating
+    "unknown" with "fine" is how an unmeasured poster earns a silent green.
+    """
+    try:
+        return page.evaluate(
+            """() => {
+                 // Key on the RAW attribute value -- no trim, no filtering.
+                 // Every gate selects with an exact attribute match
+                 // (`[data-measure-role="card"]`), which does NOT match
+                 // ` card `. Normalising here would report a role the gates
+                 // then fail to select, which is the fail-open this function
+                 // exists to prevent: counts must mean what the selectors mean.
+                 const o = {};
+                 document.querySelectorAll('[data-measure-role]').forEach(e => {
+                   const r = e.getAttribute('data-measure-role') || '';
+                   o[r] = (o[r] || 0) + 1;
+                 });
+                 return o;
+               }"""
+        ) or {}
+    except Exception:
+        return {}
 
 
 def open_print_emulated_page(p, viewport_px: tuple[int, int]):

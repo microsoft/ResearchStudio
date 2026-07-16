@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -314,36 +315,62 @@ def has_required_roles_in_html(html_path: Path) -> dict[str, int]:
     instead of silently PASSing on "0 figures, 0 columns, 0 stat
     elements".
 
-    Compat fallback for paper2poster-style templates: if the file has NO
-    ``data-measure-role`` attributes at all, count the conventional CSS
-    classes that the runtime shim (``inject_class_fallback_roles``) will
-    map to roles. Without this, polish hard-fails on disk before the
+    Compat fallback for paper2poster-style templates: add the conventional
+    CSS classes that the runtime shim (``inject_class_fallback_roles``)
+    maps to each role. Without this, polish hard-fails on disk before the
     browser ever opens, even though the runtime would have populated the
     roles fine.
+
+    The fallback is ADDITIVE per role, mirroring the runtime shim: an
+    explicit role does not turn the shim off for that role (in
+    ``assets/layouts_portrait/full.html`` the single declared
+    ``column`` on ``.method-hero`` sits alongside ordinary ``.col``
+    columns, and both are measured). Bailing out on the FIRST attribute
+    seen reported ``poster=0, card=0`` for that template, which tripped
+    ``cmd_polish``'s "missing markup" hard-fail on a poster the runtime
+    would have measured fine.
+
+    This is a coarse ESTIMATE, not a prediction of the runtime. Against the
+    lowercase, quoted markup this skill's templates emit it over-counts (a
+    regex cannot tell which class-matched element already carries a role, so
+    an element with both is counted twice), which is the harmless direction
+    for its consumer: ``cmd_polish``'s pre-browser "is this file measurable
+    at all?" check tests for zero, so erring high keeps it from refusing a
+    poster it could measure. It is NOT an upper bound for arbitrary HTML --
+    a browser accepts markup this regex does not match (``CLASS=section``,
+    unquoted attribute values), where it would under-count instead.
+
+    Either way it is only a fail-fast. Anything needing to know what the
+    poster ACTUALLY renders must ask the live page (``render.count_roles``),
+    which both ``cmd_polish`` and ``slack --with-polish`` now do before
+    trusting a PASS.
     """
     raw = html_path.read_text(encoding="utf-8", errors="ignore")
     body = strip_for_lint(raw)
     counts: dict[str, int] = {role: 0 for role in KNOWN_ROLES}
-    found_any = False
     for m in re.finditer(
         r'data-measure-role\s*=\s*["\']([^"\']+)["\']', body
     ):
-        found_any = True
         role = m.group(1).strip()
         if role in counts:
             counts[role] += 1
-    if found_any:
-        return counts
-    # Class-based fallback (paper2poster templates).
+
+    # Class-based fallback (paper2poster templates). Keep the selectors in
+    # step with `render._COMPAT_ROLES_JS` -- if the two disagree, this
+    # static pre-check and the runtime shim disagree about the same file.
     def _count_class(name: str) -> int:
         return len(re.findall(
             r'class\s*=\s*["\'][^"\']*\b' + re.escape(name) + r'\b[^"\']*["\']',
             body,
         ))
-    counts["poster"] = _count_class("poster")
-    counts["column"] = _count_class("col")
-    counts["card"] = _count_class("section")
-    counts["banner"] = _count_class("titlebar") + _count_class("banner")
-    counts["footer-strip"] = _count_class("footer-strip")
-    counts["footer"] = _count_class("footer")
+    fallbacks: dict[str, Callable[[], int]] = {
+        "poster": lambda: _count_class("poster"),
+        "column": lambda: _count_class("col"),
+        "card": lambda: _count_class("section"),
+        "banner": lambda: _count_class("titlebar") + _count_class("banner"),
+        "footer-strip": lambda: _count_class("footer-strip"),
+        "footer": lambda: _count_class("footer"),
+    }
+    for role, count_fn in fallbacks.items():
+        counts[role] += count_fn()
     return counts

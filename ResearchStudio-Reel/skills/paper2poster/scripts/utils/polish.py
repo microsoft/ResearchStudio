@@ -20,11 +20,23 @@ Three gates the hard alignment gate cannot see:
     on a column with one short card produces a giant whitespace gap
     that reads as "this column ran out of things to say". Detected
     when the largest inter-card gap exceeds the column's stated
-    ``row-gap`` by > 5% of column height.
+    ``row-gap`` by > 5% of column height. Two card-level siblings catch
+    the same void inside a single card: ``CARD/TRAILING`` (blank BELOW
+    the last line of a stretched card) and ``CARD/INNER-VOID`` (an
+    oversized gap BETWEEN a card's stacked children -- either the blocks
+    above stop early while the last one reaches the card's content
+    bottom, or the card deals its leftover space out between them via a
+    vertical ``justify-content: space-*``). The latter covers what the
+    former structurally cannot: a bottom-anchored tail drives trailing
+    to ~0, and ``CARD/TRAILING`` skips space-distributing cards outright. Neither sees a
+    ``justify-content: center`` card, whose voids sit above and below its
+    children rather than between them.
 
-Warns by default; ``--strict`` to exit non-zero. Hard-fails if the
-poster has no ``[data-measure-role]`` markup at all — a polish PASS on
-"0 figures, 0 columns, 0 stat elements" would be misleading.
+Warns by default; ``--strict`` to exit non-zero. Hard-fails when the
+poster resolves no ``poster`` / ``column`` / ``card`` roles — first from
+a cheap static scan before the browser opens, then against the LIVE page,
+since a PASS over "0 figures, 0 columns, 0 cards" would be a silent green
+on a poster nobody checked.
 """
 from __future__ import annotations
 
@@ -50,6 +62,35 @@ DEFAULT_FIG_MIN_RATIO = float(os.environ.get("POSTER_FIG_MIN_RATIO", "0.90"))
 DEFAULT_MAX_SPACE_BETWEEN_FILL = 0.05
 DEFAULT_MAX_CARD_TRAILING = 0.05
 DEFAULT_MAX_WIDOW_FRACTION = 0.20
+
+# Gate C (inner void): an oversized gap BETWEEN a card's stacked children --
+# below its last real block and above one pushed down by `margin-top: auto`
+# or by a vertical `justify-content: space-*`. CARD/TRAILING cannot see it --
+# it measures blank space below the last content, which a bottom-pinned tail
+# drives to ~0, and it skips space-distributing cards outright. Gate C's
+# SPACE-BETWEEN only looks BETWEEN cards in a column. Detected by geometry
+# (largest inter-child vertical gap minus the card's stated row-gap) so the
+# mechanism does not matter. NOT covered: a `justify-content: center` card,
+# whose voids sit above and below its children rather than between them (see
+# the SCOPE note in _POLISH_JS).
+#
+# Calibration: the gap is measured between bounding boxes, so it INCLUDES the
+# siblings' ordinary margins -- `.section h2 { margin: 0 0 0.45em }` at 60pt
+# is a real 36px gap under every heading. Those cannot simply be subtracted:
+# getComputedStyle resolves `margin-top: auto` to its USED value (the void
+# itself), so netting margins out would zero the exact signal this gate
+# exists for. Two conditions separate rhythm from void instead:
+#   1. the card must either have a bottom-anchored tail (`tailPinned` in
+#      _POLISH_JS) or distribute space vertically (a `space-*` card reserves
+#      room at the ends, so nothing reaches the bottom by design) -- a plain
+#      top-packed card is CARD/TRAILING's job, not this gate's;
+#   2. the gap must exceed this fraction of card height. Measured on the
+#      shipped templates, heading rhythm peaks at ~6% of card height (36px on
+#      the shortest ~600px card) while a real void runs 33-83%. 0.15 sits with
+#      >2x headroom on both sides.
+# The px floor additionally keeps a sub-line gap on a small card quiet.
+DEFAULT_MAX_CARD_INNER_VOID = 0.15
+DEFAULT_MIN_CARD_INNER_VOID_PX = 24.0
 
 
 # Trailing glyphs that orphan when wrapped: arrows, multiplicative
@@ -266,6 +307,130 @@ _POLISH_JS = r"""
       });
     });
 
+  // ---- 4b) Inner-card void: oversized gap BETWEEN a card's stacked
+  //          children ----
+  // Gate C's SPACE-BETWEEN catches a gap BETWEEN cards in a column, and
+  // CARD/TRAILING catches blank BELOW a card's last line. Neither sees a
+  // void in the MIDDLE of a card: a card stretched by an equal-height row
+  // whose short content is top-packed with its tail pinned to the bottom
+  // (`margin-top: auto`, or `justify-content: space-*`) opens the slack
+  // between them, so trailing reads ~0 -- and CARD/TRAILING skips
+  // space-distributing cards by design, leaving them with no void check at
+  // all. This scan is pure geometry (largest inter-child vertical gap minus
+  // the stated row-gap) so the mechanism does not matter.
+  //
+  // SCOPE: gaps BETWEEN direct children only. A `justify-content: center`
+  // card whose short content floats with equal voids ABOVE and BELOW it has
+  // no oversized inter-child gap, so this gate does not see it either (and
+  // CARD/TRAILING skips it too) -- that hole is still open. A void nested
+  // inside a single wrapper child is likewise not seen.
+  const innerVoids = [];
+  document.querySelectorAll('[data-measure-role="card"]')
+    .forEach(card => {
+      const cs = window.getComputedStyle(card);
+      const cr = card.getBoundingClientRect();
+      if (cr.height <= 0) return;
+      const gap = parseFloat(cs.rowGap || cs.gap || '0') || 0;
+      const contentBottom = cr.bottom
+        - (parseFloat(cs.paddingBottom) || 0)
+        - (parseFloat(cs.borderBottomWidth) || 0);
+      // Direct, in-flow element children with a real box. Skip abs/fixed --
+      // a corner badge / floating Listen button is not flow content. Use
+      // getAttribute('class'): an SVG child's `.className` is an
+      // SVGAnimatedString and `.trim()` on it throws, which would take down
+      // the whole evaluate.
+      const kids = Array.from(card.children).map(c => {
+        const r = c.getBoundingClientRect();
+        const ccs = window.getComputedStyle(c);
+        const cl = ((c.getAttribute('class') || '').trim()
+                      .split(/\s+/)[0]) || '';
+        return {tag: c.tagName.toLowerCase(), cls: cl,
+                top: r.top, bottom: r.bottom, h: r.height,
+                pos: ccs.position,
+                mb: parseFloat(ccs.marginBottom) || 0};
+      }).filter(c => c.h > 0 && c.pos !== 'absolute' && c.pos !== 'fixed')
+        .sort((a, b) => a.top - b.top);
+      if (kids.length < 2) return;
+      // Does this card hold its content against its bottom edge at all? Only
+      // two shapes qualify, and a card must be one of them to be measured
+      // here: its tail is anchored to the content bottom (`tailPinned`), or
+      // it deals space out vertically (`distributes` below), which reserves
+      // room at the ends so nothing reaches the bottom by design.
+      //
+      // Everything else is a plain top-packed card whose content stops early
+      // -- CARD/TRAILING's territory, not this gate's. Excluding it is what
+      // makes the two gates partition the space instead of double-reporting,
+      // and it is what keeps an ordinary heading's 0.45em margin from being
+      // read as a "void". Note `tailPinned` establishes only that the last
+      // child REACHES the content bottom, never what put it there, so the
+      // warning reports that geometry rather than naming a mechanism.
+      //
+      // Compare MARGIN-box bottoms: `margin-top: auto` pushes the item's
+      // margin box against the container's content edge, so a tail carrying
+      // the templates' own `.section p { margin: 0 0 0.5em }` sits its
+      // BORDER box ~27px short of it and a border-box test misses the pin by
+      // a hair (measured: 27.0 vs a 26.9 tolerance on a 1347px card).
+      //
+      // `space-around` / `space-evenly` are exempt from the test: they
+      // deliberately reserve space at BOTH ends, so nothing is flush with the
+      // bottom and the pin check would reject them -- and CARD/TRAILING skips
+      // every `space-*` card, so requiring a pin here would leave them with no
+      // void check at all (the exact hole this gate was added to close). Their
+      // declared intent to distribute space IS the signal; the size of the
+      // resulting interior gap is what's in question.
+      //
+      // Only when it distributes on the VERTICAL axis, though. `justify-content`
+      // is inert on a block card and runs horizontally on a grid or a
+      // `flex-direction: row` card, yet computed style reports the declared
+      // value regardless -- so testing the string alone would waive the pin
+      // check for cards that distribute nothing downward, re-admitting the
+      // short-card heading false positive the pin check exists to stop.
+      const jc = cs.justifyContent || '';
+      const disp = cs.display || '';
+      const fdir = cs.flexDirection || '';
+      const distributes =
+        jc.indexOf('space-') !== -1
+        && (disp === 'flex' || disp === 'inline-flex')
+        && (fdir === 'column' || fdir === 'column-reverse');
+      const lastBottom = Math.max.apply(null, kids.map(k => k.bottom + k.mb));
+      const tailPinned =
+        (contentBottom - lastBottom) <= Math.max(2, 0.02 * cr.height);
+      if (!tailPinned && !distributes) return;
+      // Merge same-row children: walk in top order tracking the running MAX
+      // bottom seen so far, and count a gap only when a child STARTS below
+      // that max. A side-by-side row (figure beside text) is dominated by
+      // its tallest member, so a following block that clears the tall one is
+      // NOT a void -- this avoids measuring `next.top - shortSibling.bottom`
+      // across an already-filled row.
+      // NOTE: only DIRECT children are inspected; a void nested inside a
+      // single wrapper is not seen.
+      let rowMaxBottom = kids[0].bottom;
+      let rowMaxIdx = 0;
+      let maxGap = 0, pairBelow = -1, pairAbove = -1;
+      for (let i = 1; i < kids.length; i++) {
+        const g = kids[i].top - rowMaxBottom;
+        if (g > maxGap) { maxGap = g; pairBelow = i; pairAbove = rowMaxIdx; }
+        if (kids[i].bottom > rowMaxBottom) {
+          rowMaxBottom = kids[i].bottom;
+          rowMaxIdx = i;
+        }
+      }
+      const lab = k => k.tag + (k.cls ? '.' + k.cls : '');
+      innerVoids.push({
+        cls: (card.getAttribute('class') || ''),
+        section: card.getAttribute('data-section') || '',
+        card_h: cr.height,
+        stated_gap: gap,
+        excess: maxGap - gap,
+        above: pairAbove >= 0 ? lab(kids[pairAbove]) : '',
+        below: pairBelow > 0 ? lab(kids[pairBelow]) : '',
+        // Which shape this is, so the warning can describe the card it
+        // actually found instead of asserting a bottom-pinned tail that a
+        // space-around / space-evenly card does not have.
+        distributes: distributes ? jc : '',
+      });
+    });
+
   // ---- 5) <br> as a direct child of a flex container ----
   // A <br> that is an in-flow child of display:flex|inline-flex is
   // blockified into a flex ITEM and stops creating a line break -- so
@@ -340,7 +505,7 @@ _POLISH_JS = r"""
     });
   });
 
-  return {figures, orphans, cols, cards, flexbr, widows};
+  return {figures, orphans, cols, cards, innerVoids, flexbr, widows};
 }
 """
 
@@ -357,8 +522,8 @@ def collect_polish_data(page) -> dict:
     """
     injected = _render.inject_class_fallback_roles(page)
     if injected:
-        print("[polish] no data-measure-role found; "
-              "using class fallback (.poster/.col/.section)")
+        print("[polish] filled in missing data-measure-role attributes "
+              "from the class fallback (.poster/.col/.section)")
     data = page.evaluate(_POLISH_JS)
     # ---- Gate F: mid-wide structural integrity ----
     # The merged-middle layout requires Method as the only direct .section
@@ -420,6 +585,8 @@ def default_polish_args() -> argparse.Namespace:
         fig_min_ratio=DEFAULT_FIG_MIN_RATIO,
         max_space_between_fill=DEFAULT_MAX_SPACE_BETWEEN_FILL,
         max_card_trailing=DEFAULT_MAX_CARD_TRAILING,
+        max_card_inner_void=DEFAULT_MAX_CARD_INNER_VOID,
+        min_card_inner_void_px=DEFAULT_MIN_CARD_INNER_VOID_PX,
         max_widow_fraction=DEFAULT_MAX_WIDOW_FRACTION,
         strict=False,
     )
@@ -499,7 +666,32 @@ def cmd_polish(args: argparse.Namespace) -> int:
             return 1
 
         collected = collect_polish_data(page)
+        # The disk precheck above only reads the file text -- it cannot tell
+        # which class-matched element already carries a role, so a poster
+        # whose `.section`s all declare some other role reads as "has cards"
+        # on disk and yields zero cards here. Without this the gates would
+        # measure nothing, emit no warnings, and PASS: a silent green on a
+        # poster nobody checked. The browser is already open, so ask it.
+        live_roles = _render.count_roles(page)
         browser.close()
+
+    # Fail closed on any missing required role. Neither "nothing resolved"
+    # nor "the query failed" is a basis for passing, and they are not
+    # distinguishable here -- guarding this on `and live_roles` (to treat an
+    # empty map as merely unknown) let a poster whose elements carry EMPTY
+    # role attributes sail through with every gate array empty.
+    live_missing = [r for r in ("poster", "card", "column")
+                    if live_roles.get(r, 0) == 0]
+    if live_missing:
+        _eprint(
+            f"ERROR: the rendered poster resolves no {live_missing} "
+            f"element(s), so the polish gates have nothing to measure "
+            f"(the on-disk scan expected them -- an element matching a "
+            f"conventional class most likely declares a different "
+            f"data-measure-role). Fix the markup rather than trusting a "
+            f"PASS from this run."
+        )
+        return 2
 
     return report_polish(collected, args, html_path)
 
@@ -523,23 +715,24 @@ def report_polish(collected: dict, args: argparse.Namespace,
         nw = float(f["natural_w"])
         nh = float(f["natural_h"])
         role = f.get("role", "card")
-        src_l = str(f["src"]).lower()
-        # A vector image (SVG) can legitimately report zero natural size
-        # while rendering fine, so never flag it broken. Match the path
-        # extension (after stripping any ?query / #fragment) plus inline
-        # SVG data URIs. Imperfect: an SVG behind an extensionless URL
-        # still slips through; an `img.decode()`-based JS probe would be
-        # exact. Covers both card and hero <img> (see _POLISH_JS).
-        src_path = src_l.split("?", 1)[0].split("#", 1)[0]
-        is_svg = (
-            src_path.endswith((".svg", ".svgz"))
-            or src_l.startswith("data:image/svg")
-        )
-        if (nw <= 0 or nh <= 0) and not is_svg:
+        # Zero natural size means the image FAILED TO LOAD -- including for
+        # SVG. This used to carry an `is_svg` exemption (by src extension /
+        # data-URI prefix) on the theory that "a vector image can legitimately
+        # report zero natural size while rendering fine". That is not true in
+        # the only renderer these gates ever run in: Chromium resolves an
+        # <img>'d SVG with no width/height/viewBox to the CSS default replaced
+        # size, 300x150 -- it never reports 0. What DOES report 0 is a 404 or
+        # an unparseable file. So the exemption only ever fired on genuinely
+        # broken vector art, and silently white-printed it -- the blind spot
+        # the old comment half-admitted ("an SVG behind an extensionless URL
+        # still slips through"). Dropping the exemption closes it in both
+        # directions and removes the src-string guessing entirely.
+        if nw <= 0 or nh <= 0:
             warns.append(
                 f"FIG/BROKEN: '{ascii_safe(f['src'])}' has zero natural "
-                "size -- the image failed to load (missing file, 404, or "
-                "an unreachable remote URL); it will be blank in print."
+                "size -- the image failed to load (missing file, 404, an "
+                "unreachable remote URL, or an unparseable SVG); it will be "
+                "blank in print."
             )
             continue
         # Hero figures get the broken-image check above, but the AR sizing
@@ -583,8 +776,10 @@ def report_polish(collected: dict, args: argparse.Namespace,
                     f"figure cap rules in references/visual_polish.md)."
                 )
             continue
-        if cw <= 0 or rw <= 0 or nw <= 0 or nh <= 0:
+        if cw <= 0 or rw <= 0:
             continue
+        # nw / nh are guaranteed positive here: the FIG/BROKEN check above now
+        # catches every zero-natural image (SVG included) and `continue`s.
         ar = nw / nh
         ratio = rw / cw
         # Unified fill floor: every card figure should paint at 90-100% of its
@@ -698,6 +893,55 @@ def report_polish(collected: dict, args: argparse.Namespace,
                 f"See Gate C in SKILL.md."
             )
 
+    # ---- Gate C (one card): mid-card void between two stacked children ----
+    iv_ratio = getattr(args, "max_card_inner_void",
+                       DEFAULT_MAX_CARD_INNER_VOID)
+    iv_floor = getattr(args, "min_card_inner_void_px",
+                       DEFAULT_MIN_CARD_INNER_VOID_PX)
+    for c in data.get("innerVoids", []):
+        ch = float(c["card_h"])
+        excess = float(c["excess"])
+        if ch <= 0 or excess <= iv_floor:
+            continue
+        if excess / ch <= iv_ratio:
+            continue
+        between = ""
+        if c.get("above") and c.get("below"):
+            between = (f" between <{ascii_safe(c['above'])}> and "
+                       f"<{ascii_safe(c['below'])}>")
+        who = ascii_safe(str(c.get("section") or c.get("cls") or "?"))
+        jc = str(c.get("distributes") or "")
+        if jc:
+            cause = (
+                f"the card sets `justify-content: {ascii_safe(jc)}`, so the "
+                f"space left over after its content is dealt out BETWEEN the "
+                f"children as visible holes"
+            )
+        else:
+            # Say only what was measured. `tailPinned` proves the last child
+            # reaches the content bottom -- NOT that `margin-top: auto` put it
+            # there. Grid track stretch, a growable last child, or content that
+            # simply happens to fit all satisfy it, and naming a mechanism the
+            # card may not use sends the reader hunting for CSS that isn't
+            # there.
+            cause = (
+                "the card's last child reaches its content bottom while the "
+                "blocks above it stop early, so the leftover space opens in "
+                "between -- typically an equal-height row of cards with "
+                "unequal content, where the short one's tail is pushed down "
+                "by `margin-top: auto` or by a stretched track"
+            )
+        warns.append(
+            f"CARD/INNER-VOID: section '{who}' has a {excess:.0f} px gap "
+            f"({excess / ch * 100:.0f}% of card height, stated row-gap "
+            f"{c['stated_gap']:.0f} px){between} -- a void in the MIDDLE of "
+            f"the card: {cause}. CARD/TRAILING cannot see it (it skips "
+            f"space-distributing cards, and a pinned tail drives trailing to "
+            f"~0). Fill the card with real substance, or drop the "
+            f"bottom-pin / space-* distribution so it hugs its content. "
+            f"See Gate C in SKILL.md."
+        )
+
     # ---- Gate D: <br> inside a flex container ----
     # A <br> that is a direct child of a flex container is blockified into
     # a flex item and creates NO line break, so intended multi-line text
@@ -810,6 +1054,7 @@ def report_polish(collected: dict, args: argparse.Namespace,
     print(f"  stat-like elements  : {len(data.get('orphans', []))}")
     print(f"  space-between cols  : {len(data.get('cols', []))}")
     print(f"  cards checked       : {len(data.get('cards', []))}")
+    print(f"  inner-void cards    : {len(data.get('innerVoids', []))}")
     print(f"  flex/<br> parents   : {len(data.get('flexbr', []))}")
     print(f"  widow candidates    : {len(data.get('widows', []))}")
     print(f"  warnings            : {len(warns)}")

@@ -88,10 +88,12 @@ Output JSON shape (back-compat fields preserved for old consumers):
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import json
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -542,6 +544,95 @@ def _section_source_blocks(
     return out
 
 
+#: A ``.fill_budget.json`` untouched for this long describes a PREVIOUS
+#: working session, not the current loop, so its count is dropped. The
+#: batch pipeline renders a poster in one sitting; a human re-opening the
+#: same run_dir the next day should not inherit yesterday's debt.
+BUDGET_STALE_AFTER_HOURS = 12.0
+
+
+def _load_budget(path: Path) -> int:
+    """Consecutive non-converged measurements recorded for this poster.
+
+    Any unreadable / implausible / stale state degrades to ``0`` -- the
+    breaker must never invent a count that stops a legitimate loop, and
+    budget I/O must never raise into the fill gate.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        count = int(data["count"])
+    except (OSError, ValueError, TypeError, KeyError):
+        return 0
+    if count < 0:
+        return 0
+    updated = data.get("updated")
+    if updated is None:
+        # State written before this field existed. Fall back to the file's
+        # mtime rather than honouring the count forever: the pre-upgrade
+        # format is exactly where a large stale count is most likely to be
+        # sitting (the old counter never reset), and a months-old 80 would
+        # otherwise trip the breaker on the very first measurement after the
+        # upgrade. An in-flight legacy loop still keeps its count -- its file
+        # was touched minutes ago.
+        try:
+            ts = _dt.datetime.fromtimestamp(path.stat().st_mtime,
+                                            _dt.timezone.utc)
+        except OSError:
+            return 0
+    else:
+        try:
+            ts = _dt.datetime.fromisoformat(str(updated))
+        except (ValueError, TypeError):
+            return 0
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=_dt.timezone.utc)
+    now = _dt.datetime.now(_dt.timezone.utc)
+    if ts > now + _dt.timedelta(minutes=5):
+        return 0        # clock skew, or a run_dir copied from another host
+    if (now - ts) > _dt.timedelta(hours=BUDGET_STALE_AFTER_HOURS):
+        return 0        # previous session
+    return count
+
+
+def _write_budget(path: Path, count: int) -> None:
+    """Atomically persist ``count``. Never raises: a poster on a
+    read-only mount loses the breaker, not the gate verdict."""
+    payload = json.dumps({
+        "count": count,
+        "updated": _dt.datetime.now(_dt.timezone.utc)
+                      .replace(microsecond=0).isoformat(),
+    })
+    try:
+        fd, tmp = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    except OSError:
+        pass
+
+
+def _clear_budget(path: Path) -> None:
+    """Drop the state on a converged measurement or ``--reset-budget``.
+
+    A count that survived a PASS would break the CONSECUTIVE-failure
+    contract on the next run, so fall back to zeroing the file in place
+    when it cannot be removed.
+    """
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        _write_budget(path, 0)
+
+
 def cmd_slack(args: argparse.Namespace) -> int:
     pw = import_playwright()
     if pw is None:
@@ -560,27 +651,28 @@ def cmd_slack(args: argparse.Namespace) -> int:
     # instruction) while keeping the deliverable top level clean. A fresh
     # run_dir starts at 0 automatically; --reset-budget resets it for a genuine
     # re-render. max-iterations <= 0 disables the breaker entirely.
+    #
+    # What is counted: CONSECUTIVE NON-CONVERGED measurements. The count is
+    # read here but only written once the outcome is known (see the
+    # "Circuit-breaker accounting" block after the verdict is computed), which
+    # gives three properties a straight "+1 per invocation at the top" lacked:
+    #   - a converged measurement CLEARS the count, so the touch-up round after
+    #     a poster already reached FULL cannot trip a breaker inherited from
+    #     the rounds it took to get there;
+    #   - a run that never produced geometry (nav timeout, MathJax settle
+    #     failure, no columns found) is an environment problem and burns no
+    #     budget -- it used to, because the increment landed before the page
+    #     was even opened;
+    #   - a state file older than BUDGET_STALE_AFTER_HOURS is a previous
+    #     session and is dropped.
     _budget_meta = html_path.parent / "assets" / "meta"
     _budget_meta.mkdir(parents=True, exist_ok=True)
     _budget_path = _budget_meta / ".fill_budget.json"
     _max_iter = int(getattr(args, "max_iterations", 0) or 0)
     if getattr(args, "reset_budget", False):
-        try:
-            _budget_path.write_text(json.dumps({"count": 0}))
-        except Exception:
-            pass
-    _iter_count = 0
-    if _max_iter > 0:
-        try:
-            _iter_count = int(json.loads(_budget_path.read_text()).get("count", 0))
-        except Exception:
-            _iter_count = 0
-        _iter_count += 1
-        try:
-            _budget_path.write_text(json.dumps({"count": _iter_count}))
-        except Exception:
-            pass
-    _breaker_hit = bool(_max_iter > 0 and _iter_count > _max_iter)
+        _clear_budget(_budget_path)
+    _iter_count = _load_budget(_budget_path) if _max_iter > 0 else 0
+    _breaker_hit = False
 
     resolved = _canvas.resolve_canvas(
         html_path, args.canvas, label="[slack]"
@@ -633,20 +725,34 @@ def cmd_slack(args: argparse.Namespace) -> int:
         # poster lacks polish's required measure-role markup, skip (don't fail
         # the slack run — --with-polish is an opt-in convenience).
         polish_collected = None
+        polish_skipped: str | None = None
         if getattr(args, "with_polish", False):
+            # Ask the LIVE page which roles resolved, not the static regex
+            # estimate: that estimate only reads the file text, so a poster
+            # whose `.section`s all carry some other role reads as "has
+            # cards" on disk and yields zero cards in the browser. polish
+            # would then measure nothing, emit no warnings, and PASS -- a
+            # silent green on an unmeasured poster (invisible in --json,
+            # which drops the "cards checked: 0" line). An empty result
+            # means nothing resolved OR the query failed; both fail closed.
+            _roles = _render.count_roles(page)
             _missing_roles = [
-                r for r in ("poster", "card", "column")
-                if _preflight.has_required_roles_in_html(html_path).get(r, 0) == 0
+                r for r in ("poster", "card", "column") if _roles.get(r, 0) == 0
             ]
             if _missing_roles:
+                polish_skipped = (
+                    f"poster resolves no {'/'.join(_missing_roles)} element(s) "
+                    "at render time"
+                )
                 _eprint(
-                    "[slack] --with-polish: skipping polish pass, poster is "
-                    f"missing measure-role markup {_missing_roles}"
+                    "[slack] --with-polish: skipping polish pass, "
+                    f"{polish_skipped}"
                 )
             else:
                 try:
                     polish_collected = _polish.collect_polish_data(page)
                 except Exception as _pe:  # never let polish break the fill gate
+                    polish_skipped = f"polish measurement failed ({_pe})"
                     _eprint(
                         f"[slack] --with-polish: polish measurement failed, "
                         f"skipped ({_pe})"
@@ -693,8 +799,9 @@ def cmd_slack(args: argparse.Namespace) -> int:
         of the figure to its containing section's card, and a verdict:
         ``OK`` (fills >=90% on at least one axis), ``NARROW`` (below
         the floor on both axes), ``OVERFLOW`` (>100% on either axis),
-        or ``BROKEN`` (image failed to load -- zero natural size and
-        not an SVG). The denominator is the section card -- the same
+        or ``BROKEN`` (image failed to load -- zero natural size, which
+        in Chromium means a 404 / unparseable file, SVG or
+        raster). The denominator is the section card -- the same
         box used for the slack ``fullRatio`` -- so a figure reading
         100% width here visibly fills its card edge-to-edge.
         """
@@ -704,12 +811,6 @@ def cmd_slack(args: argparse.Namespace) -> int:
         rh = float(fig.get("rendered_h") or 0)
         nw = float(fig.get("natural_w") or 0)
         nh = float(fig.get("natural_h") or 0)
-        src_l = str(fig.get("src", "")).lower()
-        src_path = src_l.split("?", 1)[0].split("#", 1)[0]
-        is_svg = (
-            src_path.endswith((".svg", ".svgz"))
-            or src_l.startswith("data:image/svg")
-        )
         out: dict[str, Any] = {
             "src":        fig.get("src", ""),
             "rendered_w": round(rw, 1),
@@ -717,7 +818,14 @@ def cmd_slack(args: argparse.Namespace) -> int:
             "natural_w":  nw,
             "natural_h":  nh,
         }
-        if (nw <= 0 or nh <= 0) and not is_svg:
+        # Zero natural size == failed to load, SVG included: Chromium (the only
+        # renderer this measures in) resolves a viewBox-less <img>'d SVG to the
+        # 300x150 CSS default replaced size and never reports 0. The old
+        # `is_svg` src-extension exemption therefore only ever spared genuinely
+        # broken vector art. Kept in step with polish.py Gate A by hand -- if
+        # one gate exempts and the other doesn't, they disagree about the same
+        # figure.
+        if nw <= 0 or nh <= 0:
             out["verdict"] = "BROKEN"
             out["w_ratio"] = 0.0
             out["h_ratio"] = 0.0
@@ -986,6 +1094,80 @@ def cmd_slack(args: argparse.Namespace) -> int:
         and (not_full or bad_figs or suppress_secs)
     )
 
+    # Run the merged polish gates NOW, buffering their output, so their
+    # verdict can join the convergence decision below. They are printed later
+    # by `_finish_ok` at the position they have always occupied (after the
+    # slack report), or dropped in --json mode; buffering keeps the ordering
+    # while letting the breaker see the whole picture. Without this the
+    # accounting would run on slack's verdict alone, and a poster that is FULL
+    # everywhere but keeps failing a polish gate would clear its budget every
+    # round -- the loop `--with-polish --strict` is supposed to bound would
+    # never trip the breaker at all.
+    _strict = bool(getattr(args, "strict", False))
+    _polish_rc = 0
+    _polish_out = ""
+    _polish_err = ""
+    _polish_emitted = False
+    if polish_collected is not None:
+        import contextlib
+        import io
+        _pargs = _polish.default_polish_args()
+        _pargs.strict = _strict
+        # Buffer stderr as well as stdout -- under --strict report_polish
+        # writes its FAIL line to stderr, which would otherwise escape and
+        # land ahead of the slack report it is supposed to follow -- but keep
+        # the two SEPARATE so each is replayed on its original stream. Merging
+        # them would quietly move `[polish] FAIL` onto stdout and break anyone
+        # who greps stderr for it.
+        _obuf, _ebuf = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(_obuf), contextlib.redirect_stderr(_ebuf):
+            _polish_rc = _polish.report_polish(polish_collected, _pargs,
+                                               html_path)
+        _polish_out, _polish_err = _obuf.getvalue(), _ebuf.getvalue()
+    elif getattr(args, "with_polish", False) and _strict:
+        # --with-polish --strict asked for the polish gates to bind. They did
+        # not run, so there is no evidence they would pass: failing here is the
+        # only answer that keeps `--strict` meaning "verified". Advisory mode
+        # (no --strict) still degrades to a warning, as before.
+        _polish_rc = 1
+        _polish_out = (
+            "=== POLISH: NOT RUN ===\n"
+            f"  {polish_skipped or 'polish pass unavailable'}.\n"
+            "  --strict requires the polish gates to actually run, so this "
+            "counts as a FAILURE\n"
+            "  rather than a silent pass. Add the measure-role markup (or the "
+            "conventional\n"
+            "  .poster/.col/.section classes), or drop --with-polish to gate "
+            "on fill alone.\n"
+        )
+        _polish_err = (
+            "[polish] FAIL -- --strict and the polish gates could not run\n"
+        )
+
+    # Circuit-breaker accounting (see the budget block at the top of this
+    # function). Convergence is judged on the MEASUREMENT, not on
+    # ``strict_fail`` -- the staged-fill loop is free to run without
+    # ``--strict``, and a breaker that only counted under ``--strict`` would
+    # never fire for it. This is the same condition ``--strict`` gates on:
+    # every section FULL and every figure OK, plus (when merged in) the
+    # polish gates, whose failures are equally something the loop must edit
+    # its way out of.
+    _converged = not (not_full or bad_figs or suppress_secs)
+    if _polish_rc != 0:
+        _converged = False
+    if _converged:
+        # Clear even when the breaker is disabled (`--max-iterations 0`).
+        # "Converged clears the count" is the documented contract, and a
+        # disabled run that left a stale 7 on disk would hand it straight back
+        # to the next enabled run inside the staleness window.
+        _clear_budget(_budget_path)
+        _iter_count = 0
+    elif _max_iter > 0:
+        _iter_count += 1
+        _write_budget(_budget_path, _iter_count)
+    if _max_iter > 0:
+        _breaker_hit = _iter_count > _max_iter
+
     # Structured EDIT TARGETS -- verbatim source of each off-band section, so the
     # staged-fill loop can edit straight from this report and never re-Read the
     # whole poster.html (the input-context blowup that compacts + thrashes small
@@ -1007,12 +1189,26 @@ def cmd_slack(args: argparse.Namespace) -> int:
         "max": _max_iter,
         "breaker": _breaker_hit,
     }
+    if getattr(args, "with_polish", False):
+        # Structured, so a --json consumer (which never sees the human polish
+        # text) can tell "polish passed" from "polish never ran" instead of
+        # inferring it from a bare exit code.
+        report["polish"] = {
+            "ran": polish_collected is not None,
+            "failed": _polish_rc != 0,
+            "skippedReason": polish_skipped,
+        }
 
     def _emit_breaker() -> None:
+        # Show WHY first. The breaker exists to survive context compaction, so
+        # this round is very likely the first one a fresh context ever sees --
+        # returning the banner without the polish warnings that caused it would
+        # hand that context a clean-looking slack verdict and no evidence.
+        _emit_polish()
         _eprint("")
         _eprint(
-            f"  CIRCUIT BREAKER -- {_iter_count}/{_max_iter} fill measurements "
-            "on this poster."
+            f"  CIRCUIT BREAKER -- {_iter_count}/{_max_iter} consecutive "
+            "non-converged fill measurements on this poster."
         )
         _eprint(
             "  STOP iterating. Accept the current best state: render "
@@ -1028,31 +1224,49 @@ def cmd_slack(args: argparse.Namespace) -> int:
         _eprint(
             "  compaction -- you cannot reset it by forgetting. Exit code is 3."
         )
+        _eprint(
+            "  It clears itself on the first converged measurement, after "
+            f"{BUDGET_STALE_AFTER_HOURS:.0f}h idle,"
+        )
+        _eprint(
+            "  or via --reset-budget -- which is for a deliberate re-render, "
+            "NOT for"
+        )
+        _eprint("  grinding the same edits past the cap.")
+
+    def _emit_polish() -> None:
+        """Replay the buffered polish output at the position it has always
+        occupied: after the slack report, each stream on its own. In --json
+        mode stdout stays pure JSON for the downstream pipe, so both are
+        dropped and only `report["polish"]` + the exit code carry the verdict.
+        Idempotent -- several exit paths call it, only the first does work."""
+        nonlocal _polish_emitted
+        if _polish_emitted or not (_polish_out or _polish_err):
+            return
+        _polish_emitted = True
+        if getattr(args, "json", False):
+            return
+        print()
+        print("=== POLISH (same render pass -- --with-polish) ===")
+        sys.stdout.write(_polish_out)
+        # Flush before touching stderr so the two land in this order under a
+        # shell `>log 2>&1`, where they share one file description.
+        sys.stdout.flush()
+        if _polish_err:
+            sys.stderr.write(_polish_err)
+            sys.stderr.flush()
 
     def _finish_ok() -> int:
-        """Non-breaker success exit. In ``--with-polish`` mode, also emit the
-        polish gates on the SHARED render and fold their result: the merged
-        command exits non-zero if EITHER the fill gate (slack ``--strict``) or
-        a polish gate (under the same ``--strict``) fails -- matching the
-        staged-fill exit condition 'every section FULL and zero FIG/NARROW'.
-        Without ``--strict`` polish is advisory (prints warnings, exit stays
-        0), exactly as a standalone ``polish`` run."""
-        if polish_collected is None:
-            return 0
-        _pargs = _polish.default_polish_args()
-        _pargs.strict = bool(getattr(args, "strict", False))
-        if getattr(args, "json", False):
-            # Keep stdout pure JSON (this branch pipes to another tool): run
-            # the gates for the exit code only, swallowing their human output.
-            import contextlib
-            import io
-            with contextlib.redirect_stdout(io.StringIO()):
-                _prc = _polish.report_polish(polish_collected, _pargs, html_path)
-        else:
-            print()
-            print("=== POLISH (same render pass -- --with-polish) ===")
-            _prc = _polish.report_polish(polish_collected, _pargs, html_path)
-        return 1 if _prc != 0 else 0
+        """Non-breaker success exit. Emits the polish gates that already ran on
+        the SHARED render (buffered above so the breaker could see their
+        verdict first) and folds their result: the merged command exits
+        non-zero if EITHER the fill gate (slack ``--strict``) or a polish gate
+        (under the same ``--strict``) fails -- matching the staged-fill exit
+        condition 'every section FULL and zero FIG/NARROW'. Without
+        ``--strict`` polish is advisory (prints warnings, exit stays 0),
+        exactly as a standalone ``polish`` run."""
+        _emit_polish()
+        return 1 if _polish_rc != 0 else 0
 
     if args.json_out:
         Path(args.json_out).write_text(
@@ -1062,6 +1276,7 @@ def cmd_slack(args: argparse.Namespace) -> int:
 
     if args.json:
         sys.stdout.write(json.dumps({**report, "editTargets": edit_targets}, indent=2) + "\n")
+        _emit_polish()
         if _breaker_hit:
             _emit_breaker()
             return 3
@@ -1205,6 +1420,10 @@ def cmd_slack(args: argparse.Namespace) -> int:
     print()
     print("--- JSON ---")
     print(json.dumps(report))
+    # Emit the polish result on EVERY exit path, not just the success one:
+    # when slack strict-fails too, its warnings are still the other half of
+    # what the round has to fix.
+    _emit_polish()
     if _breaker_hit:
         _emit_breaker()
         return 3
