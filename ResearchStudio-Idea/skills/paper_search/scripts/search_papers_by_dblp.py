@@ -79,6 +79,8 @@ def search_papers_by_dblp(
                 "citation_count": 0,
                 "publication_date": f"{year}-01-01",
                 "source": "dblp",
+                "doi": info.get("doi"),
+                "arxiv_id": None,
             })
 
         offset += limit

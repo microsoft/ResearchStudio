@@ -68,6 +68,28 @@ python "$SEARCH" \
     --sources arxiv semantic_scholar openreview
 ```
 
+Multi-query union (each query hits every source; results are unioned, deduped,
+and ranked against the combined term set):
+
+```bash
+python "$SEARCH" \
+    --queries "diffusion watermarking|latent-space watermark|generative model IP protection" \
+    --start-year 2024 --end-year 2026
+```
+
+Opt-in noise filter (drops papers with relevance score below N; the CLI always
+prints exactly how many were dropped — omit for full recall):
+
+```bash
+python "$SEARCH" --query "<QUERY>" --start-year 2024 --end-year 2026 --min-score 2
+```
+
+Legacy per-source view (no dedup, no ranking — raw connector output):
+
+```bash
+python "$SEARCH" --query "<QUERY>" --start-year 2024 --end-year 2026 --raw
+```
+
 To disable parallel execution (rarely needed):
 
 ```bash
@@ -109,7 +131,9 @@ structured dict rather than CLI text output). This is rarely necessary — see
       "venue": str,
       "citation_count": int,
       "publication_date": str,
-      "source": str
+      "source": str,
+      "doi": str | None,
+      "arxiv_id": str | None
     }, ...
   ],
   "semantic_scholar": [...],
@@ -117,13 +141,22 @@ structured dict rather than CLI text output). This is rarely necessary — see
 }
 ```
 
-The CLI prints results grouped by source with paper count summaries.
+CLI output (default): a single **deduped, relevance-ranked** list. Cross-source
+duplicates are merged into one record (matched by DOI, then arXiv id, then
+normalized title) that keeps the highest-signal source's fields, the max
+citation count, and a `Sources:` provenance line; every paper carries a
+lexical relevance score against the query; survey/review-titled papers are
+tagged `[survey]` and sunk to the bottom (never dropped). Nothing is filtered
+unless `--min-score` is passed, and then the drop count is printed. A
+per-source hit-count line plus "N cross-source duplicate records merged"
+precedes the list. `--raw` restores the legacy grouped-by-source printout.
 
 ## Output to the user
 
-After running, display every paper from every source, in this order:
+After running, display every unique paper in the CLI's ranked order (it is
+already deduped and sorted by relevance), then the Model Knowledge section,
+then a summary. With `--raw`, fall back to per-source groups in this order:
 Semantic Scholar, OpenAlex, arXiv, OpenReview, Crossref, DBLP, Model Knowledge.
-Then provide a summary.
 
 Why full recall matters: users invoking this skill are doing literature reviews,
 related-work surveys, or prior-art checks. The value comes from seeing the
@@ -132,21 +165,23 @@ duplicated research effort. Summaries are meant to *augment* the full tables,
 not replace them, so don't collapse results into a digest "to save space."
 The user can skim; they can't un-skip a paper they never saw.
 
-### Step 1: Display ALL results from every source
+### Step 1: Display ALL results
 
-For **each source**, display every paper in a **markdown table** with title, date, venue, and citation count.
-
-Format each source as a table grouped under a source heading, e.g.:
+Default (unified ranked view): display every unique paper in ONE markdown
+table, preserving the CLI's rank order. Prefix `[survey]` in the Title cell
+where tagged. Reproduce the CLI's per-source hit counts + merged-duplicates
+line above the table, and the drop count line when `--min-score` was used.
 
 ```
-### arXiv (N papers)
+per-source hits: semantic_scholar=10, open_alex=10, arxiv=10 … · 22 unique (8 duplicates merged)
 
-| #   | Title       | Date    | Venue   | Citations |
-|-----|-------------|---------|---------|-----------|
-| [1](paper url) | Title here | 2024-03 | NeurIPS | 42 |
-| [2](paper url) | Title here | 2023-11 | ICLR    | 10 |
+| #   | Title       | Date    | Venue   | Citations | Score | Sources |
+|-----|-------------|---------|---------|-----------|-------|---------|
+| [1](paper url) | Title here | 2024-03 | NeurIPS | 42 | 5 | SS, arXiv |
+| [2](paper url) | [survey] Title here | 2023-11 | ICLR | 10 | 4 | OpenAlex |
 ```
 
+With `--raw`: one table per source under a source heading (legacy format).
 If a source returned 0 results, note it explicitly
 (e.g. "### OpenReview (0 papers) — No matches found in this window").
 
@@ -165,7 +200,8 @@ following sections, in this exact order:
 3. **Key themes**: 3–6 main research themes / clusters across all results,
    each with a one-line description and 2–3 representative paper numbers.
 4. **Keywords frequency**: A table of the most frequent technical terms /
-   concepts extracted from titles and abstracts, with counts. Format:
+   concepts extracted from titles (abstracts are in the JSON schema but not
+   printed by the CLI), with counts. Format:
    `| Keyword | Count |`. Include the top 5.
 5. **Most cited by accepted paper**: Top 5 most-cited accepted papers across all sources,
    ranked by citation count, as a table: `| Rank | Title | Year | Citations |`.

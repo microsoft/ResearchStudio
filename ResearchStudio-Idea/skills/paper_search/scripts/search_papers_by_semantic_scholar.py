@@ -27,7 +27,7 @@ def search_papers_by_semantic_scholar(
     """
     API_KEY = os.environ.get("SEMANTICSCHOLAR_API_KEY", "")
     url = "https://api.semanticscholar.org/graph/v1/paper/search"
-    fields = "title,authors,year,abstract,citationCount,url,venue,publicationDate"
+    fields = "title,authors,year,abstract,citationCount,url,venue,publicationDate,externalIds"
 
     papers: list[dict] = []
     offset = 0
@@ -72,6 +72,8 @@ def search_papers_by_semantic_scholar(
                 "citation_count": item.get("citationCount", 0),
                 "publication_date": item.get("publicationDate", ""),
                 "source": "semantic_scholar",
+                "doi": (item.get("externalIds") or {}).get("DOI"),
+                "arxiv_id": (item.get("externalIds") or {}).get("ArXiv"),
             })
 
         offset += limit

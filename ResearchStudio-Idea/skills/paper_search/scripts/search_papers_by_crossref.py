@@ -84,6 +84,8 @@ def search_papers_by_crossref(
                 "citation_count": item.get("is-referenced-by-count", 0),
                 "publication_date": publication_date,
                 "source": "crossref",
+                "doi": item.get("DOI"),
+                "arxiv_id": None,
             })
 
         offset += limit

@@ -13,6 +13,7 @@ Search order (first match wins):
 from __future__ import annotations
 import os
 from pathlib import Path
+from typing import Optional
 
 _loaded = False
 
@@ -30,7 +31,7 @@ def _apply(env_path: Path) -> None:
             os.environ.setdefault(key, val)
 
 
-def load_env_once() -> Path | None:
+def load_env_once() -> Optional[Path]:
     """Load the first .env found (see module docstring). Idempotent. Returns the path used."""
     global _loaded
     if _loaded:
@@ -39,7 +40,7 @@ def load_env_once() -> Path | None:
 
     here = Path(__file__).resolve()
     candidates: list[Path] = []
-    repo_root: Path | None = None
+    repo_root: Optional[Path] = None
     for parent in here.parents:
         candidates.append(parent / ".env")
         if (parent / ".git").exists():

@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 """Unified interface to search for academic papers across multiple sources.
 
-Supported sources: arXiv, DBLP, Google Scholar, OpenAlex, OpenReview,
-Semantic Scholar, Crossref.
+Supported sources: arXiv, DBLP, OpenAlex, OpenReview, Semantic Scholar,
+Crossref. (Google Scholar exists as an optional connector but is disabled by
+default — it needs `scholarly`; see _SOURCE_MODULE.)
+
+Post-processing (default ON, see postprocess.py): cross-source dedup with a
+`found_in` provenance column, lexical relevance ranking against the query,
+survey tagging (sunk, never dropped), and an opt-in --min-score filter that
+prints exactly what it dropped. --raw restores the legacy per-source view.
 """
 
 import argparse
 import concurrent.futures
 import importlib
+import sys
 from datetime import date, datetime
 from typing import Optional
 
@@ -119,6 +126,11 @@ def search_papers(
     invalid = set(sources) - set(ALL_SOURCES)
     if invalid:
         raise ValueError(f"Unknown sources: {invalid}. Valid: {ALL_SOURCES}")
+    # Multi-query union: `query` may be a list (or a single string). Each query
+    # runs against every source; per-source results are unioned in query order.
+    queries = [q for q in (query if isinstance(query, (list, tuple)) else [query]) if q]
+    if not queries:
+        raise ValueError("query must be a non-empty string or list of strings")
 
     start_d = _parse_date(start_date, "start_date")
     end_d = _parse_date(end_date, "end_date")
@@ -132,21 +144,26 @@ def search_papers(
             func = _load_source_func(source)
         except Exception as e:
             # Missing optional dependency for this source — skip it, keep the others working.
-            print(f"[{source}] unavailable (import failed: {e}); skipping this source.")
+            print(f"[{source}] unavailable (import failed: {e}); skipping this source.", file=sys.stderr)
             return source, []
-        try:
-            papers = func(query, start_year, end_year, max_results)
-        except Exception as e:
-            print(f"[{source}] Error: {e}")
-            papers = []
+        papers: list[dict] = []
+        for q in queries:
+            try:
+                papers.extend(func(q, start_year, end_year, max_results))
+            except Exception as e:
+                print(f"[{source}] Error on query {q!r}: {e}", file=sys.stderr)
         return source, papers
 
     if parallel:
+        gathered: dict[str, list[dict]] = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(sources)) as executor:
             futures = {executor.submit(_search, s): s for s in sources}
             for future in concurrent.futures.as_completed(futures):
                 source, papers = future.result()
-                results[source] = papers
+                gathered[source] = papers
+        # Re-key in the REQUESTED order: as_completed yields in finish order,
+        # which made both the dict and the CLI printout nondeterministic.
+        results = {s: gathered.get(s, []) for s in sources}
     else:
         for source in sources:
             _, papers = _search(source)
@@ -162,7 +179,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Search papers across multiple academic sources",
     )
-    parser.add_argument("--query", required=True, help="Search query")
+    parser.add_argument("--query", default=None, help="Search query")
+    parser.add_argument(
+        "--queries", default=None,
+        help="Pipe-separated multi-query union (e.g. 'a|b|c'); alternative to --query",
+    )
     parser.add_argument("--start-year", type=int, required=True, help="Start year")
     parser.add_argument("--end-year", type=int, required=True, help="End year")
     parser.add_argument(
@@ -186,10 +207,23 @@ if __name__ == "__main__":
         "--end-date", default=None,
         help="Optional YYYY-MM-DD inclusive upper bound; applied as a post-filter",
     )
+    parser.add_argument(
+        "--raw", action="store_true",
+        help="Legacy per-source view: no dedup, no ranking (full raw output)",
+    )
+    parser.add_argument(
+        "--min-score", type=int, default=None,
+        help="OPT-IN noise filter: drop papers with relevance score below N "
+             "(the number dropped is always printed; default: keep everything)",
+    )
     args = parser.parse_args()
+    if not args.query and not args.queries:
+        parser.error("one of --query / --queries is required")
+    query_list = ([q.strip() for q in args.queries.split("|") if q.strip()]
+                  if args.queries else [args.query])
 
     results = search_papers(
-        query=args.query,
+        query=query_list,
         start_year=args.start_year,
         end_year=args.end_year,
         max_results=args.max_papers,
@@ -199,20 +233,44 @@ if __name__ == "__main__":
         end_date=args.end_date,
     )
 
-    total = 0
-    for source, papers in results.items():
-        print(f"\n{'='*60}")
-        print(f"  {source}: {len(papers)} papers found")
+    if args.raw:
+        total = 0
+        for source, papers in results.items():
+            print(f"\n{'='*60}")
+            print(f"  {source}: {len(papers)} papers found")
+            print(f"{'='*60}")
+            for i, p in enumerate(papers, 1):
+                print(f"  [{i}] {p['title']}")
+                print(f"      Authors: {', '.join(p['authors'][:3])}{'...' if len(p['authors']) > 3 else ''}")
+                print(f"      Year: {p['year']}  Citations: {p['citation_count']}  Venue: {p['venue']}")
+                print(f"      URL: {p['url']}")
+                print()
+            total += len(papers)
+        print(f"\nTotal: {total} papers from {len(results)} sources.")
+    else:
+        from postprocess import dedup, rank
+        per_source = {s_: len(ps) for s_, ps in results.items()}
+        merged = dedup(results)
+        ranked, n_dropped = rank(merged, query_list, min_score=args.min_score)
+        n_dup = sum(per_source.values()) - len(merged)
+        print(f"\nper-source hits: " + ", ".join(f"{k}={v}" for k, v in per_source.items()))
+        print(f"unique papers: {len(merged)} ({n_dup} cross-source duplicate records merged)")
+        if n_dropped:
+            print(f"DROPPED {n_dropped} paper(s) below --min-score {args.min_score} "
+                  f"(opt-in filter; omit --min-score for full recall)")
         print(f"{'='*60}")
-        for i, p in enumerate(papers, 1):
-            print(f"  [{i}] {p['title']}")
+        for i, p in enumerate(ranked, 1):
+            tag = " [survey]" if p.get("is_survey") else ""
+            srcs = ",".join(p.get("found_in") or [])
+            ids = " ".join(x for x in (f"doi:{p['doi']}" if p.get("doi") else "",
+                                       f"arXiv:{p['arxiv_id']}" if p.get("arxiv_id") else "") if x)
+            print(f"  [{i}] (score {p.get('relevance_score', 0)}){tag} {p['title']}")
             print(f"      Authors: {', '.join(p['authors'][:3])}{'...' if len(p['authors']) > 3 else ''}")
             print(f"      Year: {p['year']}  Citations: {p['citation_count']}  Venue: {p['venue']}")
+            print(f"      Sources: {srcs}" + (f"  {ids}" if ids else ""))
             print(f"      URL: {p['url']}")
             print()
-        total += len(papers)
-
-    print(f"\nTotal: {total} papers from {len(results)} sources.")
+        print(f"Total: {len(ranked)} unique papers (ranked; surveys sunk to the bottom).")
 
 # Example usage:
 # python search_papers.py --query "data efficacy for LM training" --start-year 2024 --end-year 2026 --max-papers 20

@@ -4,6 +4,7 @@
 import argparse
 import os
 import tempfile
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -125,6 +126,13 @@ def search_papers_by_arxiv(
             if a.find("atom:name", ATOM_NS) is not None
         ]
 
+        # Stable ids for cross-source dedup: arXiv id parsed from the atom id URL
+        # (strip the version suffix), DOI from the arxiv namespace when authors set it.
+        m = re.search(r"arxiv\.org/abs/([^\s]+?)(v\d+)?$", paper_url)
+        arxiv_id = m.group(1) if m else None
+        doi_node = entry.find("{http://arxiv.org/schemas/atom}doi")
+        doi = (doi_node.text or "").strip() if doi_node is not None else None
+
         papers.append({
             "title": title,
             "authors": authors,
@@ -135,6 +143,8 @@ def search_papers_by_arxiv(
             "citation_count": 0,
             "publication_date": pub.strftime("%Y-%m-%d"),
             "source": "arxiv",
+            "doi": doi,
+            "arxiv_id": arxiv_id,
         })
 
     return papers

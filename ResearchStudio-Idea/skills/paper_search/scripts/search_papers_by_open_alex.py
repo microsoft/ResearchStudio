@@ -70,7 +70,9 @@ def search_papers_by_open_alex(
                 "venue": (work.get("primary_location", {}).get("source") or {}).get("display_name", ""),
                 "citation_count": work.get("cited_by_count", 0),
                 "publication_date": work.get("publication_date", ""),
-                "source": "openalex",
+                "source": "open_alex",
+                "doi": (work.get("doi") or "").replace("https://doi.org/", "") or None,
+                "arxiv_id": None,
             })
 
         page += 1
@@ -84,7 +86,7 @@ def search_papers_by_open_alex(
     return papers[:max_results]
 
 
-def _reconstruct_abstract(inverted_index: dict | None) -> str:
+def _reconstruct_abstract(inverted_index) -> str:  # dict | None (3.9-safe: no runtime union)
     """Reconstruct abstract text from OpenAlex inverted index format."""
     if not inverted_index:
         return ""

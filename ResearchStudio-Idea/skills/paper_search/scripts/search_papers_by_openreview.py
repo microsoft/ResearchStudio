@@ -85,6 +85,8 @@ def _or_note_to_paper(note, venue: str) -> Optional[dict]:
         "citation_count": 0,
         "publication_date": pub.strftime("%Y-%m-%d"),
         "source": "openreview",
+        "doi": None,
+        "arxiv_id": None,
     }
 
 
