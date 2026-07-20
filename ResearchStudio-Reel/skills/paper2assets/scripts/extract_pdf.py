@@ -21,6 +21,7 @@ Captions are the cheapest, most reliable signal of what a figure actually shows,
 we extract them alongside the images and let the model match figures to captions.
 """
 import argparse, json, re, subprocess, sys
+from urllib.parse import urlparse
 from pathlib import Path
 
 # Make `utils` importable when this file is run directly (mirrors the pattern in
@@ -806,7 +807,9 @@ def parse_metadata(text: str) -> dict:
                 continue
             if "arxiv.org" in url:
                 continue
-            if "github.io" in url or is_project_line or re.search(r"\.(io|dev|page)/", url):
+            parsed_host = urlparse(url).hostname or ""
+            is_github_io = parsed_host == "github.io" or parsed_host.endswith(".github.io")
+            if is_github_io or is_project_line or re.search(r"\.(io|dev|page)/", url):
                 candidates.append(url)
     if candidates:
         metadata["project_url"] = candidates[0]
