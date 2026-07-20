@@ -807,3 +807,95 @@ html[data-theme="dark"] .cover-card--reel .cover-card__cta { color: var(--brand-
   .mode-control summary,
   .language-control summary { font-size: 12px; }
 }
+
+
+/* Shared Demo entry for ResearchStudio-Idea and ResearchStudio-Reel */
+.demo-entry {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--brand-2) 9%, var(--bg-elev)),
+      color-mix(in srgb, var(--brand-3) 7%, var(--bg-elev)));
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  transition: transform .18s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.demo-entry:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  text-decoration: none;
+  transform: translateY(-2px);
+}
+.demo-entry__icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--brand-grad);
+  box-shadow: 0 8px 20px -10px var(--brand-2);
+  font-size: .75rem;
+}
+.demo-entry__copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.demo-entry__copy strong {
+  color: var(--fg);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+.demo-entry__copy small {
+  color: var(--fg-muted);
+  font-size: .88rem;
+  line-height: 1.4;
+}
+.demo-entry__cta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--brand-2);
+  font-size: .92rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .demo-entry {
+    grid-template-columns: 34px minmax(0, 1fr);
+    display: grid;
+    gap: 8px 12px;
+    padding: 13px 14px;
+  }
+  .demo-entry__icon { width: 34px; height: 34px; }
+  .demo-entry__cta { grid-column: 2; margin-left: 0; }
+}
+
+
+.footer-support {
+  flex: 1 1 280px;
+  color: var(--fg-faint);
+  font-size: .8rem;
+  text-align: center;
+}
+@media (max-width: 600px) {
+  .footer-support {
+    order: 3;
+    flex-basis: 100%;
+    text-align: left;
+  }
+}
