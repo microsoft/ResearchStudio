@@ -7,12 +7,13 @@ import tempfile
 import re
 import time
 import urllib.parse
-import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
+from _http_runtime import create_session, request
+
 # arXiv asks for no more than ~1 request every 3s. We enforce a stricter 4s floor and,
-# crucially, do it ACROSS processes: a multi-query run spawns one process per query, so an
+# crucially, do it ACROSS processes: separate paper-search invocations may overlap, so an
 # in-process lock would not help. We serialize on a lockfile in the system temp dir and hold
 # the exclusive lock across the sleep, so concurrent processes queue and each request is
 # spaced >= MIN_INTERVAL after the previous one actually fired. Override with ARXIV_MIN_INTERVAL.
@@ -68,7 +69,6 @@ def search_papers_by_arxiv(
         List of paper dictionaries.
     """
     ARXIV_API = "https://export.arxiv.org/api/query"
-    ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 
     date_filter = (
         f"submittedDate:[{start_year}01010000 TO {end_year}12312359]"
@@ -81,24 +81,22 @@ def search_papers_by_arxiv(
         "max_results": str(max_results),
     }
     url = ARXIV_API + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": "PaperSearch/1.0"})
+    session = create_session("PaperSearch/1.0")
+    response = request(
+        session,
+        "GET",
+        url,
+        source="arxiv",
+        before_attempt=_throttle,
+    )
+    response.raise_for_status()
+    xml_data = response.content.decode("utf-8")
+    return _parse_arxiv_xml(xml_data, start_year, end_year)
 
-    max_retries = 4  # initial try + 3 retries, with backoff 3s -> 6s -> 12s before giving up
-    xml_data = None
-    for attempt in range(max_retries):
-        _throttle()  # space every attempt (incl. retries) >= _MIN_INTERVAL apart, cross-process
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                xml_data = resp.read().decode("utf-8")
-            break
-        except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < max_retries - 1:
-                wait = 3 * (2 ** attempt)  # 3, 6, 12
-                print(f"Rate limited, retrying in {wait}s...")
-                time.sleep(wait)
-            else:
-                raise
 
+def _parse_arxiv_xml(xml_data: str, start_year: int, end_year: int) -> list[dict]:
+    """Map an arXiv Atom response to the stable public paper schema."""
+    ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
     root = ET.fromstring(xml_data)
     papers: list[dict] = []
 

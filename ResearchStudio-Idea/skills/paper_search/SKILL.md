@@ -8,8 +8,8 @@ description: Search papers across arXiv, DBLP, OpenAlex, OpenReview, Semantic Sc
 Unified paper search across **arXiv**, **DBLP**, **OpenAlex**, **OpenReview**
 (NeurIPS / ICLR / ICML), **Semantic Scholar**, and **Crossref** using
 `./scripts/search_papers.py`. All sources are searched **concurrently** (in
-parallel threads) by default for maximum speed. Returns results grouped by
-source.
+independent child processes) by default for maximum speed. Queries within one
+source remain serial. Returns results grouped by source.
 
 
 ## When to use
@@ -98,6 +98,9 @@ python "$SEARCH" \
     --start-year 2024 --end-year 2026 \
     --no-parallel
 ```
+
+`--no-parallel` still uses an isolated worker process for each source, but runs
+those workers in source order instead of starting them together.
 
 Or call the function directly when more control is needed (e.g. consuming the
 structured dict rather than CLI text output). This is rarely necessary — see
@@ -218,7 +221,7 @@ following sections, in this exact order:
 
 ## Dependencies & failure modes
 
-- **arXiv**: stdlib only (uses arXiv API).
+- **arXiv**: uses the arXiv API.
 - **DBLP**: uses DBLP API.
 - **OpenAlex**: uses OpenAlex API.
 - **OpenReview**: requires `pip install openreview-py`.
@@ -229,9 +232,25 @@ following sections, in this exact order:
   and prone to hallucination. See the "Model knowledge source" section below
   for how to use it responsibly.
 
-If a source fails, `search_papers` catches the exception, prints the error, and
-continues with the remaining sources. Never retry blindly; report errors to the
-user.
+HTTP 429/500/502/503/504 responses use bounded retries. If a source still fails,
+its worker prints the error and the other source workers continue. Surface those
+errors to the user.
+
+### HTTP timeout configuration
+
+All network sources use separate connection and socket read-idle timeouts:
+
+| Environment variable | Default | Meaning |
+|:---|:---|:---|
+| `PAPER_SEARCH_CONNECT_TIMEOUT_SECONDS` | `15` | TCP/TLS connection timeout |
+| `PAPER_SEARCH_TIMEOUT_SECONDS` | `300` | Time allowed with no response bytes arriving |
+| `PAPER_SEARCH_<SOURCE>_TIMEOUT_SECONDS` | unset | Per-source read-idle override, e.g. `PAPER_SEARCH_OPEN_ALEX_TIMEOUT_SECONDS` |
+| `PAPER_SEARCH_MAX_ATTEMPTS` | `4` | Maximum attempts including the first request |
+
+Every configured value must be positive; malformed, zero, negative, NaN, or
+infinite values fail before workers start. The 300-second read timeout is not a
+total source budget: a response can take longer overall if it continues making
+socket-level progress.
 
 ## Model knowledge source
 

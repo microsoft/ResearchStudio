@@ -5,7 +5,7 @@ import argparse
 import re
 import time
 
-import requests
+from _http_runtime import create_session, request
 
 
 def search_papers_by_dblp(
@@ -29,6 +29,7 @@ def search_papers_by_dblp(
     papers: list[dict] = []
     offset = 0
     limit = min(1000, max_results)  # DBLP max per request is 1000
+    session = create_session("PaperSearch/1.0")
 
     while len(papers) < max_results:
         params = {
@@ -38,13 +39,7 @@ def search_papers_by_dblp(
             "f": offset,
         }
 
-        response = requests.get(url, params=params)
-
-        if response.status_code == 429:
-            print("Rate limited. Waiting 3 seconds...")
-            time.sleep(3)
-            continue
-
+        response = request(session, "GET", url, source="dblp", params=params)
         response.raise_for_status()
         data = response.json()
 
@@ -93,7 +88,7 @@ def search_papers_by_dblp(
     # Fetch abstracts for papers that have a DOI
     papers = papers[:max_results]
     for paper in papers:
-        abstract = _fetch_abstract_from_doi(paper.get("url", ""))
+        abstract = _fetch_abstract_from_doi(paper.get("url", ""), session=session)
         if abstract:
             paper["abstract"] = abstract
         time.sleep(0.5)  # Be polite to the Crossref API
@@ -101,7 +96,7 @@ def search_papers_by_dblp(
     return papers
 
 
-def _fetch_abstract_from_doi(url: str) -> str:
+def _fetch_abstract_from_doi(url: str, session=None) -> str:
     """Try to fetch abstract from Crossref using a DOI extracted from the URL."""
     if not url:
         return ""
@@ -111,10 +106,13 @@ def _fetch_abstract_from_doi(url: str) -> str:
         return ""
     doi = match.group(1)
     try:
-        resp = requests.get(
+        session = session or create_session("PaperSearch/1.0")
+        resp = request(
+            session,
+            "GET",
             f"https://api.crossref.org/works/{doi}",
+            source="dblp",
             headers={"Accept": "application/json"},
-            timeout=10,
         )
         if resp.status_code == 200:
             data = resp.json()
