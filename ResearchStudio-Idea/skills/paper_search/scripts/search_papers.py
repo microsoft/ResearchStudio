@@ -12,11 +12,18 @@ prints exactly what it dropped. --raw restores the legacy per-source view.
 """
 
 import argparse
-import concurrent.futures
 import importlib
+import json
+import os
+import signal
+import subprocess
 import sys
+import tempfile
 from datetime import date, datetime
+from pathlib import Path
 from typing import Optional
+
+from _http_runtime import validate_environment
 
 # Load .env (credentials for openreview etc.) before any source runs, so the aggregator works
 # when invoked via bash without a shell-sourced .env. No-op if no .env is found.
@@ -40,6 +47,8 @@ _SOURCE_MODULE = {
     "crossref": "search_papers_by_crossref",
 }
 ALL_SOURCES = list(_SOURCE_MODULE.keys())
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+_SOURCE_WORKER = _SCRIPTS_DIR / "source_worker.py"
 
 
 def _load_source_func(source: str):
@@ -50,6 +59,178 @@ def _load_source_func(source: str):
     module_name = _SOURCE_MODULE[source]
     module = importlib.import_module(module_name)
     return getattr(module, module_name)
+
+
+def _worker_command(
+    source: str,
+    queries: list[str],
+    start_year: int,
+    end_year: int,
+    max_results: int,
+    out_path: Path,
+) -> list[str]:
+    return [
+        sys.executable,
+        str(_SOURCE_WORKER),
+        "--source",
+        source,
+        "--queries-json",
+        json.dumps(queries, ensure_ascii=False),
+        "--start-year",
+        str(start_year),
+        "--end-year",
+        str(end_year),
+        "--max-results",
+        str(max_results),
+        "--out",
+        str(out_path),
+    ]
+
+
+def _start_worker(
+    source: str,
+    queries: list[str],
+    start_year: int,
+    end_year: int,
+    max_results: int,
+    work_dir: Path,
+) -> tuple[subprocess.Popen, Path, Path]:
+    out_path = work_dir / f"{source}.json"
+    log_path = work_dir / f"{source}.log"
+    command = _worker_command(
+        source, queries, start_year, end_year, max_results, out_path
+    )
+    with log_path.open("w", encoding="utf-8") as log_handle:
+        process = subprocess.Popen(
+            command,
+            cwd=str(_SCRIPTS_DIR),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=(os.name == "posix"),
+        )
+    return process, out_path, log_path
+
+
+def _terminate_workers(processes: list[subprocess.Popen]) -> None:
+    alive = [process for process in processes if process.poll() is None]
+    for process in alive:
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGTERM)
+            else:
+                process.terminate()
+        except ProcessLookupError:
+            pass
+    for process in alive:
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                if os.name == "posix":
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except ProcessLookupError:
+                pass
+    for process in alive:
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+def _collect_worker(
+    source: str,
+    process: subprocess.Popen,
+    out_path: Path,
+    log_path: Path,
+) -> list[dict]:
+    returncode = process.wait()
+    try:
+        log = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        log = f"[{source}] could not read worker log: {exc}\n"
+    if log:
+        sys.stderr.write(log)
+        if not log.endswith("\n"):
+            sys.stderr.write("\n")
+
+    if returncode != 0:
+        print(
+            f"[{source}] worker exited with status {returncode}; skipping this source.",
+            file=sys.stderr,
+        )
+        return []
+    try:
+        payload = json.loads(out_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"[{source}] worker produced no result file; skipping this source.", file=sys.stderr)
+        return []
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[{source}] invalid worker result: {exc}; skipping this source.", file=sys.stderr)
+        return []
+
+    if not isinstance(payload, dict) or payload.get("source") != source:
+        print(f"[{source}] worker result has the wrong source; skipping it.", file=sys.stderr)
+        return []
+    papers = payload.get("papers")
+    if not isinstance(papers, list) or not all(
+        isinstance(paper, dict) for paper in papers
+    ):
+        print(f"[{source}] worker result has invalid papers; skipping it.", file=sys.stderr)
+        return []
+    return papers
+
+
+def _run_source_workers(
+    sources: list[str],
+    queries: list[str],
+    start_year: int,
+    end_year: int,
+    max_results: int,
+    parallel: bool,
+) -> dict[str, list[dict]]:
+    gathered: dict[str, list[dict]] = {}
+    with tempfile.TemporaryDirectory(prefix="paper_search_workers_") as temp_dir:
+        work_dir = Path(temp_dir)
+        states: dict[str, tuple[subprocess.Popen, Path, Path]] = {}
+        try:
+            if parallel:
+                for source in sources:
+                    try:
+                        states[source] = _start_worker(
+                            source, queries, start_year, end_year, max_results, work_dir
+                        )
+                    except OSError as exc:
+                        print(f"[{source}] worker could not start: {exc}", file=sys.stderr)
+                        gathered[source] = []
+                # Every process is already running; collecting in requested order does
+                # not serialize the network work and keeps diagnostics deterministic.
+                for source in sources:
+                    state = states.get(source)
+                    if state is not None:
+                        gathered[source] = _collect_worker(source, *state)
+            else:
+                for source in sources:
+                    try:
+                        state = _start_worker(
+                            source, queries, start_year, end_year, max_results, work_dir
+                        )
+                    except OSError as exc:
+                        print(f"[{source}] worker could not start: {exc}", file=sys.stderr)
+                        gathered[source] = []
+                        continue
+                    states[source] = state
+                    gathered[source] = _collect_worker(source, *state)
+        except BaseException:
+            _terminate_workers([state[0] for state in states.values()])
+            raise
+        finally:
+            _terminate_workers([state[0] for state in states.values()])
+
+    return {source: gathered.get(source, []) for source in sources}
+
 
 def _parse_date(value, field_name: str) -> Optional[date]:
     """Parse a YYYY-MM-DD string (or pass through date/None) for the post-filter."""
@@ -122,7 +303,7 @@ def search_papers(
         Each paper dict contains: title, authors, year, abstract, url,
         venue, citation_count, publication_date, source.
     """
-    sources = sources or ALL_SOURCES
+    sources = list(dict.fromkeys(sources or ALL_SOURCES))
     invalid = set(sources) - set(ALL_SOURCES)
     if invalid:
         raise ValueError(f"Unknown sources: {invalid}. Valid: {ALL_SOURCES}")
@@ -137,37 +318,10 @@ def search_papers(
     if start_d and end_d and start_d > end_d:
         raise ValueError(f"start_date {start_d} is after end_date {end_d}")
 
-    results: dict[str, list[dict]] = {}
-
-    def _search(source: str) -> tuple[str, list[dict]]:
-        try:
-            func = _load_source_func(source)
-        except Exception as e:
-            # Missing optional dependency for this source — skip it, keep the others working.
-            print(f"[{source}] unavailable (import failed: {e}); skipping this source.", file=sys.stderr)
-            return source, []
-        papers: list[dict] = []
-        for q in queries:
-            try:
-                papers.extend(func(q, start_year, end_year, max_results))
-            except Exception as e:
-                print(f"[{source}] Error on query {q!r}: {e}", file=sys.stderr)
-        return source, papers
-
-    if parallel:
-        gathered: dict[str, list[dict]] = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(sources)) as executor:
-            futures = {executor.submit(_search, s): s for s in sources}
-            for future in concurrent.futures.as_completed(futures):
-                source, papers = future.result()
-                gathered[source] = papers
-        # Re-key in the REQUESTED order: as_completed yields in finish order,
-        # which made both the dict and the CLI printout nondeterministic.
-        results = {s: gathered.get(s, []) for s in sources}
-    else:
-        for source in sources:
-            _, papers = _search(source)
-            results[source] = papers
+    validate_environment(sources)
+    results = _run_source_workers(
+        sources, queries, start_year, end_year, max_results, parallel
+    )
 
     if start_d or end_d:
         results = {s: _filter_by_date_range(ps, start_d, end_d) for s, ps in results.items()}
@@ -253,7 +407,7 @@ if __name__ == "__main__":
         merged = dedup(results)
         ranked, n_dropped = rank(merged, query_list, min_score=args.min_score)
         n_dup = sum(per_source.values()) - len(merged)
-        print(f"\nper-source hits: " + ", ".join(f"{k}={v}" for k, v in per_source.items()))
+        print("\nper-source hits: " + ", ".join(f"{k}={v}" for k, v in per_source.items()))
         print(f"unique papers: {len(merged)} ({n_dup} cross-source duplicate records merged)")
         if n_dropped:
             print(f"DROPPED {n_dropped} paper(s) below --min-score {args.min_score} "

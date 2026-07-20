@@ -5,7 +5,7 @@ import argparse
 import os
 import time
 
-import requests
+from _http_runtime import create_session, request
 
 
 def search_papers_by_open_alex(
@@ -30,6 +30,7 @@ def search_papers_by_open_alex(
     papers: list[dict] = []
     page = 1
     per_page = min(200, max_results)  # API max per request is 200
+    session = create_session("PaperSearch/1.0")
 
     while len(papers) < max_results:
         params = {
@@ -42,13 +43,9 @@ def search_papers_by_open_alex(
         }
         headers = {"Authorization": f"Bearer {API_KEY}"} if API_KEY else {}
 
-        response = requests.get(url, params=params, headers=headers)
-
-        if response.status_code == 429:
-            print("Rate limited. Waiting 3 seconds...")
-            time.sleep(3)
-            continue
-
+        response = request(
+            session, "GET", url, source="open_alex", params=params, headers=headers
+        )
         response.raise_for_status()
         data = response.json()
 

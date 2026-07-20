@@ -7,6 +7,8 @@ import time
 from datetime import datetime
 from typing import Optional
 
+from _http_runtime import configure_external_session
+
 # Load credentials from .env BEFORE any os.environ.get below, so OPENREVIEW_USER/PASS are
 # present even when this script is invoked directly via bash (no shell-sourced .env).
 try:
@@ -36,16 +38,37 @@ def _openreview_clients():
         import openreview
     except ImportError as e:
         raise RuntimeError("openreview not installed. pip install openreview-py") from e
-    v2 = openreview.api.OpenReviewClient(
-        baseurl="https://api2.openreview.net",
-        username=os.environ.get('OPENREVIEW_USER', ''),
-        password=os.environ.get('OPENREVIEW_PASS', ''),
+    # Instantiate anonymously so the SDK cannot perform an unbounded login before
+    # we have configured its internally-created requests Sessions.  The SDK also
+    # consults OPENREVIEW_USERNAME/PASSWORD on its own, so suppress those aliases
+    # during construction; this connector's established public names remain
+    # OPENREVIEW_USER/PASS.
+    sdk_env = {
+        name: os.environ.pop(name)
+        for name in ("OPENREVIEW_USERNAME", "OPENREVIEW_PASSWORD")
+        if name in os.environ
+    }
+    try:
+        v2 = openreview.api.OpenReviewClient(baseurl="https://api2.openreview.net")
+        v1 = openreview.Client(baseurl="https://api.openreview.net")
+    finally:
+        os.environ.update(sdk_env)
+
+    configure_external_session(v2.session, "openreview")
+    configure_external_session(v1.session, "openreview")
+
+    # Keep both the connector's documented names and the SDK aliases working.
+    # The aliases were captured above only to defer their implicit login until
+    # after the Sessions had the bounded runtime policy installed.
+    username = os.environ.get("OPENREVIEW_USER") or sdk_env.get(
+        "OPENREVIEW_USERNAME", ""
     )
-    v1 = openreview.Client(
-        baseurl="https://api.openreview.net",
-        username=os.environ.get('OPENREVIEW_USER', ''),
-        password=os.environ.get('OPENREVIEW_PASS', ''),
+    password = os.environ.get("OPENREVIEW_PASS") or sdk_env.get(
+        "OPENREVIEW_PASSWORD", ""
     )
+    if username or password:
+        v2.login_user(username=username, password=password)
+        v1.login_user(username=username, password=password)
     return v2, v1
 
 

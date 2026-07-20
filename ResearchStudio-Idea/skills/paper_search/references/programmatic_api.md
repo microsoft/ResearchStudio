@@ -25,3 +25,22 @@ for source, papers in res.items():
 ```
 
 Return shape: see "Output schema" in `SKILL.md`.
+
+Each selected source runs in its own child process. `parallel=False` preserves
+the same isolation while running source workers serially. For a multi-query
+call, `max_results` remains the limit for each query, and results are extended
+in query order before the existing parent-side date filtering and CLI
+post-processing.
+
+HTTP runtime settings can be exported before calling the function:
+
+```bash
+export PAPER_SEARCH_TIMEOUT_SECONDS=300
+export PAPER_SEARCH_CONNECT_TIMEOUT_SECONDS=15
+export PAPER_SEARCH_OPENREVIEW_TIMEOUT_SECONDS=600
+export PAPER_SEARCH_MAX_ATTEMPTS=4
+```
+
+The source-specific variable overrides only the socket read-idle timeout for
+that source. All values must be positive; invalid configuration raises before
+any worker starts.

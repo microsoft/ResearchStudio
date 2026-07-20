@@ -4,7 +4,7 @@
 import argparse
 import time
 
-import requests
+from _http_runtime import create_session, request
 
 
 def search_papers_by_crossref(
@@ -28,6 +28,7 @@ def search_papers_by_crossref(
     papers: list[dict] = []
     offset = 0
     limit = min(100, max_results)  # API max per request is 100
+    session = create_session()
 
     while len(papers) < max_results:
         params = {
@@ -42,13 +43,9 @@ def search_papers_by_crossref(
             "User-Agent": "PaperSearch/1.0 (mailto:your-email@example.com)",
         }
 
-        response = requests.get(url, params=params, headers=headers)
-
-        if response.status_code == 429:
-            print("Rate limited. Waiting 3 seconds...")
-            time.sleep(3)
-            continue
-
+        response = request(
+            session, "GET", url, source="crossref", params=params, headers=headers
+        )
         response.raise_for_status()
         data = response.json()
 
