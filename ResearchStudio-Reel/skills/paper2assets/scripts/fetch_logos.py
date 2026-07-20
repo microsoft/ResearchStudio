@@ -590,8 +590,8 @@ def fetch_logo_for(name: str) -> dict | None:
             titles.append(t)
     for cand in candidates:
         _add(resolve_wikipedia_title(cand))
-    # If ANY candidate has an explicit ALIAS mapping, that alias IS the answer —
-    # a curated brand→parent decision (e.g. "microsoft research asia" → "Microsoft"
+    # If ANY candidate has an explicit ALIAS mapping, that alias IS the answer --
+    # a curated brand->parent decision (e.g. "microsoft research asia" -> "Microsoft"
     # for the four-square corporate mark, NOT the Microsoft Research wordmark).
     # Trust it and SKIP the opensearch fallback below, which otherwise searches
     # the raw name and drags in the sibling-brand page ("Microsoft Research"),
@@ -895,7 +895,7 @@ def main() -> int:
 
     # Persist the FULL manifest to disk as well as stdout. Callers sometimes
     # pipe stdout through `tail`/`head` to save tokens, which silently drops
-    # early entries (e.g. the first institute's slug) — the agent then invents a
+    # early entries (e.g. the first institute's slug) -- the agent then invents a
     # wrong logo filename (msra -> 'microsoft-research-asia.png') instead of the
     # mapped slug ('microsoft'). A stable file lets the poster stage read the
     # correct slug regardless of any stdout truncation.
