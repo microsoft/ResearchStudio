@@ -590,22 +590,37 @@ def fetch_logo_for(name: str) -> dict | None:
             titles.append(t)
     for cand in candidates:
         _add(resolve_wikipedia_title(cand))
-    # Disambiguation-aware company/org variants (GENERAL -- no per-company alias):
-    # an ambiguous short name ("Runway", "Cohere") often has its company article
-    # under a "(company)" / "(organization)" title while the BARE article is a
-    # dictionary word or disambiguation page. Strip a trailing "ML/AI/Inc/Labs/..."
-    # so "Runway ML" -> "Runway (company)". Tried BEFORE the noisy opensearch
-    # results so e.g. "Runway (company)" beats "Runway (song)".
-    core = re.sub(r"\s+(ml|ai|inc\.?|llc|ltd\.?|gmbh|labs?|research|technologies)$",
-                  "", name.strip(), flags=re.I).strip()
-    for base in dict.fromkeys([name.strip(), core]):
-        if base and 1 <= len(base.split()) <= 3:
-            for suf in ("(company)", "(organization)", "(software)"):
-                _add(f"{base} {suf}")
-    for q in dict.fromkeys([name.strip(), candidates[0]]):
-        for t in search_wikipedia_titles(q):
-            if search_title_relevant(q, t):
-                _add(t)
+    # If ANY candidate has an explicit ALIAS mapping, that alias IS the answer --
+    # a curated brand->parent decision (e.g. "microsoft research asia" -> "Microsoft"
+    # for the four-square corporate mark, NOT the Microsoft Research wordmark).
+    # Trust it and SKIP the opensearch fallback below, which otherwise searches
+    # the raw name and drags in the sibling-brand page ("Microsoft Research"),
+    # winning nondeterministically whenever the aliased page fetch flakes.
+    aliased = any(c.strip().lower() in ALIASES for c in candidates)
+    if not aliased:
+        # Disambiguation-aware company/org variants (GENERAL -- no per-company alias):
+        # an ambiguous short name ("Runway", "Cohere") often has its company article
+        # under a "(company)" / "(organization)" title while the BARE article is a
+        # dictionary word or disambiguation page. Strip a trailing "ML/AI/Inc/Labs/..."
+        # so "Runway ML" -> "Runway (company)". Tried BEFORE the noisy opensearch
+        # results so e.g. "Runway (company)" beats "Runway (song)".
+        core = re.sub(r"\s+(ml|ai|inc\.?|llc|ltd\.?|gmbh|labs?|research|technologies)$",
+                      "", name.strip(), flags=re.I).strip()
+        for base in dict.fromkeys([name.strip(), core]):
+            if base and 1 <= len(base.split()) <= 3:
+                for suf in ("(company)", "(organization)", "(software)"):
+                    _add(f"{base} {suf}")
+        for q in dict.fromkeys([name.strip(), candidates[0]]):
+            for t in search_wikipedia_titles(q):
+                if search_title_relevant(q, t):
+                    _add(t)
+    else:
+        # Aliased: only allow the disambiguation variants of the alias TARGET.
+        for cand in candidates:
+            tgt = ALIASES.get(cand.strip().lower())
+            if tgt and 1 <= len(tgt.split()) <= 3:
+                for suf in ("(company)", "(organization)"):
+                    _add(f"{tgt} {suf}")
 
     for title in titles:
         page = "https://en.wikipedia.org/wiki/" + urllib.parse.quote(title.replace(" ", "_"))
@@ -878,7 +893,23 @@ def main() -> int:
     if missing:
         print(f"[fetch_logos]   ✗ MISSING — WEB-SEARCH FALLBACK REQUIRED (Step 6): {', '.join(missing)}", file=sys.stderr)
 
-    print(json.dumps({"logos": results, "missing": missing}, indent=2))
+    # Persist the FULL manifest to disk as well as stdout. Callers sometimes
+    # pipe stdout through `tail`/`head` to save tokens, which silently drops
+    # early entries (e.g. the first institute's slug) -- the agent then invents a
+    # wrong logo filename (msra -> 'microsoft-research-asia.png') instead of the
+    # mapped slug ('microsoft'). A stable file lets the poster stage read the
+    # correct slug regardless of any stdout truncation.
+    manifest = {"logos": results, "missing": missing}
+    try:
+        (logos_dir / "logos.json").write_text(
+            json.dumps(manifest, indent=2), encoding="utf-8"
+        )
+        print(f"[fetch_logos] manifest -> {layout.LOGOS}/logos.json "
+              f"({len(results)} logo(s))", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[fetch_logos] WARNING: could not write logos.json: {exc}", file=sys.stderr)
+
+    print(json.dumps(manifest, indent=2))
     return 0 if results else 1
 
 
