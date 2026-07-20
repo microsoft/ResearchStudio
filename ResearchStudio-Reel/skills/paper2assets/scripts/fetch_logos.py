@@ -71,8 +71,15 @@ SKIP_KEYWORDS = ("flag", "map", "campus", "photo", "building", "aerial")
 # carries an official mark in its infobox. Keeps the lookup robust against
 # short forms (UCSD, MIT CSAIL, MSRA, etc.) that don't resolve directly.
 ALIASES = {
-    "msra": "Microsoft Research",
-    "microsoft research asia": "Microsoft Research",
+    # Microsoft Research / MSRA map to the PARENT company Microsoft so the
+    # titlebar shows Microsoft's four-square corporate logo (team convention),
+    # NOT Microsoft Research's own wordmark. Mirrors google research -> Google.
+    "msr": "Microsoft",
+    "msra": "Microsoft",
+    "microsoft research": "Microsoft",
+    "microsoft research asia": "Microsoft",
+    "microsoft research lab": "Microsoft",
+    "microsoft research lab asia": "Microsoft",
     "ucsd": "University of California, San Diego",
     "uc san diego": "University of California, San Diego",
     "uc berkeley": "University of California, Berkeley",
@@ -555,7 +562,8 @@ def fetch_logo_for(name: str) -> dict | None:
     logo wins. This handles the second-level-institution case where the
     specific sub-org doesn't have its own Wikipedia article — e.g.
     "Microsoft Research Asia, GenAI Group" cascades to "Microsoft Research
-    Asia" -> alias to "Microsoft Research" -> Wikipedia hit. Same for
+    Asia" -> alias to "Microsoft" (parent company, four-square logo) -> hit.
+    Same for
     "Tsinghua University, Department of CS" cascading to "Tsinghua
     University". The returned dict's `name` keeps the ORIGINAL input
     string so the spec's display name is preserved; `title` records
