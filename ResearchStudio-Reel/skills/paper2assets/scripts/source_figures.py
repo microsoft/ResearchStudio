@@ -205,9 +205,13 @@ def rasterize(src: Path, dst: Path, dpi: int = 432) -> tuple[int, int] | None:
                     else ["gs", "-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
                           f"-sOutputFile={pdf}", str(src)])
             subprocess.run(tool, capture_output=True, timeout=120)
-        # vector pdf -> png via pdftoppm (first page)
+        # vector pdf -> png via pdftoppm (first page).
+        # -cropbox: rasterize the CropBox (what \includegraphics shows in the paper),
+        # NOT the full MediaBox. Figure PDFs whose CropBox < MediaBox carry leftover /
+        # off-canvas content outside the visible crop (e.g. an unused panel parked in
+        # the page margin); without -cropbox that junk leaks into the extracted figure.
         prefix = dst.with_suffix("")
-        subprocess.run(["pdftoppm", "-png", "-r", str(dpi), "-singlefile",
+        subprocess.run(["pdftoppm", "-cropbox", "-png", "-r", str(dpi), "-singlefile",
                         str(pdf), str(prefix)], capture_output=True, timeout=120, check=True)
         if pdf != src:
             pdf.unlink(missing_ok=True)
