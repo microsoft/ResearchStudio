@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
              "unlike an in-prompt round count). A converged measurement clears "
              "the count, a run that produced no geometry (nav timeout, MathJax "
              "settle failure, no columns found) does not count, and a state "
-             "file idle >12h is dropped. Default 80. Set <=0 to disable.",
+             "file idle >15min is dropped. Default 80. Set <=0 to disable.",
     )
     ps.add_argument(
         "--reset-budget", action="store_true",

@@ -107,11 +107,11 @@ def test_budget_expires_when_stale(tmp_path: Path) -> None:
     """A counter idle past the window is a PREVIOUS session, not this loop."""
     p = tmp_path / ".fill_budget.json"
     old = (_dt.datetime.now(_dt.timezone.utc)
-           - _dt.timedelta(hours=_slack.BUDGET_STALE_AFTER_HOURS + 1))
+           - _dt.timedelta(seconds=_slack.BUDGET_STALE_AFTER_SECONDS + 60))
     p.write_text(json.dumps({"count": 9, "updated": old.isoformat()}))
     assert _slack._load_budget(p) == 0
     fresh = (_dt.datetime.now(_dt.timezone.utc)
-             - _dt.timedelta(hours=_slack.BUDGET_STALE_AFTER_HOURS - 1))
+             - _dt.timedelta(seconds=_slack.BUDGET_STALE_AFTER_SECONDS - 60))
     p.write_text(json.dumps({"count": 9, "updated": fresh.isoformat()}))
     assert _slack._load_budget(p) == 9
 
@@ -157,7 +157,7 @@ def test_budget_old_legacy_state_expires_by_mtime(tmp_path: Path) -> None:
     p = tmp_path / ".fill_budget.json"
     p.write_text(json.dumps({"count": 80}))
     old = (_dt.datetime.now(_dt.timezone.utc)
-           - _dt.timedelta(hours=_slack.BUDGET_STALE_AFTER_HOURS + 5)).timestamp()
+           - _dt.timedelta(seconds=_slack.BUDGET_STALE_AFTER_SECONDS + 300)).timestamp()
     os.utime(p, (old, old))
     assert _slack._load_budget(p) == 0
 

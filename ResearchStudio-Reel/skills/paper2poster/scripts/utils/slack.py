@@ -545,10 +545,12 @@ def _section_source_blocks(
 
 
 #: A ``.fill_budget.json`` untouched for this long describes a PREVIOUS
-#: working session, not the current loop, so its count is dropped. The
-#: batch pipeline renders a poster in one sitting; a human re-opening the
-#: same run_dir the next day should not inherit yesterday's debt.
-BUDGET_STALE_AFTER_HOURS = 12.0
+#: working session, not the current loop, so its count is dropped. A single
+#: poster converges in ~20 min (~12 rounds) and the batch pipeline renders it
+#: in one sitting; a run still grinding past ~1h is already a failure. So a
+#: budget file idle longer than this means the active loop is gone -- a
+#: re-open (or a stuck sibling) should start clean, not inherit an old count.
+BUDGET_STALE_AFTER_SECONDS = 900.0  # 15 min
 
 
 def _load_budget(path: Path) -> int:
@@ -589,7 +591,7 @@ def _load_budget(path: Path) -> int:
     now = _dt.datetime.now(_dt.timezone.utc)
     if ts > now + _dt.timedelta(minutes=5):
         return 0        # clock skew, or a run_dir copied from another host
-    if (now - ts) > _dt.timedelta(hours=BUDGET_STALE_AFTER_HOURS):
+    if (now - ts) > _dt.timedelta(seconds=BUDGET_STALE_AFTER_SECONDS):
         return 0        # previous session
     return count
 
@@ -663,7 +665,7 @@ def cmd_slack(args: argparse.Namespace) -> int:
     #     failure, no columns found) is an environment problem and burns no
     #     budget -- it used to, because the increment landed before the page
     #     was even opened;
-    #   - a state file older than BUDGET_STALE_AFTER_HOURS is a previous
+    #   - a state file older than BUDGET_STALE_AFTER_SECONDS is a previous
     #     session and is dropped.
     _budget_meta = html_path.parent / "assets" / "meta"
     _budget_meta.mkdir(parents=True, exist_ok=True)
@@ -1226,7 +1228,7 @@ def cmd_slack(args: argparse.Namespace) -> int:
         )
         _eprint(
             "  It clears itself on the first converged measurement, after "
-            f"{BUDGET_STALE_AFTER_HOURS:.0f}h idle,"
+            f"{BUDGET_STALE_AFTER_SECONDS / 60:.0f}m idle,"
         )
         _eprint(
             "  or via --reset-budget -- which is for a deliberate re-render, "
