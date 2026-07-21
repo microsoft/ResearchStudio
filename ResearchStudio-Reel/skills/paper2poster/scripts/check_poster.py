@@ -94,15 +94,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ps.add_argument(
         "--max-iterations", type=int, default=80,
-        help="script-enforced circuit breaker: persist a per-poster "
-             "measurement count in <poster_dir>/.fill_budget.json; once it "
-             "exceeds this cap, slack prints a STOP banner and exits 3 "
-             "(survives context compaction, unlike an in-prompt round count). "
-             "Default 80. Set <=0 to disable.",
+        help="script-enforced circuit breaker: persist a per-poster count of "
+             "CONSECUTIVE non-converged measurements in "
+             "<poster_dir>/assets/meta/.fill_budget.json; once it exceeds this "
+             "cap, slack "
+             "prints a STOP banner and exits 3 (survives context compaction, "
+             "unlike an in-prompt round count). A converged measurement clears "
+             "the count, a run that produced no geometry (nav timeout, MathJax "
+             "settle failure, no columns found) does not count, and a state "
+             "file idle >12h is dropped. Default 80. Set <=0 to disable.",
     )
     ps.add_argument(
         "--reset-budget", action="store_true",
-        help="zero the persistent .fill_budget.json counter before measuring "
+        help="clear the persistent .fill_budget.json counter before measuring "
              "(use for a genuine fresh re-render of the same poster_dir).",
     )
     ps.add_argument(
@@ -200,6 +204,22 @@ def build_parser() -> argparse.ArgumentParser:
              "with whitespace to fake a full page. Tightened from 0.10 "
              "to 0.05 to match the slack gate's 5pt FULL band — anything "
              "looser hides 5-9%% trailing voids the eye still sees",
+    )
+    ppl.add_argument(
+        "--max-card-inner-void", type=float,
+        default=_polish.DEFAULT_MAX_CARD_INNER_VOID,
+        help="warn (CARD/INNER-VOID) if a card has an inter-child gap "
+             "exceeding this fraction of its height "
+             "(default 0.15); catches a void in the MIDDLE of a card, "
+             "which CARD/TRAILING cannot see because a bottom-pinned "
+             "tail drives trailing to ~0",
+    )
+    ppl.add_argument(
+        "--min-card-inner-void-px", type=float,
+        default=_polish.DEFAULT_MIN_CARD_INNER_VOID_PX,
+        help="CARD/INNER-VOID also requires the gap to exceed this many "
+             "px (default 24) so a sub-line gap on a small card cannot "
+             "trip the gate",
     )
     ppl.add_argument(
         "--max-widow-fraction", type=float,
