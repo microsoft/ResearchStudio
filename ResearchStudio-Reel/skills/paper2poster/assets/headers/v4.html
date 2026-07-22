@@ -108,7 +108,13 @@
   .titlebar .listen-all {
     position: absolute;
     bottom: 16pt;
-    left: 56pt;
+    /* v4's title is a single left-aligned line and the authors/legend below it
+       are short + left-anchored, so the band UNDER the title (right of that
+       short text, left of the right-hand mark-stack) is empty. Center Full
+       Listen there — full size, NO extra header height. */
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
     z-index: 5;
     font-size: 26pt;
     font-weight: 600;

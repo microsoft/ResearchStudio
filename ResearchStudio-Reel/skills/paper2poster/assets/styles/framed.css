@@ -54,3 +54,21 @@
     background: var(--section-accent, var(--accent));
     border-radius: 14pt 14pt 0 0;
   }
+  /* Per-section Listen button lands ON the accent banner (top-right). The base
+     accent-fill pill would read accent-on-accent (low contrast), so INVERT it
+     here: white pill + accent glyph while idle so it pops off the banner, then
+     flip to the accent fill (white border keeps it legible) while hovered /
+     playing. The base top:32pt sits it a touch low on the one-line banner, so
+     raise it to vertically centre on the banner. */
+  .section h2 .listen-btn {
+    top: 17pt;
+    background: #ffffff;
+    color: var(--section-accent, var(--accent));
+    border-color: rgba(255, 255, 255, 0.95);
+  }
+  .section h2 .listen-btn:hover,
+  .section h2 .listen-btn.playing {
+    background: var(--section-accent, var(--accent));
+    color: #ffffff;
+    border-color: #ffffff;
+  }
