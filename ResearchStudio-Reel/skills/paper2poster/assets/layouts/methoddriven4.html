@@ -1552,21 +1552,25 @@
       Array.from(sec.children).forEach(walk2);
       const badge = document.createElement("div");
       badge.className = "dbg-badge dbg-section";
-      let html = `${id}  ${Math.round(actual)}px`;
+      let txt = `${id}  ${Math.round(actual)}px`;
       if (hasContent && actual > 0) {
         const fullRatio = ((cb - secRect.top) / sc) / actual;
         // Verdict label lives on the content bbox below — keep the
         // per-section badge compact.
-        html += `  ratio=${(fullRatio * 100).toFixed(1)}%`;
+        txt += `  ratio=${(fullRatio * 100).toFixed(1)}%`;
       }
+      badge.textContent = txt;
       if (estimates && estimates[id] != null) {
         const est = estimates[id];
         const delta = Math.round(actual - est);
         const cls = delta >= 0 ? "dbg-delta-pos" : "dbg-delta-neg";
         const sign = delta >= 0 ? "+" : "";
-        html += ` <span class="${cls}">est=${est} Δ${sign}${delta}</span>`;
+        const span = document.createElement("span");
+        span.className = cls;
+        span.textContent = `est=${est} Δ${sign}${delta}`;
+        badge.appendChild(document.createTextNode(" "));
+        badge.appendChild(span);
       }
-      badge.innerHTML = html;
       sec.appendChild(badge);
     });
     stampBboxes();
