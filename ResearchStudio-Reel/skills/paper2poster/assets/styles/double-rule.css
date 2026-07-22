@@ -10,5 +10,19 @@
   margin: 0 0 0.45em 0; font-size: 60pt; line-height: 1.1; font-weight: 800;
   text-align:center; border-top:2.5pt solid var(--accent); border-bottom:2.5pt solid var(--accent); padding:0.14em 0 !important;
   /* !important resets the layout base `.section h2{padding-right:5.5em}` (Listen-button reservation) to 0
-     so the title is truly centred between the two rules (the button is absolute at the card corner). */
+     so the title is truly centred between the two rules. */
 }
+/* Per-section Listen button sits IN THE MIDDLE of the double-rule band: made
+   inline (not absolute) so it flows right after the centred title and the whole
+   "Title  ▶Listen" reads as one centred unit between the two rules. It is
+   display:none while the controls are hidden so it reserves NO width — the
+   printed title stays perfectly centred — and reflows in only when show-listen
+   reveals the narration UI. */
+.section h2 .listen-btn {
+  position: static;
+  display: none;
+  vertical-align: middle;
+  margin-left: 0.55em;
+  top: auto; right: auto; left: auto; transform: none;
+}
+body.show-listen .section h2 .listen-btn { display: inline-block; }

@@ -10,9 +10,23 @@
   margin: 0 0 0.45em 0; font-size: 60pt; line-height: 1.1; font-weight: 800;
   align-self:flex-start; background:var(--accent); color:#fff; padding:0.1em 0.42em !important; border-radius:8pt;
 }
-/* The shared base rule reserves padding-right:5.5em on every section h2 for the
-   per-section Listen button; on the tag pill that stretches the accent
-   background ~5.5em past the heading text ("[Text      ]"). The padding override
-   above makes the pill hug the text; dropping the button here removes the width
-   it would otherwise reserve inside the pill. */
-.section h2 .listen-btn { display: none !important; }
+/* Per-section Listen button: this h2 is a STATIC flex-start pill (not
+   positioned), so the absolutely-positioned .listen-btn anchors to the
+   .section (position:relative) and lands at the section's top-RIGHT corner —
+   clear of the top-LEFT accent tag pill. Keep it visible so this style shares
+   the same play-control vocabulary as every other style (was display:none).
+   The base pill is an accent FILL, identical to the filled accent title pill,
+   so on this style the two read as duplicates. Differentiate the button as an
+   OUTLINED white pill (accent stroke + glyph) so it stays clearly a control,
+   not a second heading tag; hover / playing flips it to the accent fill. */
+.section h2 .listen-btn {
+  background: #fff;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.section h2 .listen-btn:hover,
+.section h2 .listen-btn.playing {
+  background: var(--accent);
+  color: #fff;
+  border-color: #fff;
+}

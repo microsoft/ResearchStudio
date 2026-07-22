@@ -7,17 +7,23 @@
   background:#fff; border:3pt solid var(--accent); border-radius:10pt;
 }
 .section h2 {
-  position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%);
-  margin: 0; padding: 5pt 20pt !important;   /* !important beats the layout base `.section h2{padding-right:5.5em}`
-                                                (Listen-button reservation) so the pill stays symmetric and the
-                                                title is truly centred in BOTH the white pill and the frame */
-  display: flex; align-items: center; justify-content: center;   /* center the title IN its white pill (both axes) */
+  /* Static (was position:absolute) so the per-section Listen button — an h2
+     child — takes the .section as its containing block instead of this small
+     centred pill, letting it sit at the section's FAR-RIGHT corner rather than
+     hugging the title. The pill still straddles the frame's top edge and
+     centres horizontally: align-self:center sizes it to the title text, and a
+     negative top margin pulls it up ~half its own height above the border. */
+  align-self: center;
+  margin: -73pt 0 0.5em 0;
+  padding: 5pt 20pt !important;   /* !important beats the layout base `.section h2{padding-right:5.5em}` so the pill hugs the title symmetrically */
   background: #fff; font-size: 50pt; line-height: 1.05; font-weight: 800;
-  text-align: center; white-space: nowrap;                       /* ONE line — the pill widens to the title; with the
-                                                                    Listen button dropped (below) it stays narrow enough to fit */
+  text-align: center; white-space: nowrap;                       /* ONE line — the pill widens to the title */
 }
-/* The per-section Listen button lives INSIDE the <h2> (`<h2>Problem <button.listen-btn>…`)
-   and is only visibility:hidden by default, so it still OCCUPIES width — inside this centred
-   pill it shoves the title off-centre AND pads the line so a title that would fit on one line
-   wraps. Drop it from the legend-frame pill so the white box hugs the title text alone. */
-.section h2 .listen-btn { display: none; }
+/* Now that the h2 is static, the button anchors to the .section: place it at
+   the far top-right inside the frame, clear of the centred legend pill. */
+.section h2 .listen-btn {
+  top: 24pt;
+  right: 26pt;
+  left: auto;
+  transform: none;
+}
