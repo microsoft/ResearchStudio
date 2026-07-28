@@ -167,24 +167,26 @@ def main():
     queries = json.loads(args.queries)
     since = now - timedelta(days=30 * args.window_months)
     until = now - timedelta(days=30 * args.window_min_months)
-    seen = set()
-    merged = []
+    per_query = []
     for q in queries:
         try:
             hits = search(q, max_results=args.max_per_query)
         except Exception as e:
             print(f'  arxiv {q!r} failed: {e}', file=sys.stderr)
+            per_query.append([])
             continue
-        for h in hits:
-            if not in_window(h, since, until): continue
-            key = h['title_norm']
-            if key in seen: continue
-            seen.add(key); merged.append(h)
+        per_query.append([h for h in hits if in_window(h, since, until)])
         # pacing is centralized in _fetch()->_throttle() (>= 4s between requests);
         # no extra inter-query sleep needed here.
-    if args.max_results > 0:
-        # Already sorted by relevance (arxiv sortBy=relevance); take head
-        merged = merged[:args.max_results]
+    # Round-robin, NOT concatenate-then-truncate — the old path made query ORDER the
+    # priority and silently produced a one-query corpus; scripts/_merge.py carries the
+    # measured case.
+    from scripts._merge import interleave_by_query
+    merged = interleave_by_query(per_query, lambda h: h.get('title_norm'),
+                                 args.max_results, queries=queries)
+    if len(queries) > 1:
+        print(f'  arxiv: {sum(len(p) for p in per_query)} in-window across '
+              f'{len(queries)} queries -> {len(merged)} kept (round-robin)', file=sys.stderr)
     Path(args.out).write_text(json.dumps(merged, ensure_ascii=False, indent=1))
     print(f'wrote {args.out} with {len(merged)} unique papers', file=sys.stderr)
 

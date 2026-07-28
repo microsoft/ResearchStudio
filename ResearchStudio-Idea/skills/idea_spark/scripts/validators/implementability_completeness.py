@@ -30,8 +30,12 @@ def _is_empty(v) -> bool:
 
 def validate_implementability_completeness(phase4_path: str, phase4_impl_path: str) -> list[dict]:
     findings = []
+    # The implementability audit is LLM-written and its enriched_steps carry CJK
+    # prose, where a stray ASCII content quote terminates the string early. Use
+    # the tolerant loader so a formatting slip does not abort the whole validate.
+    from scripts.json_repair import load_llm_json
     p4 = json.loads(Path(phase4_path).read_text())
-    impl = json.loads(Path(phase4_impl_path).read_text())
+    impl = load_llm_json(Path(phase4_impl_path))
 
     # 1. No kill-switch field may appear in the audit file (bounded-contract guard).
     leaked = [f for f in KILL_SWITCH_FIELDS if f in impl]

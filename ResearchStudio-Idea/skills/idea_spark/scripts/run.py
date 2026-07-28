@@ -224,25 +224,65 @@ CONNECTORS = [
     ('openreview',      'scripts.search_openreview',      ['OPENREVIEW_USER', 'OPENREVIEW_PASS'],   ['openreview']),
 ]
 
-# Per-connector role-based retrieval config for Phase 0 map mode.
-# Each connector is used in the time window where it's most informative:
-#   - arxiv = preprint pool (recent 0-6mo, where the field's active work is)
-#   - openalex (published-only) = peer-reviewed proceedings + journals (6-24mo, broad academic graph; some drift)
-#   - semanticscholar (published-only) = peer-reviewed CS-focused (6-24mo, low drift, plus TLDR auto-summary)
-#   - openreview = current submission pool (0-6mo, in-review, forward-looking)
-# Total target = ~40 papers (10 arxiv + 12+13 openalex/SS combined + 10 openreview).
-# Falls back gracefully when a connector is unavailable.
-PHASE0_CONNECTOR_CONFIG = {
+# Phase 0 map-mode retrieval is a list of JOBS, not one-job-per-connector: one
+# connector may run several windows, and the 0-6mo freshness window is covered by
+# TWO engines on purpose (overlap is a feature; SS-priority dedup merges it).
+# Rationale: references/design-notes.md, "Why the freshness window is dual-engine".
+# Caps are per-JOB overridable via IDEASPARK_POOL (see _resolve_pool_caps).
+PHASE0_RETRIEVAL_JOBS = [
     # arxiv 0-6mo: bump max_per_query because sortBy=relevance returns top-50 across all time;
     # only ~5-8% of relevance-ranked top-50 fall within 6 months for typical queries, so we cast
     # a wider net (200 per query) and filter to window. Total API calls per query is still 1.
-    'arxiv':           {'window_min': 0, 'window_max': 6,  'max_results': 10, 'max_per_query': 200, 'extra_args': [], 'timeout': 300},
-    'openalex':        {'window_min': 6, 'window_max': 24, 'max_results': 12, 'max_per_query': 25,  'extra_args': ['--published-only'], 'timeout': 300},
-    'semanticscholar': {'window_min': 6, 'window_max': 24, 'max_results': 13, 'max_per_query': 25,  'extra_args': ['--published-only'], 'timeout': 300},
+    # Caps are wide on purpose: a downstream host relevance-partition (Phase 0.4) admits only
+    # `core` papers to the gap corpus + deep-read pool, so casting a wider net raises recall
+    # without diluting Phase 1 — the marginal on-topic papers live in ranks N..~3N, not the tail.
+    # Measured: at the old 18/15 caps every connector returned EXACTLY its cap (saturated), so
+    # relevant work sat just below the cutoff, invisible to Phase 1/deep-read/collision.
+    # timeout 600s: cost is max_per_query(200) x QUERY COUNT plus a 4s inter-request floor, NOT
+    # max_results (which only truncates post-merge). A 6-query run measured >300s and the whole
+    # connector was dropped — losing the freshest source entirely. 600s matches openreview.
+    {'job': 'arxiv',            'connector': 'arxiv',           'window_min': 0, 'window_max': 6,  'max_results': 40, 'max_per_query': 200, 'extra_args': [], 'timeout': 600},
+    {'job': 'ss_recent',        'connector': 'semanticscholar', 'window_min': 0, 'window_max': 6,  'max_results': 30, 'max_per_query': 40,  'extra_args': [], 'timeout': 300},
+    {'job': 'oa_recent',        'connector': 'openalex',        'window_min': 0, 'window_max': 6,  'max_results': 0,  'max_per_query': 25,  'extra_args': ['--published-only'], 'timeout': 300},
+    {'job': 'openalex',         'connector': 'openalex',        'window_min': 6, 'window_max': 24, 'max_results': 30, 'max_per_query': 40,  'extra_args': ['--published-only'], 'timeout': 300},
+    {'job': 'semanticscholar',  'connector': 'semanticscholar', 'window_min': 6, 'window_max': 24, 'max_results': 30, 'max_per_query': 40,  'extra_args': ['--published-only'], 'timeout': 300},
     # openreview iterates ~20k notes per venue × 3 venues; cannot early-stop on broad queries.
-    # Per-query cost is 2-5 min; bumped to 600s to let multi-query batches finish.
-    'openreview':      {'window_min': 0, 'window_max': 6,  'max_results': 10, 'max_per_query': 50,  'extra_args': [], 'timeout': 600},
-}
+    # Per-query cost is 2-5 min; 600s lets multi-query batches finish. Smallest cap: slowest
+    # connector, in-review (unrefereed) quality, and ML submissions mostly mirror to arXiv anyway.
+    {'job': 'openreview',       'connector': 'openreview',      'window_min': 0, 'window_max': 6,  'max_results': 10, 'max_per_query': 50,  'extra_args': [], 'timeout': 600},
+]
+
+
+def _resolve_pool_caps():
+    """Per-job max_results, with IDEASPARK_POOL env overrides.
+
+    IDEASPARK_POOL="job=N,job=N,..." (e.g. "arxiv=18,ss_recent=15,oa_recent=6").
+    Unknown job names raise; a job set to 0 is skipped entirely (this is how
+    oa_recent stays off by default and how a user turns it on per run). Missing
+    jobs keep their PHASE0_RETRIEVAL_JOBS default. Fail-fast: a malformed value
+    aborts Phase 0 rather than silently retrieving a wrong-sized pool.
+    """
+    caps = {j['job']: j['max_results'] for j in PHASE0_RETRIEVAL_JOBS}
+    raw = os.environ.get('IDEASPARK_POOL', '').strip()
+    if not raw:
+        return caps
+    for tok in raw.split(','):
+        tok = tok.strip()
+        if not tok:
+            continue
+        if '=' not in tok:
+            raise ValueError(f"IDEASPARK_POOL entry {tok!r} must be job=N")
+        job, val = (s.strip() for s in tok.split('=', 1))
+        if job not in caps:
+            raise ValueError(f"IDEASPARK_POOL unknown job {job!r}; valid: {sorted(caps)}")
+        try:
+            n = int(val)
+        except ValueError as e:
+            raise ValueError(f"IDEASPARK_POOL {job}={val!r} must be a non-negative integer") from e
+        if n < 0:
+            raise ValueError(f"IDEASPARK_POOL {job}={n} must be >= 0")
+        caps[job] = n
+    return caps
 
 # Phase 3.1 collision retrieval windows (months). Two channels:
 #   - signature channel: the candidate's OWN vocabulary (signature_terms) over a
@@ -397,11 +437,67 @@ def assert_sane_now() -> datetime:
 
 # --- Phase 0 orchestrator --------------------------------------------------
 
+# Cross-run retrieval cache: a Phase 0 re-run otherwise re-hammers all four APIs
+# (three runs inside ~15 min rate-limited arXiv AND Semantic Scholar to zero).
+# Keyed on everything that changes the result set, so any real change misses.
+# Short TTL because the windows are relative to the clock. Successful NON-EMPTY
+# results only — caching a throttled `[]` would persist one bad minute for a day.
+# Disable with IDEASPARK_RETRIEVAL_CACHE=off; set it to a path to relocate.
+_RETRIEVAL_CACHE_TTL_S = int(os.environ.get('IDEASPARK_RETRIEVAL_CACHE_TTL_S', 24 * 3600))
+
+
+def _retrieval_cache_dir():
+    loc = os.environ.get('IDEASPARK_RETRIEVAL_CACHE', '').strip()
+    if loc.lower() == 'off':
+        return None
+    return Path(loc) if loc else Path.home() / '.cache' / 'ideaspark' / 'retrieval'
+
+
+# Bump when the connector RECORD SCHEMA changes. The key must version the schema, not
+# just the request: after `from_query` provenance was added, a same-day cache hit would
+# otherwise have served pre-provenance records and the per-query yield report would have
+# reported them as '(unattributed)' with no indication anything was stale.
+_RETRIEVAL_CACHE_SCHEMA = 2
+
+
+def _retrieval_cache_key(module_path: str, queries_json: str, window_min_months: int,
+                         window_max_months: int, max_results: int, max_per_query: int,
+                         extra_args, as_of: str) -> str:
+    import hashlib
+    payload = json.dumps([_RETRIEVAL_CACHE_SCHEMA,
+                          module_path, queries_json, window_min_months, window_max_months,
+                          max_results, max_per_query, sorted(extra_args or []), as_of],
+                         sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()[:32]
+
+
 def run_connector_subprocess(module_path: str, queries_json: str, window_max_months: int,
                              out_path: Path, label: str, timeout: int = 300,
                              window_min_months: int = 0, max_results: int = 0,
                              max_per_query: int = 0, extra_args: list[str] | None = None,
                              as_of: str = '') -> bool:
+    # Cache hit? Serve the stored records instead of re-hitting the API.
+    _cdir = _retrieval_cache_dir()
+    _ckey = _retrieval_cache_key(module_path, queries_json, window_min_months,
+                                 window_max_months, max_results, max_per_query,
+                                 extra_args, as_of) if _cdir else None
+    _cfile = (_cdir / f'{_ckey}.json') if _cdir else None
+    if _cfile is not None and _cfile.exists():
+        try:
+            if (time.time() - _cfile.stat().st_mtime) <= _RETRIEVAL_CACHE_TTL_S:
+                _body = _cfile.read_text()
+                _recs = json.loads(_body)
+                if isinstance(_recs, list) and _recs:
+                    out_path.parent.mkdir(parents=True, exist_ok=True)
+                    out_path.write_text(_body)
+                    _age_h = (time.time() - _cfile.stat().st_mtime) / 3600
+                    print(f'  [{label}] {len(_recs)} records from the retrieval cache '
+                          f'({_age_h:.1f}h old; IDEASPARK_RETRIEVAL_CACHE=off to bypass)',
+                          file=sys.stderr)
+                    return True
+        except Exception:
+            pass  # a cache is an accelerator, never a failure source
+
     # Resolve out_path to absolute — subprocess runs with cwd=SUB (the skill root),
     # so relative paths from the skill's invocation site would resolve against
     # the wrong directory and the connector would fail at write time.
@@ -430,6 +526,25 @@ def run_connector_subprocess(module_path: str, queries_json: str, window_max_mon
         if not out_path.exists() or out_path.stat().st_size == 0:
             print(f'  [{label}] produced empty output', file=sys.stderr)
             return False
+        # Surface the connector's own progress lines on SUCCESS too. They were only
+        # printed on rc != 0, so every diagnostic a healthy connector emits — the
+        # round-robin merge stats, per-query yields, OpenAlex's semantic-booster
+        # report — was captured and discarded, and the operator saw a bare paper
+        # count with no way to tell WHICH query earned it.
+        if r.stderr.strip():
+            for _line in r.stderr.strip().splitlines():
+                print(f'  {_line}', file=sys.stderr)
+        # Cache successful, NON-EMPTY results only: a throttled `[]` cached for a
+        # day would turn one bad minute into a day of silently-thin corpora.
+        if _cfile is not None:
+            try:
+                _body = out_path.read_text()
+                _recs = json.loads(_body)
+                if isinstance(_recs, list) and _recs:
+                    _cdir.mkdir(parents=True, exist_ok=True)
+                    _cfile.write_text(_body)
+            except Exception:
+                pass
         return True
     except subprocess.TimeoutExpired:
         print(f'  [{label}] timed out after {timeout}s', file=sys.stderr)
@@ -548,43 +663,149 @@ def cmd_phase0(args) -> int:
               'Phase 0 cannot proceed.', file=sys.stderr)
         return 2
 
-    # Step 3: run each available connector in its role-specific time window.
-    # See PHASE0_CONNECTOR_CONFIG for the per-connector window + cap rationale.
+    # Step 3: run each retrieval JOB in its window (a connector may run >1 job).
+    # See PHASE0_RETRIEVAL_JOBS for the per-window role + cap rationale.
+    try:
+        pool_caps = _resolve_pool_caps()
+    except ValueError as e:
+        print(f'ERROR: {e}', file=sys.stderr)
+        return 2
+    module_of = {label: mp for label, mp in available}
     queries_json = json.dumps(queries)
-    hits_files = []
-    successes = []
-    for label, module_path in available:
-        cfg = PHASE0_CONNECTOR_CONFIG.get(label)
-        if cfg is None:
-            print(f'  [skip] {label}: no PHASE0_CONNECTOR_CONFIG entry', file=sys.stderr)
-            continue
-        out_path = out_dir / f'{label}_phase0.json'
-        extra_args = list(cfg.get('extra_args', []))
+    hits_files = []            # list of (out_path, connector_label) for dedup priority
+    successes = []             # connector labels that returned hits (for coverage checks)
+    zero_yield = []            # jobs that ran cleanly but returned 0 records (throttling, usually)
+    # Window-sibling compensation: if a job contributes nothing, the survivor
+    # covering the SAME window absorbs its cap (<=2x, so one engine cannot balloon
+    # the pool past what the partition can triage). See the dual-engine note below.
+    dead_by_window: dict = {}
+    for jobcfg in PHASE0_RETRIEVAL_JOBS:
+        job = jobcfg['job']
+        connector = jobcfg['connector']
+        cap = pool_caps[job]
+        if cap <= 0:
+            continue           # job disabled (e.g. oa_recent default 0)
+        _wkey = (jobcfg['window_min'], jobcfg['window_max'])
+        _dead = dead_by_window.get(_wkey)
+        if _dead:
+            _bonus = min(sum(c for _n, c in _dead), cap)   # <= 2x this job's own cap
+            print(f'  [{job}] absorbing +{_bonus} from failed same-window job(s) '
+                  f'{", ".join(n for n, _c in _dead)} — window '
+                  f'{_wkey[0]}-{_wkey[1]}mo would otherwise be under-covered',
+                  file=sys.stderr)
+            cap += _bonus
+            dead_by_window[_wkey] = []
+        module_path = module_of.get(connector)
+        if module_path is None:
+            continue           # connector unavailable; other jobs carry on
+        out_path = out_dir / f'{job}_phase0.json'
+        extra_args = list(jobcfg.get('extra_args', []))
         # Semantic recall booster for OpenAlex only (the one connector with a working semantic-search
         # endpoint). ON by default: it adds conceptually-adjacent papers BM25 misses, field-gated to
         # the BM25 pool's home field(s), and is safe in Phase 0 because Phase 0 queries are topical.
         # A CLI flag the host LLM would have to opt into is effectively dead (the LLM won't flip it),
         # so the useful behavior is the default; --no-openalex-semantic is a human escape hatch.
         # Bump the connector timeout because the semantic endpoint is rate-limited to 1 req/s.
-        timeout = cfg.get('timeout', 300)
-        if not getattr(args, 'no_openalex_semantic', False) and label == 'openalex':
+        timeout = jobcfg.get('timeout', 300)
+        if not getattr(args, 'no_openalex_semantic', False) and connector == 'openalex':
             extra_args = extra_args + ['--with-semantic']
             timeout = max(timeout, 600)
-        ok = run_connector_subprocess(
-            module_path, queries_json,
-            window_max_months=cfg['window_max'],
-            out_path=out_path,
-            label=f'{label}_{cfg["window_min"]}-{cfg["window_max"]}mo',
-            window_min_months=cfg['window_min'],
-            max_results=cfg['max_results'],
-            max_per_query=cfg.get('max_per_query', 0),
-            extra_args=extra_args,
-            timeout=timeout,
-            as_of=as_of,
-        )
-        if ok:
-            hits_files.append(out_path)
-            successes.append(label)
+        def _run_job(_timeout):
+            return run_connector_subprocess(
+                module_path, queries_json,
+                window_max_months=jobcfg['window_max'],
+                out_path=out_path,
+                label=f'{job}_{jobcfg["window_min"]}-{jobcfg["window_max"]}mo',
+                window_min_months=jobcfg['window_min'],
+                max_results=cap,
+                max_per_query=jobcfg.get('max_per_query', 0),
+                extra_args=extra_args,
+                timeout=_timeout,
+                as_of=as_of,
+            )
+
+        def _yield_of() -> int:
+            # rc=0 + a non-empty FILE != records returned: a throttled connector
+            # writes a valid `[]`. -1 = unparseable; let dedup surface that.
+            try:
+                _recs = json.loads(out_path.read_text())
+                if isinstance(_recs, dict):
+                    _recs = _recs.get('results') or _recs.get('papers') or _recs.get('hits') or []
+                return len(_recs)
+            except Exception:
+                return -1
+
+        ok = _run_job(timeout)
+        n_rec = _yield_of() if ok else 0
+        # One bounded retry, on EITHER failure mode — a lost connector costs the run
+        # its whole contribution, and the usual causes clear in seconds (a query that
+        # timed out at 300s returned in 1.8s minutes later). Zero-yield MUST be covered:
+        # throttled connectors return rc=0 with `[]`, so an rc-keyed retry would miss
+        # the exact case it exists for.
+        if not ok or n_rec == 0:
+            _why = 'failed' if not ok else 'returned 0 records'
+            _pause = float(os.environ.get('IDEASPARK_RETRY_PAUSE_S', '45'))
+            print(f'  [{job}] {_why}; retrying once in {_pause:.0f}s with a '
+                  f'{int(timeout * 1.5)}s budget (a lost connector costs the whole run '
+                  f'its contribution)', file=sys.stderr)
+            time.sleep(_pause)
+            ok = _run_job(int(timeout * 1.5))
+            n_rec = _yield_of() if ok else 0
+            if ok and n_rec != 0:
+                print(f'  [{job}] retry succeeded ({n_rec} records)', file=sys.stderr)
+
+        if not ok or n_rec == 0:
+            if ok:      # ran cleanly but yielded nothing
+                zero_yield.append(job)
+                print(f'  [{job}] still 0 records after one retry (connector ran but '
+                      f'yielded nothing — usually rate-limiting/throttling, or a window '
+                      f'with no matches). NOT counted as a working source.', file=sys.stderr)
+            dead_by_window.setdefault(_wkey, []).append((job, cap))
+            continue
+
+        hits_files.append((out_path, connector))
+        if connector not in successes:
+            successes.append(connector)
+
+    # Second compensation pass: the in-loop absorption only fires when the dead job
+    # runs BEFORE its window sibling. Re-run the survivor of any window still holding
+    # an unclaimed dead cap, at its own cap plus the dead one (<=2x, same ceiling).
+    for _wkey, _dead in list(dead_by_window.items()):
+        if not _dead:
+            continue
+        _survivor = next((j for j in PHASE0_RETRIEVAL_JOBS
+                          if (j['window_min'], j['window_max']) == _wkey
+                          and j['connector'] in successes
+                          and pool_caps.get(j['job'], 0) > 0
+                          and j['job'] not in [n for n, _c in _dead]), None)
+        if _survivor is None:
+            continue
+        _own = pool_caps[_survivor['job']]
+        _bonus = min(sum(c for _n, c in _dead), _own)
+        _sjob = _survivor['job']
+        print(f'  [{_sjob}] re-running with +{_bonus} absorbed from failed same-window '
+              f'job(s) {", ".join(n for n, _c in _dead)} — window {_wkey[0]}-{_wkey[1]}mo '
+              f'is otherwise under-covered', file=sys.stderr)
+        _sout = out_dir / f'{_sjob}_phase0.json'
+        _sextra = list(_survivor.get('extra_args', []))
+        _stimeout = _survivor.get('timeout', 300)
+        if not getattr(args, 'no_openalex_semantic', False) and _survivor['connector'] == 'openalex':
+            _sextra = _sextra + ['--with-semantic']
+            _stimeout = max(_stimeout, 600)
+        if run_connector_subprocess(
+                module_of[_survivor['connector']], queries_json,
+                window_max_months=_survivor['window_max'], out_path=_sout,
+                label=f'{_sjob}_compensated', window_min_months=_survivor['window_min'],
+                max_results=_own + _bonus, max_per_query=_survivor.get('max_per_query', 0),
+                extra_args=_sextra, timeout=_stimeout, as_of=as_of):
+            dead_by_window[_wkey] = []
+
+    if zero_yield:
+        print(f'\nWARNING: {len(zero_yield)} retrieval job(s) returned 0 records: '
+              f'{", ".join(zero_yield)}. The corpus is SMALLER than the configured caps imply. '
+              f'Back-to-back Phase 0 runs are the usual cause (arXiv + Semantic Scholar both '
+              f'throttle); wait a few minutes and re-run if a whole source is missing.',
+              file=sys.stderr)
 
     if not hits_files:
         print('\nERROR: connectors probed OK but all retrieval calls failed.\n'
@@ -602,10 +823,12 @@ def cmd_phase0(args) -> int:
               f'6-24mo peer-reviewed window is empty. Phase 1 will see preprint-only evidence.',
               file=sys.stderr)
 
-    # Step 4: dedup_merge with priority-aware ordering. We pass hits_files in priority order
-    # (highest-priority connector first) so that dedup_merge's first-wins semantics keep
-    # the highest-priority record for any cross-source duplicate.
-    hits_files_sorted = sorted(hits_files, key=lambda p: -DEDUP_PRIORITY.get(p.stem.replace('_phase0', ''), 0))
+    # Step 4: dedup_merge with priority-aware ordering. hits_files is (path, connector);
+    # sort by the CONNECTOR's dedup priority (not the job/filename) so overlapping windows
+    # of the same connector, and cross-connector duplicates, keep the highest-priority
+    # record. Ties (same connector, two windows) preserve list order = recency-first.
+    hits_files_sorted = [p for p, _c in
+                         sorted(hits_files, key=lambda pc: -DEDUP_PRIORITY.get(pc[1], 0))]
     merged_out = out_dir / 'lit_results.json'
     dedup_cmd = [sys.executable, '-m', 'scripts.dedup_merge', '--inputs'] + [str(f) for f in hits_files_sorted] + ['--out', str(merged_out)]
     r = subprocess.run(dedup_cmd, cwd=str(SUB), capture_output=True, text=True, timeout=120)
@@ -773,9 +996,10 @@ def cmd_phase3_collision(args) -> int:
         files = []
         for label, module_path in available:
             out_path = out_dir / f'{label}_{suffix}.json'
-            # Inherit per-connector timeout from PHASE0_CONNECTOR_CONFIG (notably: openreview
-            # gets 600s, since iterate-notes cost is the same in collision retrieval).
-            timeout = PHASE0_CONNECTOR_CONFIG.get(label, {}).get('timeout', 300)
+            # Per-connector timeout = max over that connector's Phase 0 jobs (notably:
+            # openreview gets 600s, since iterate-notes cost is the same in collision).
+            timeout = max([j['timeout'] for j in PHASE0_RETRIEVAL_JOBS
+                           if j['connector'] == label] or [300])
             if run_connector_subprocess(module_path, queries_json, window_months, out_path,
                                         f'{label}_{suffix}_{window_months}mo',
                                         timeout=timeout, as_of=as_of):
@@ -930,6 +1154,17 @@ def _write_fulltext_split(out_dir: Path, cache: dict, lit_results: list) -> None
         pid = p.get('paper_id') or p.get('id')
         if pid:
             titles[pid] = p.get('title') or ''
+    # A U-tier user ref is SYNTHETIC — never in lit_results, so the loop above cannot
+    # name it and its index row rendered untitled. That row is usually the anchor the
+    # user named, and Phase 1 picks what to open off this index, so label it.
+    for pid in cache:
+        if titles.get(pid):
+            continue
+        if str(pid).startswith('user_ref:'):
+            _val = str(pid).split(':', 2)[-1]
+            titles[pid] = f'[user-supplied anchor] {_val}'
+        elif pid not in titles:
+            titles[pid] = ''
     split_dir = out_dir / 'fulltext'
     split_dir.mkdir(parents=True, exist_ok=True)
     for old in split_dir.glob('*.md'):  # exact mirror: drop leftovers from a prior, larger cache
@@ -1015,11 +1250,14 @@ def main():
                              'Run AFTER lit_table.md is written by the host LLM. '
                              'Produces outputs/<phase0>/fulltext_cache.json.')
     pf.add_argument('--out', default='outputs/phase0', help='Phase 0 output dir (must contain lit_results.json + lit_table.md + user_refs.json from prior `phase0` run)')
-    pf.add_argument('--t3-top', type=int, default=5, help='How many top arxiv papers go into T3 (default 5)')
-    pf.add_argument('--t2-top', type=int, default=10, help='How many top published-source papers go into T2 (default 10)')
-    pf.add_argument('--max-pool', type=int, default=15, help='Hard ceiling on total fetches excluding user refs (default 15)')
+    pf.add_argument('--t3-top', type=int, default=15, help='Max arxiv (recent) papers into T3 (default 15; absorbs unused H/T2 slots up to --max-pool)')
+    pf.add_argument('--t2-top', type=int, default=10, help='Max published-source papers into T2 (default 10)')
+    pf.add_argument('--h-top', type=int, default=6, help='Max host-recall (retrieved_via host_*) papers into H (default 6)')
+    pf.add_argument('--max-pool', type=int, default=25, help='Hard ceiling on total fetches excluding user refs (default 25)')
+    pf.add_argument('--backfill', type=int, default=6, help='Reserve size: method-empty extractions are swapped for this many next-ranked core candidates (default 6; 0 disables)')
     def _cmd_phase0_fulltext(args):
-        from scripts.fetch_sections import select_candidate_pool, fetch_pool, reconcile_lit_table_ids
+        from scripts.fetch_sections import (select_candidate_pool, fetch_pool,
+                                            fetch_sections, reconcile_lit_table_ids)
         out_dir = Path(args.out).resolve()
         lit_results_path = out_dir / 'lit_results.json'
         lit_table_path = out_dir / 'lit_table.md'
@@ -1046,11 +1284,12 @@ def main():
 
         pool = select_candidate_pool(lit_results, lit_table_path if lit_table_path.exists() else None,
                                      user_refs, t3_top_n=args.t3_top, t2_top_n=args.t2_top,
-                                     max_pool=args.max_pool)
+                                     max_pool=args.max_pool, h_top_n=args.h_top)
         n_u = sum(1 for p in pool if p['_tier'] == 'U')
+        n_h = sum(1 for p in pool if p['_tier'] == 'H')
         n_t2 = sum(1 for p in pool if p['_tier'] == 'T2')
         n_t3 = sum(1 for p in pool if p['_tier'] == 'T3')
-        print(f'[phase0_fulltext] candidate pool: {len(pool)} papers ({n_u} U + {n_t2} T2 + {n_t3} T3)', file=sys.stderr)
+        print(f'[phase0_fulltext] candidate pool: {len(pool)} papers ({n_u} U + {n_h} H + {n_t2} T2 + {n_t3} T3)', file=sys.stderr)
 
         def _log(done, total, p, sections):
             pid = p.get('paper_id') or p.get('id') or 'unknown'
@@ -1060,6 +1299,47 @@ def main():
             print(f'  [{done}/{total}] {p["_tier"]} {pid} {ok:5} {status:25} {title}', file=sys.stderr)
 
         cache = fetch_pool(pool, on_done=_log)
+
+        # --- Backfill: swap method-empty extractions for next-ranked core reserves ---
+        # A pooled paper that fetches to an empty method section (paywalled HTML,
+        # non-arXiv landing page, extraction miss) wastes a deep-read slot without
+        # informing the bottleneck. Reclaim it: pull the next-ranked core candidates
+        # (a bigger select minus the papers already pooled) and fetch them in
+        # priority order, swapping each method-bearing reserve in for one empty. U
+        # (user refs) are never dropped. Final cache stays <= max_pool (one-out-one-in).
+        def _has_method(v):
+            return bool((v.get('method') or '').strip())
+        empties = [pid for pid, v in cache.items() if v.get('tier') != 'U' and not _has_method(v)]
+        if getattr(args, 'backfill', 0) > 0 and empties:
+            pool_ids = {p.get('paper_id') or p.get('id') for p in pool}
+            big = select_candidate_pool(lit_results, lit_table_path if lit_table_path.exists() else None,
+                                        user_refs, t3_top_n=args.t3_top + args.backfill,
+                                        t2_top_n=args.t2_top + args.backfill,
+                                        max_pool=args.max_pool + args.backfill, h_top_n=args.h_top)
+            reserve = [p for p in big if (p.get('paper_id') or p.get('id')) not in pool_ids]
+            r_iter = iter(reserve)
+            swapped = 0
+            for empty_pid in empties:
+                filled = False
+                while not filled:
+                    r = next(r_iter, None)
+                    if r is None:
+                        break
+                    rpid = r.get('paper_id') or r.get('id') or ''
+                    if rpid in cache:
+                        continue
+                    rsec = fetch_sections(r)
+                    if _has_method(rsec):
+                        del cache[empty_pid]
+                        cache[rpid] = {'tier': r['_tier'], **rsec}
+                        swapped += 1
+                        filled = True
+                        print(f'  [backfill] {r["_tier"]} swapped in for empty {empty_pid}: '
+                              f'{(r.get("title") or "")[:70]}', file=sys.stderr)
+                if not filled:
+                    break  # reserve exhausted; keep remaining empties as-is
+            if swapped:
+                print(f'  [backfill] {swapped} empty extraction(s) replaced', file=sys.stderr)
 
         cache_path = out_dir / 'fulltext_cache.json'
         cache_path.write_text(json.dumps(cache, indent=2, ensure_ascii=False))
@@ -1167,10 +1447,23 @@ def main():
         print(f'[phase2_prepare] wrote {out} ({len(matched)}/{len(ca_ids)} closest_adjacent papers)', file=sys.stderr)
         if missing:
             # Slice must never silently narrow the contract: surface the gap so the
-            # 2.2 sub-agent knows to pull these ids from lit_results.json itself.
-            print(f'[phase2_prepare] WARN {len(missing)} closest_adjacent id(s) not found in lit_results.json: '
-                  f'{", ".join(missing)} — the Phase 2.2 agent must look these up in lit_results.json directly',
-                  file=sys.stderr)
+            # 2.2 sub-agent knows where to pull these ids from. Split the advice —
+            # a `user_ref:` id is a SYNTHETIC record that never entered lit_results,
+            # so telling the agent to look there sends it somewhere the paper is not.
+            # It lives only in the deep-read view, and it is typically the ANCHOR the
+            # user explicitly named, i.e. the worst possible one to lose.
+            _uref = [m for m in missing if str(m).startswith('user_ref:')]
+            _other = [m for m in missing if not str(m).startswith('user_ref:')]
+            if _other:
+                print(f'[phase2_prepare] WARN {len(_other)} closest_adjacent id(s) not found in '
+                      f'lit_results.json: {", ".join(_other)} — the Phase 2.2 agent must look these '
+                      f'up in lit_results.json directly', file=sys.stderr)
+            if _uref:
+                print(f'[phase2_prepare] NOTE {len(_uref)} closest_adjacent id(s) are USER REFS and are '
+                      f'not lit_results records by design: {", ".join(_uref)} — the Phase 2.2 agent must '
+                      f'read them from the deep-read view instead ({d}/phase0/fulltext/index.json, then '
+                      f'the entry\'s .md file). A user ref is usually the anchor, so do not skip it.',
+                      file=sys.stderr)
         return 0
     p2p.set_defaults(func=_cmd_phase2_prepare)
 
@@ -1344,10 +1637,14 @@ def main():
     pas.add_argument('--out', required=True, help='Output dir for phase4_expansion.json.')
     def _cmd_phase4_assemble(args):
         from scripts.phase4_skeleton import assemble_expansion
+        from scripts.json_repair import load_llm_json
         skeleton = json.loads(Path(args.skeleton).resolve().read_text())
         fill_map: dict = {}
         for fm_path in args.fill_map:
-            fm = json.loads(Path(fm_path).resolve().read_text())
+            # fill maps are LLM-written: a stray ASCII quote inside CJK prose
+            # ("评级短语"重复毫无价值"有多准确") terminates the string early and
+            # kills the assemble. Repair-on-read, reported on stderr.
+            fm = load_llm_json(Path(fm_path).resolve())
             if not isinstance(fm, dict):
                 print(f'ERROR: fill_map JSON must be an object {{path: value}}, got '
                       f'{type(fm).__name__} in {fm_path}', file=sys.stderr)
@@ -1574,6 +1871,264 @@ def main():
         return 0
     pu.set_defaults(func=_cmd_add_user_ref)
 
+    ph = sub.add_parser('add_host_refs',
+                        help='Resolve host-nominated "missing" papers (Phase 0.5 coverage check) '
+                             'into real records via the connectors and merge them into '
+                             'lit_results.json with retrieved_via=host_recall|host_web. Each '
+                             'nomination is VERIFIED by a connector lookup — an unresolvable '
+                             'title (likely a hallucination) is NOT admitted, it is logged to '
+                             'host_refs_unresolved.md. Deterministic; keeps lit_grounding_mode real.')
+    ph.add_argument('--out', required=True, help='Phase 0 output dir (must contain lit_results.json)')
+    ph.add_argument('--refs', required=True,
+                    help='Path to a JSON file OR a JSON literal: a list of '
+                         '{title, id_hint?, why?, source: parametric|websearch}')
+    def _cmd_add_host_refs(args):
+        import difflib
+        out_dir = Path(args.out).resolve()
+        lit_path = out_dir / 'lit_results.json'
+        if not lit_path.exists():
+            print(f'error: {lit_path} not found — run `phase0` first', file=sys.stderr)
+            return 1
+        try:
+            refs = json.loads(Path(args.refs).read_text()) if Path(args.refs).exists() \
+                else json.loads(args.refs)
+        except Exception as e:
+            print(f'error: could not parse --refs ({e})', file=sys.stderr)
+            return 2
+        if not isinstance(refs, list):
+            print('error: --refs must be a JSON list', file=sys.stderr)
+            return 2
+
+        lit = json.loads(lit_path.read_text())
+        papers = lit['papers'] if isinstance(lit, dict) and 'papers' in lit else lit
+
+        def _tnorm(s):
+            return ' '.join(''.join(c.lower() if c.isalnum() else ' ' for c in (s or '')).split())
+
+        def _ax(s):  # version-stripped arxiv id
+            s = re.sub(r'^arxiv:', '', (s or '').strip().lower())
+            return re.sub(r'v\d+$', '', s)
+
+        # Index existing corpus for the already-present check.
+        have_titles = {_tnorm(p.get('title')) for p in papers}
+        have_ax = {_ax(p.get('arxiv_id')) for p in papers if p.get('arxiv_id')}
+        have_doi = {(p.get('doi') or '').lower() for p in papers if p.get('doi')}
+
+        try:
+            from scripts.search_semanticscholar import search as ss_search
+        except Exception:
+            ss_search = None
+        try:
+            from scripts.search_arxiv import search as ax_search
+        except Exception:
+            ax_search = None
+
+        def _resolve(title):
+            """Return a real connector record whose title matches `title` (>=0.9), or None."""
+            tkey = _tnorm(title)
+            candidates = []
+            if ss_search:
+                try:
+                    candidates += ss_search(title, since_year=2000, max_results=5) or []
+                except Exception as e:
+                    print(f'  [ss lookup failed for {title!r}: {e}]', file=sys.stderr)
+            if ax_search:
+                try:
+                    candidates += ax_search(title, max_results=5) or []
+                except Exception as e:
+                    print(f'  [arxiv lookup failed for {title!r}: {e}]', file=sys.stderr)
+            best, best_r = None, 0.0
+            for c in candidates:
+                r = difflib.SequenceMatcher(None, tkey, _tnorm(c.get('title'))).ratio()
+                if r > best_r:
+                    best, best_r = c, r
+            return best if best_r >= 0.9 else None
+
+        added, already, unresolved = [], [], []
+        for ref in refs:
+            title = (ref.get('title') or '').strip()
+            if not title:
+                continue
+            via = 'host_web' if ref.get('source') == 'websearch' else 'host_recall'
+            rec = _resolve(title)
+            if rec is None:
+                unresolved.append({'title': title, 'why': ref.get('why', ''),
+                                   'id_hint': ref.get('id_hint', '')})
+                continue
+            if (_tnorm(rec.get('title')) in have_titles
+                    or (rec.get('arxiv_id') and _ax(rec.get('arxiv_id')) in have_ax)
+                    or (rec.get('doi') and (rec.get('doi') or '').lower() in have_doi)):
+                already.append(title)
+                continue
+            rec = dict(rec)
+            rec['retrieved_via'] = via
+            rec['host_why'] = ref.get('why', '')
+            # Carry the nomination's own relevance verdict so the deep-read gate
+            # can treat a host-nominated recent mechanism paper (core) differently
+            # from a host-nominated foundational baseline (adjacent, cited but not
+            # deep-read). Absent field defaults to core (deliberate load-bearing pick).
+            rel = str(ref.get('relevance') or 'core').lower()
+            rec['relevance'] = rel if rel in ('core', 'adjacent', 'off_topic') else 'core'
+            # dedup_merge assigns paper_id during phase0, BEFORE these records exist.
+            # SS records carry their own; arXiv-resolved ones do not, and a None id
+            # keys the deep-read index `unknown_N` — unjoinable, so uncitable.
+            if not rec.get('paper_id'):
+                _src, _sid = rec.get('source'), rec.get('source_id')
+                if _src and _sid:
+                    rec['paper_id'] = f'{_src}:{_sid}'
+                elif rec.get('arxiv_id'):
+                    rec['paper_id'] = f'arxiv:{rec["arxiv_id"]}'
+                elif rec.get('doi'):
+                    rec['paper_id'] = f'doi:{rec["doi"]}'
+            papers.append(rec)
+            have_titles.add(_tnorm(rec.get('title')))
+            if rec.get('arxiv_id'):
+                have_ax.add(_ax(rec.get('arxiv_id')))
+            added.append(rec)
+
+        # Persist merged corpus (preserve the original list/dict envelope shape).
+        if isinstance(lit, dict) and 'papers' in lit:
+            lit['papers'] = papers
+            lit_path.write_text(json.dumps(lit, ensure_ascii=False, indent=2))
+        else:
+            lit_path.write_text(json.dumps(papers, ensure_ascii=False, indent=2))
+
+        # host_refs.json: ids of admitted refs (for downstream provenance/inspection).
+        (out_dir / 'host_refs.json').write_text(json.dumps(
+            [{'paper_id': r.get('paper_id'), 'title': r.get('title'),
+              'retrieved_via': r.get('retrieved_via'), 'why': r.get('host_why', '')}
+             for r in added], ensure_ascii=False, indent=2))
+
+        if unresolved:
+            lines = ['# Host-nominated papers that did NOT resolve to a real record',
+                     '', 'These titles could not be verified via any connector and were NOT '
+                     'admitted to the corpus (a likely hallucination or a title too garbled to '
+                     'match). Review manually if any is genuinely important.', '']
+            for u in unresolved:
+                lines.append(f"- **{u['title']}**" + (f" (id_hint: {u['id_hint']})" if u['id_hint'] else ''))
+                if u['why']:
+                    lines.append(f"  - why nominated: {u['why']}")
+            (out_dir / 'host_refs_unresolved.md').write_text('\n'.join(lines) + '\n')
+
+        print(f'[add_host_refs] admitted {len(added)} (verified) · '
+              f'{len(already)} already in corpus · {len(unresolved)} UNRESOLVED '
+              f'(see host_refs_unresolved.md)', file=sys.stderr)
+        for r in added:
+            print(f'  + {r.get("retrieved_via")}: {r.get("title","")[:70]}', file=sys.stderr)
+        for u in unresolved:
+            print(f'  ✗ unresolved: {u["title"][:70]}', file=sys.stderr)
+        return 0
+    ph.set_defaults(func=_cmd_add_host_refs)
+
+    pap = sub.add_parser('apply_partition',
+                         help='Apply the host relevance-partition (Phase 0.4): stamp each '
+                              'lit_results record with relevance=core|adjacent|off_topic from '
+                              'relevance_partition.json, ARCHIVE off_topic records to off_topic.md '
+                              'and drop them from the gap corpus, then write lit_results back. '
+                              'Deterministic + idempotent (off_topic already removed on re-run).')
+    pap.add_argument('--out', required=True, help='Phase 0 output dir (must contain lit_results.json)')
+    pap.add_argument('--partition', required=True,
+                     help='Path to relevance_partition.json: a list of '
+                          '{paper_id, relevance: core|adjacent|off_topic, reason?}')
+    def _cmd_apply_partition(args):
+        out_dir = Path(args.out).resolve()
+        lit_path = out_dir / 'lit_results.json'
+        if not lit_path.exists():
+            print(f'error: {lit_path} not found — run `phase0` first', file=sys.stderr)
+            return 1
+        try:
+            part = json.loads(Path(args.partition).read_text())
+        except Exception as e:
+            print(f'error: could not parse --partition ({e})', file=sys.stderr)
+            return 2
+        if not isinstance(part, list):
+            print('error: --partition must be a JSON list', file=sys.stderr)
+            return 2
+        # {paper_id -> relevance}. Unknown/blank labels default to core (never
+        # silently drop a paper on a garbled label).
+        rel_by_id, reason_by_id = {}, {}
+        for e in part:
+            pid = (e.get('paper_id') or e.get('id') or '').strip()
+            if not pid:
+                continue
+            rel = str(e.get('relevance') or 'core').lower()
+            rel_by_id[pid] = rel if rel in ('core', 'adjacent', 'off_topic') else 'core'
+            reason_by_id[pid] = (e.get('reason') or '').strip()
+
+        lit = json.loads(lit_path.read_text())
+        papers = lit['papers'] if isinstance(lit, dict) and 'papers' in lit else lit
+        kept, dropped = [], []
+        for p in papers:
+            pid = p.get('paper_id') or p.get('id') or ''
+            # A paper the partition never labeled (e.g. host refs added later, or a
+            # paper the host skipped) defaults to core so it is never lost here.
+            rel = rel_by_id.get(pid, p.get('relevance') or 'core')
+            p['relevance'] = rel
+            if rel == 'off_topic':
+                p['_off_topic_reason'] = reason_by_id.get(pid, '')
+                dropped.append(p)
+            else:
+                kept.append(p)
+
+        if isinstance(lit, dict) and 'papers' in lit:
+            lit['papers'] = kept
+            lit_path.write_text(json.dumps(lit, ensure_ascii=False, indent=2))
+        else:
+            lit_path.write_text(json.dumps(kept, ensure_ascii=False, indent=2))
+
+        # Archive dropped off_topic papers (visible, not deleted) — append so a
+        # re-run with a fresh partition never clobbers an earlier archive.
+        if dropped:
+            arch = out_dir / 'off_topic.md'
+            lines = [] if arch.exists() else [
+                '# Off-topic papers removed from the gap corpus (Phase 0.4 host partition)',
+                '', 'These were retrieved by a connector but the host judged them outside the '
+                'research direction (cross-domain "memory-augmented" false positives, surveys, '
+                'unrelated fields). They are archived here for transparency but do NOT feed Phase '
+                '1 or the deep-read pool.', '']
+            for p in dropped:
+                lines.append(f"- **{(p.get('title') or '')[:100]}** "
+                             f"(`{p.get('paper_id') or p.get('id') or '?'}`)")
+                r = p.get('_off_topic_reason')
+                if r:
+                    lines.append(f"  - {r}")
+            with arch.open('a') as f:
+                f.write('\n'.join(lines) + '\n')
+
+        n_core = sum(1 for p in kept if p.get('relevance') == 'core')
+        n_adj = sum(1 for p in kept if p.get('relevance') == 'adjacent')
+        print(f'[apply_partition] {n_core} core + {n_adj} adjacent kept · '
+              f'{len(dropped)} off_topic archived to off_topic.md', file=sys.stderr)
+
+        # --- Per-query yield report ---
+        # Join the relevance labels onto the connectors' `from_query` provenance — the
+        # only place both halves exist. Turns "is this query worth its slot?" into a
+        # per-run measurement instead of a judgement call.
+        from collections import Counter as _C
+        per_q: dict = {}
+        for p in papers:                      # kept + dropped, i.e. everything retrieved
+            for q in (p.get('from_query') or ['(unattributed)']):
+                per_q.setdefault(q, _C())[p.get('relevance', 'core')] += 1
+        if per_q and set(per_q) != {'(unattributed)'}:
+            lines = ['# Per-query yield (Phase 0.4 labels joined onto retrieval provenance)',
+                     '', 'A query whose share is mostly `off_topic` is spending guaranteed '
+                     'round-robin slots on noise — drop or rephrase it next run (see the '
+                     'VOCABULARY-OWNERSHIP TEST in references/intent-recognition.md). Papers '
+                     'reachable from several queries are credited to each.', '',
+                     '| query | core | adjacent | off_topic | on-topic share |',
+                     '|---|---|---|---|---|']
+            print('  per-query yield:', file=sys.stderr)
+            for q, c in sorted(per_q.items(), key=lambda kv: -sum(kv[1].values())):
+                tot = sum(c.values())
+                share = (c['core'] + c['adjacent']) / tot if tot else 0
+                lines.append(f"| {q} | {c['core']} | {c['adjacent']} | {c['off_topic']} | {share:.0%} |")
+                flag = '   <-- mostly noise' if share < 0.5 else ''
+                print(f"    {share:>4.0%} on-topic  ({c['core']}c/{c['adjacent']}a/"
+                      f"{c['off_topic']}x)  {q[:52]}{flag}", file=sys.stderr)
+            (out_dir / 'query_yield.md').write_text('\n'.join(lines) + '\n')
+        return 0
+    pap.set_defaults(func=_cmd_apply_partition)
+
     pn = sub.add_parser('next',
                         help='Run-state navigator: inspect the run dir\'s artifacts and print '
                              'EXACTLY the next step (a bash command, or an LLM sub-agent spec '
@@ -1601,7 +2156,7 @@ def main():
     for _attr in ('out', 'idea_json', 'expansion', 'implementability',
                   'phase1', 'phase2', 'phase3', 'phase4', 'phase4_impl',
                   'revisions', 'critique', 'candidate', 'phase2_select', 'phase3_critique',
-                  'phase3_revise', 'phase0_dir', 'collision',
+                  'phase3_revise', 'phase0_dir', 'collision', 'partition',
                   'skeleton', 'fill_map', 'dir'):
         _val = getattr(args, _attr, None)
         if _val:

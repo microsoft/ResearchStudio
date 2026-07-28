@@ -59,11 +59,27 @@ m_q, A_i). Natural Chinese prose, NOT a word-for-word translation.
 `{step_id, what_to_do, why_this_makes_sense}`. Preserve units / parameters / inputs / outputs;
 drop only the jargon framing fields (`linked_component`, `linked_falsification`).
 
-**`plain_method_modules_en`** and **`plain_method_modules_zh`** — group the CONTRIBUTION steps into
-named modules. Each entry: `{module_id, purpose_oneline, step_ids}`. Steps not claimed by ANY
-module are unchanged-scaffolding and render under a leading 'Background' bucket. Derive the module
-grouping from `method_flow` (its step titles and the modules implied by the technical prose); the
-same grouping must appear in both languages.
+**`plain_method_modules_en`** and **`plain_method_modules_zh`** — group the steps into named
+modules. Each entry: `{module_id, purpose_oneline, step_ids}`. Derive the grouping from
+`method_flow` (its step titles and the modules implied by the technical prose); the same grouping
+must appear in both languages.
+
+A method has THREE kinds of step, and the renderer floats anything named Background/scaffolding to
+the FRONT — so the split decides reading order, not just labels:
+
+1. **Pre-existing setup** the contribution is built ON — the frozen backbone, the planner, the data
+   pipeline, exposing an internal tensor. Leave these unclaimed (or name one module
+   `Background`): they belong first, because the reader cannot implement the contribution without
+   knowing what it attaches to. Keep them at FULL implementation detail — this bucket is what tells
+   an author what they are building on, so brevity here is a defect, not a virtue.
+2. **The contribution** — one module per coherent mechanism.
+3. **Validation apparatus** — ablation switches, control/baseline arms, evaluation protocol,
+   oracle measurements, estimator checks. These are NOT background: they are things you do AFTER
+   the mechanism exists, and they are unreadable before it. Give them their own trailing module
+   (e.g. `M<last>_validation`) so they render LAST. Never leave them unclaimed and never fold them
+   into a Background module — observed twice, and both times the renderer floated the entire
+   ablation-and-evaluation apparatus to the top of the Method, where it reads as prerequisite
+   setup the author must digest before reaching the idea.
 
 ## Hard rules
 

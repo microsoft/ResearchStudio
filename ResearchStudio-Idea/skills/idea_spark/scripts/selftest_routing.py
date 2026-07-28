@@ -31,6 +31,7 @@ Exit 0 = all green; 1 = at least one failure (details on stderr).
 """
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -404,6 +405,118 @@ def main() -> int:
         check('T12 unauthorized kill-switch edit refused',
               r.returncode != 0 and not (d / 'final_candidate.json').exists(),
               (r.stdout + r.stderr)[:300])
+
+        # ---- Phase 0.5 coverage-check routing (offline: fabricate intermediates) ----
+        def phase0_stage(dd):
+            """A run at 'lit_table written, no fulltext' — pre-coverage-check."""
+            wj(dd / 'phase0' / 'lit_results.json',
+               [{'paper_id': 'semanticscholar:aaa', 'title': 'A', 'source': 'semanticscholar',
+                 'retrieved_via': 'semanticscholar'}])
+            (dd / 'phase0' / 'lit_table.md').write_text(
+                '| paper_id | year_month | venue | title | ideation pattern tags | '
+                'bottleneck this paper targets | open issue / unresolved gap | '
+                'resolves_problem | retrieved_via |\n|---|---|---|---|---|---|---|---|---|\n'
+                '| semanticscholar:aaa | 2025-01 | arXiv.org | A | reframe_as_solvable_object | '
+                'b | g | — | semanticscholar |\n')
+            (dd / 'phase0' / '.lit_grounding_mode').write_text('real')
+
+        # P0 — a run dir that does not exist is a FRESH RUN, not an error.
+        # `next` is read-only; hosts that call it before mkdir (the natural reading
+        # of an inspect command) used to get rc=2 and abort the whole skill.
+        d = tmp / 'P0_missing' / 'never_created'
+        r = subprocess.run([sys.executable, str(RUN_PY), 'next', '--dir', str(d)],
+                           capture_output=True, text=True, timeout=120)
+        check('P0 missing run dir -> fresh-run emit, rc=0',
+              r.returncode == 0 and 'Fresh run' in r.stdout and 'phase0' in r.stdout
+              and not d.exists(), f'rc={r.returncode} ' + (r.stdout + r.stderr)[:300])
+
+        # ---- Phase 0.4 relevance-partition routing (before tagging) ----
+        def phase0_preTag(dd):
+            """A run right after retrieval: lit_results present, no lit_table yet."""
+            wj(dd / 'phase0' / 'lit_results.json',
+               [{'paper_id': 'semanticscholar:aaa', 'title': 'A', 'source': 'semanticscholar',
+                 'retrieved_via': 'semanticscholar', 'abstract': 'x'}])
+            (dd / 'phase0' / '.lit_grounding_mode').write_text('real')
+
+        # P1 — lit_results present, no partition file -> partition nomination emit
+        d = tmp / 'P1' / 'run'; phase0_preTag(d)
+        out = run_next(d)
+        check('P1 relevance partition emitted',
+              'relevance partition' in out and 'relevance_partition.json' in out
+              and 'off_topic' in out and 'do NOT downgrade' in out, out[:400])
+
+        # P2 — partition file present, not applied -> apply_partition emit
+        d = tmp / 'P2' / 'run'; phase0_preTag(d)
+        wj(d / 'phase0' / 'relevance_partition.json',
+           [{'paper_id': 'semanticscholar:aaa', 'relevance': 'core', 'reason': 'y'}])
+        out = run_next(d)
+        check('P2 apply_partition emitted',
+              'apply_partition' in out and '.partition_applied' in out, out[:400])
+
+        # P3 — partition applied -> falls through to tagging (lit_table) emit
+        d = tmp / 'P3' / 'run'; phase0_preTag(d)
+        (d / 'phase0' / '.partition_applied').touch()
+        out = run_next(d)
+        check('P3 applied partition -> tagging emit',
+              'lit_table.md' in out and 'relevance partition' not in out, out[:400])
+
+        # P4 — env off -> partition skipped, straight to tagging
+        d = tmp / 'P4' / 'run'; phase0_preTag(d)
+        env_off_p = dict(os.environ, IDEASPARK_RELEVANCE_PARTITION='off')
+        out = (subprocess.run([sys.executable, str(RUN_PY), 'next', '--dir', str(d)],
+                              capture_output=True, text=True, timeout=120, env=env_off_p).stdout)
+        check('P4 env=off skips partition -> tagging',
+              'lit_table.md' in out and 'relevance partition' not in out, out[:400])
+
+        # C1 — lit_table done, no nominations -> coverage-check emit
+        d = tmp / 'C1' / 'run'; phase0_stage(d)
+        out = run_next(d)
+        check('C1 coverage check emitted',
+              'coverage check' in out and 'host_refs_nominations.json' in out
+              and 'do NOT downgrade' in out
+              and 'last ~12 months' in out, out[:400])
+
+        # C2 — nominations present, add_host_refs not run -> resolve emit
+        d = tmp / 'C2' / 'run'; phase0_stage(d)
+        wj(d / 'phase0' / 'host_refs_nominations.json',
+           [{'title': 'Some Missing Paper', 'source': 'parametric', 'why': 'x'}])
+        out = run_next(d)
+        check('C2 resolve+merge host refs emitted',
+              'add_host_refs' in out and 'host_refs_unresolved.md' in out, out[:400])
+
+        # C3 — host refs admitted with a NEW id -> tag-into-lit_table emit
+        d = tmp / 'C3' / 'run'; phase0_stage(d)
+        wj(d / 'phase0' / 'host_refs_nominations.json', [{'title': 'X', 'source': 'parametric'}])
+        wj(d / 'phase0' / 'host_refs.json',
+           [{'paper_id': 'arxiv:9999.99999', 'title': 'Newly Admitted', 'retrieved_via': 'host_recall'}])
+        out = run_next(d)
+        check('C3 tag admitted host rows',
+              'tag the admitted host refs' in out and 'lit_table_merge' in out
+              and 'coverage_check_done' in out, out[:400])
+
+        # C4 — host refs resolved, nothing new admitted -> finalize (touch marker)
+        d = tmp / 'C4' / 'run'; phase0_stage(d)
+        wj(d / 'phase0' / 'host_refs_nominations.json', [])
+        wj(d / 'phase0' / 'host_refs.json', [])
+        out = run_next(d)
+        check('C4 finalize coverage (no admissions)',
+              'finalize coverage' in out and 'coverage_check_done' in out
+              and 'full-text fetch' not in out, out[:400])
+
+        # C5 — marker present -> coverage skipped, straight to fulltext
+        d = tmp / 'C5' / 'run'; phase0_stage(d)
+        (d / 'phase0' / '.coverage_check_done').touch()
+        out = run_next(d)
+        check('C5 marker skips coverage -> fulltext',
+              'full-text fetch' in out and 'coverage check' not in out, out[:400])
+
+        # C6 — env off -> coverage skipped entirely, straight to fulltext
+        d = tmp / 'C6' / 'run'; phase0_stage(d)
+        env_off = dict(os.environ, IDEASPARK_COVERAGE_CHECK='off')
+        out = (subprocess.run([sys.executable, str(RUN_PY), 'next', '--dir', str(d)],
+                              capture_output=True, text=True, timeout=120, env=env_off).stdout)
+        check('C6 env=off skips coverage -> fulltext',
+              'full-text fetch' in out and 'coverage check' not in out, out[:400])
     finally:
         if args.keep:
             print(f'sandbox kept at {tmp}', file=sys.stderr)

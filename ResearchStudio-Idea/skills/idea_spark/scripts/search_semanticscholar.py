@@ -161,23 +161,29 @@ def main():
     until_year = (now - timedelta(days=30 * args.window_min_months)).year \
         if (args.window_min_months > 0 or args.as_of) else None
 
-    seen = set(); merged = []
+    per_query = []
     for q in queries:
         try:
             hits = search(q, since_year, until_year=until_year,
                           published_only=args.published_only, max_results=args.max_per_query)
         except Exception as e:
-            print(f'  semanticscholar {q!r} failed: {e}', file=sys.stderr); continue
-        for h in hits:
-            key = h['title_norm']
-            if not key or key in seen: continue
-            seen.add(key); merged.append(h)
+            print(f'  semanticscholar {q!r} failed: {e}', file=sys.stderr)
+            per_query.append([])
+            continue
+        per_query.append(hits)
         # Rate limit: 1 req/sec cumulative (introductory key tier); anonymous tier ~0.3/sec.
         # Sleep 1.1s with key (safe margin); 3s without (anonymous tier is bursty).
         time.sleep(1.1 if os.environ.get('SEMANTICSCHOLAR_API_KEY') else 3.0)
 
-    if args.max_results > 0:
-        merged = merged[:args.max_results]
+    # Round-robin so every role-differentiated query gets a floor — concatenate-
+    # then-truncate made query ORDER the priority and starved later queries. See
+    # scripts/_merge.py for the measured evidence.
+    from scripts._merge import interleave_by_query
+    merged = interleave_by_query(per_query, lambda h: h.get('title_norm'),
+                                 args.max_results, queries=queries)
+    if len(queries) > 1:
+        print(f'  semanticscholar: {sum(len(p) for p in per_query)} hits across '
+              f'{len(queries)} queries -> {len(merged)} kept (round-robin)', file=sys.stderr)
     Path(args.out).write_text(json.dumps(merged, ensure_ascii=False, indent=1))
     print(f'wrote {args.out} with {len(merged)} unique papers', file=sys.stderr)
 

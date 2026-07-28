@@ -45,6 +45,22 @@ What "underspecified" means (flag a step when ANY of these is true):
   labeler, a retrieval set) — name it and specify it.
 - A reader fluent in the field still could not reconstruct the data flow between this step's input and
   output.
+- A `key_equations[]` entry linked to this step does not faithfully encode what the step text says it
+  computes: a quantity, restriction, weighting, or condition present in one and absent or contradicted
+  in the other. Equations are authored AFTER every earlier gate has run, so they are the one layer no
+  prior check has read. (Observed live: a step promising Shapley coalition weights whose equation
+  sampled coalitions uniformly over the power set — that is the Banzhaf value, biased for the very
+  quantity the step and its own defining equation commit to.) Fill by restating the equation to match
+  the step whenever the step is the authority.
+- A numeric constant in a `key_equations[]` entry linked to this step has no provenance — nothing in the
+  step text, the claims, or a cited paper says where it came from. An invented constant manufactures
+  rigor the method never earned (observed live: a made-up per-pair variance that made a sample size
+  read as derived when it was assumed, and load-bearing — a plausible alternative value moved the
+  required sample outside the range the step itself states). EXEMPT, needing no separate provenance:
+  literals fixed by the notation (a parity modulus, an exponent, the 1/m of a mean, a summation bound)
+  and values pinned by an already-stated quantity (the z-quantiles implied by a stated α or target
+  power) — flag the free input they multiply, never the notation. Fill by naming the source; leave
+  `open` when only a pilot measurement by the authors can supply the value.
 
 How to FILL a hole:
 - Supply the concrete object: exact input representation, the named algorithm / estimator / model class,

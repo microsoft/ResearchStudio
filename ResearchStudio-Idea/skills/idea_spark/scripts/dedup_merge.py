@@ -60,6 +60,15 @@ def main():
                     cur['abstract'] = h['abstract']
                 if not cur.get('citations') and h.get('citations'):
                     cur['citations'] = h['citations']
+                # UNION the query provenance rather than letting the winning record's
+                # attribution stand alone: a paper two connectors found via different
+                # queries was earned by both, and the per-query yield report is only
+                # honest if it says so.
+                if h.get('from_query'):
+                    _fq = cur.setdefault('from_query', [])
+                    for _q in h['from_query']:
+                        if _q not in _fq:
+                            _fq.append(_q)
 
     merged = list(by_key.values())
     # canonical paper_id + year_month (the latter so collision_hits.json carries it too)

@@ -18,7 +18,7 @@ but the pipeline does not halt.
 Output schema (outputs/phase0/fulltext_cache.json):
   {
     "<paper_id>": {
-      "tier": "U" | "T2" | "T3",
+      "tier": "U" | "H" | "T2" | "T3",
       "intro": "<extracted text or abstract fallback>",
       "method": "<extracted text or '' if no fallback>",
       "source_used": "html_arxiv" | "pdf_arxiv_pymupdf"
@@ -691,14 +691,20 @@ def reconcile_lit_table_ids(lit_table_path: Optional[Path], lit_results: list[di
 # ---------------------------------------------------------------------------
 
 def select_candidate_pool(lit_results: list[dict], lit_table_path: Optional[Path],
-                          user_refs: list[dict], t3_top_n: int = 5,
-                          t2_top_n: int = 10, max_pool: int = 15) -> list[dict]:
-    """Compute U + T2 + T3 = candidate_pool for fulltext fetching.
+                          user_refs: list[dict], t3_top_n: int = 12,
+                          t2_top_n: int = 8, max_pool: int = 20,
+                          h_top_n: int = 6) -> list[dict]:
+    """Compute U + H + T2 + T3 = candidate_pool for fulltext fetching.
 
     - U: papers matching any user_refs entry (by arxiv_id / openreview_id / doi).
          If a U paper isn't already in lit_results, we still emit it with type-only
          metadata so the fetcher can attempt fetch via its identifier. U is ALWAYS
          included — user-named papers are load-bearing and bypass the caps below.
+    - H: up to `h_top_n` host-recall papers — records the coverage-check step
+         nominated as load-bearing-but-absent and `add_host_refs` verified via a
+         connector (marked `retrieved_via` starting `host_`). Priority just under U
+         (a paper the host judged missing is more load-bearing than a generic
+         relevance hit), method-first, inside the ceiling.
     - T2: up to `t2_top_n` papers from source ∈ {openalex, semanticscholar} where
           lit_table tag != outside_taxonomy. Ordered method-first (eval-only
           benchmark papers last) and round-robin across the two sources, because
@@ -708,16 +714,19 @@ def select_candidate_pool(lit_results: list[dict], lit_table_path: Optional[Path
           baselines whose method sections the pool exists to read.
     - T3: up to `t3_top_n` papers from source=arxiv where lit_table tag != outside_taxonomy
           (arxiv is relevance-sorted by Phase 0; we only float method-bearing
-          papers above eval-only ones).
+          papers above eval-only ones). T3 also absorbs slots H/T2 left unused, up
+          to `max_pool` — the recent-preprint tier gets the freshness benefit of a
+          bigger deep-read budget (the retrieval-side pool is now ~56% recent, so
+          the deep-read pool is rebalanced the same way).
 
     Only the closest-adjacent / most-relevant papers actually feed the Phase 1
     bottleneck and Phase 2.2 differentiation, so we cap the pool rather than fetch
     every on-topic hit. `max_pool` is a hard ceiling on total fetches (U excluded
-    from the ceiling — user refs always fetch); T2 and T3 fill the remaining slots
+    from the ceiling — user refs always fetch); H, T2, T3 fill the remaining slots
     in priority order. This bounds wall-clock so the fetch never dominates the run.
 
-    De-duplicates across the three buckets by paper_id, preserving the first
-    occurrence (U > T2 > T3).
+    De-duplicates across the buckets by paper_id, preserving the first
+    occurrence (U > H > T2 > T3).
     """
     # Load lit_table tags if available
     paper_tags: dict[str, str] = {}
@@ -736,6 +745,12 @@ def select_candidate_pool(lit_results: list[dict], lit_table_path: Optional[Path
     def _is_on_topic(pid: str) -> bool:
         tag = paper_tags.get(pid, "")
         return "outside_taxonomy" not in tag.lower()
+
+    def _is_core(p: dict) -> bool:
+        # Phase 0.4 labels every paper core|adjacent|off_topic. adjacent stays a
+        # citeable baseline but must never consume a deep-read slot. A missing field
+        # defaults to core so an un-partitioned pool is not starved; U bypasses this.
+        return (p.get("relevance") or "core") == "core"
 
     def _is_eval_only(pid: str) -> bool:
         # A paper whose only innovation tag is the benchmark/diagnostic cluster
@@ -840,6 +855,30 @@ def select_candidate_pool(lit_results: list[dict], lit_table_path: Optional[Path
 
     n_user = len(pool)  # U papers bypass the max_pool ceiling
 
+    # --- H: host-recall papers (retrieved_via host_*), method-first, under U ---
+    h_cands = [
+        p for p in lit_results
+        if str(p.get("retrieved_via") or "").startswith("host_")
+        and (p.get("paper_id") or "") not in seen_ids
+        and _is_on_topic(p.get("paper_id") or "")
+        and _is_core(p)
+    ]
+    h_count = 0
+    for p in _method_first_roundrobin(h_cands):
+        if len(pool) - n_user >= max_pool or h_count >= h_top_n:
+            break
+        pid = p.get("paper_id") or ""
+        tkey = _title_key(p)
+        if tkey and tkey in seen_titles:
+            continue
+        entry = dict(p)
+        entry["_tier"] = "H"
+        pool.append(entry)
+        seen_ids.add(pid)
+        if tkey:
+            seen_titles.add(tkey)
+        h_count += 1
+
     # --- T2: published-source on-topic papers, method-first + cross-source
     #         round-robin (NOT raw source-grouped order; see docstring). ---
     t2_cands = [
@@ -847,6 +886,7 @@ def select_candidate_pool(lit_results: list[dict], lit_table_path: Optional[Path
         if p.get("source") in ("openalex", "semanticscholar")
         and (p.get("paper_id") or "") not in seen_ids
         and _is_on_topic(p.get("paper_id") or "")
+        and _is_core(p)
     ]
     t2_count = 0
     for p in _method_first_roundrobin(t2_cands):
@@ -873,6 +913,7 @@ def select_candidate_pool(lit_results: list[dict], lit_table_path: Optional[Path
         if p.get("source") == "arxiv"
         and (p.get("paper_id") or "") not in seen_ids
         and _is_on_topic(p.get("paper_id") or "")
+        and _is_core(p)
     ]
     t3_ordered = (
         [c for c in t3_cands if not _is_eval_only(c.get("paper_id") or "")]
@@ -896,6 +937,31 @@ def select_candidate_pool(lit_results: list[dict], lit_table_path: Optional[Path
         if t3_count >= t3_top_n:
             break
 
+    # --- Top-up: fill ceiling slots the per-tier caps left unused ---
+    # Absorption is symmetric: one-way absorption stalled the pool at H+T2 (15 of a
+    # 25 ceiling) whenever a connector failed and left T3 empty. Each paper keeps its
+    # natural tier label so provenance stays readable.
+    if len(pool) - n_user < max_pool:
+        rest = [
+            p for p in lit_results
+            if (p.get("paper_id") or "") not in seen_ids
+            and _is_on_topic(p.get("paper_id") or "")
+            and _is_core(p)
+        ]
+        for p in _method_first_roundrobin(rest):
+            if len(pool) - n_user >= max_pool:
+                break
+            pid = p.get("paper_id") or ""
+            tkey = _title_key(p)
+            if tkey and tkey in seen_titles:
+                continue
+            entry = dict(p)
+            entry["_tier"] = "T3" if p.get("source") == "arxiv" else "T2"
+            pool.append(entry)
+            seen_ids.add(pid)
+            if tkey:
+                seen_titles.add(tkey)
+
     return pool
 
 
@@ -905,9 +971,11 @@ def main() -> int:
     ap.add_argument("--lit-table", help="Path to outputs/phase0/lit_table.md (for on-topic filter)")
     ap.add_argument("--user-refs", help="Path to a JSON file with user_refs list, OR a JSON literal string")
     ap.add_argument("--out", required=True, help="Output path for fulltext_cache.json")
-    ap.add_argument("--t3-top", type=int, default=5, help="How many top arxiv papers go into T3 (default 5)")
-    ap.add_argument("--t2-top", type=int, default=10, help="How many top published-source papers go into T2 (default 10)")
-    ap.add_argument("--max-pool", type=int, default=15, help="Hard ceiling on total fetches excluding user refs (default 15)")
+    ap.add_argument("--t3-top", type=int, default=15, help="Max arxiv (recent) papers into T3 (default 15; also absorbs unused H/T2 slots up to --max-pool)")
+    ap.add_argument("--t2-top", type=int, default=10, help="Max published-source papers into T2 (default 10)")
+    ap.add_argument("--h-top", type=int, default=6, help="Max host-recall (retrieved_via host_*) papers into H (default 6)")
+    ap.add_argument("--max-pool", type=int, default=25, help="Hard ceiling on total fetches excluding user refs (default 25)")
+    ap.add_argument("--backfill", type=int, default=6, help="Reserve size: method-empty extractions in the pool are swapped for this many next-ranked core candidates (default 6; 0 disables)")
     args = ap.parse_args()
 
     lit_results = json.loads(Path(args.lit_results).read_text())
@@ -924,9 +992,11 @@ def main() -> int:
 
     lit_table_path = Path(args.lit_table) if args.lit_table else None
     pool = select_candidate_pool(lit_results, lit_table_path, user_refs,
-                                 t3_top_n=args.t3_top, t2_top_n=args.t2_top, max_pool=args.max_pool)
+                                 t3_top_n=args.t3_top, t2_top_n=args.t2_top,
+                                 max_pool=args.max_pool, h_top_n=args.h_top)
 
     print(f"Candidate pool: {len(pool)} papers ({sum(1 for p in pool if p['_tier']=='U')} U + "
+          f"{sum(1 for p in pool if p['_tier']=='H')} H + "
           f"{sum(1 for p in pool if p['_tier']=='T2')} T2 + "
           f"{sum(1 for p in pool if p['_tier']=='T3')} T3)", file=sys.stderr)
 
@@ -937,6 +1007,49 @@ def main() -> int:
         print(f"  [{done}/{total}] {p['_tier']} {ok:5} {status:25} {title}", file=sys.stderr)
 
     cache = fetch_pool(pool, on_done=_log)
+
+    # --- Backfill: swap method-empty extractions for next-ranked core reserves ---
+    # A pooled paper that fetches to an empty method section (paywalled HTML,
+    # non-arXiv landing page, extraction miss) wastes a deep-read slot without
+    # informing the bottleneck. Reclaim it: pull the next-ranked core candidates
+    # (a bigger select minus the papers already pooled) and fetch them in
+    # priority order, swapping each method-bearing reserve in for one empty. Never
+    # touches U (user refs are always kept, even if empty). Final cache stays <=
+    # max_pool: each swap is one-out-one-in.
+    def _has_method(v: dict) -> bool:
+        return bool((v.get("method") or "").strip())
+
+    empties = [pid for pid, v in cache.items() if v.get("tier") != "U" and not _has_method(v)]
+    if args.backfill > 0 and empties:
+        pool_ids = {p.get("paper_id") or p.get("id") for p in pool}
+        big = select_candidate_pool(lit_results, lit_table_path, user_refs,
+                                    t3_top_n=args.t3_top + args.backfill,
+                                    t2_top_n=args.t2_top + args.backfill,
+                                    max_pool=args.max_pool + args.backfill, h_top_n=args.h_top)
+        reserve = [p for p in big if (p.get("paper_id") or p.get("id")) not in pool_ids]
+        r_iter = iter(reserve)
+        swapped = 0
+        for empty_pid in empties:
+            filled = False
+            while not filled:
+                r = next(r_iter, None)
+                if r is None:
+                    break
+                rpid = r.get("paper_id") or r.get("id") or ""
+                if rpid in cache:
+                    continue
+                rsec = fetch_sections(r)
+                if _has_method(rsec):
+                    del cache[empty_pid]
+                    cache[rpid] = {"tier": r["_tier"], **rsec}
+                    swapped += 1
+                    filled = True
+                    print(f"  [backfill] {r['_tier']} swapped in for empty {empty_pid}: "
+                          f"{(r.get('title') or '')[:70]}", file=sys.stderr)
+            if not filled:
+                break  # reserve exhausted; keep remaining empties as-is
+        if swapped:
+            print(f"  [backfill] {swapped} empty extraction(s) replaced", file=sys.stderr)
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(cache, indent=2, ensure_ascii=False))

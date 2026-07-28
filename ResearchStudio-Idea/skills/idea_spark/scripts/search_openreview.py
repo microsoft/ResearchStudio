@@ -171,22 +171,23 @@ def main():
         Path(args.out).write_text('[]')
         return
 
-    seen = set(); merged = []
+    per_query = []
     for q in queries:
         try:
+            # Upper-bound (until) is enforced inside search() against each note's cdate.
             hits = search(client, q, since, venues=venues, max_results=args.max_per_query, until=until)
         except Exception as e:
-            print(f'  openreview {q!r} failed: {e}', file=sys.stderr); continue
-        for h in hits:
-            # Upper-bound (until) is enforced inside search() against each note's cdate.
-            key = h['title_norm']
-            if not key or key in seen: continue
-            seen.add(key); merged.append(h)
+            print(f'  openreview {q!r} failed: {e}', file=sys.stderr)
+            per_query.append([])
+            continue
+        per_query.append(hits)
         time.sleep(1.0)
 
-    if args.max_results > 0:
-        # Already sorted by score (search() does this); take head
-        merged = merged[:args.max_results]
+    # Round-robin (each query already score-sorted by search()); concatenate-then-
+    # truncate made query ORDER the priority. See scripts/_merge.py.
+    from scripts._merge import interleave_by_query
+    merged = interleave_by_query(per_query, lambda h: h.get('title_norm'),
+                                 args.max_results, queries=queries)
     Path(args.out).write_text(json.dumps(merged, ensure_ascii=False, indent=1))
     print(f'wrote {args.out} with {len(merged)} unique papers', file=sys.stderr)
 

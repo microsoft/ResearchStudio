@@ -236,7 +236,7 @@ Output (strict JSON):
   "composition_note": "<echo VERBATIM from phase2_select.composition_note (empty string when it was empty). Non-empty only for a sanctioned single-pattern selection; the deterministic validator checks its presence and the audit weighs its defense.>"
 }
 
-Hard rules (4):
+Hard rules (5):
 
 1. **Substantive > methodological** in `differentiation_from_lit[].delta` and
    `what_step_was_missed`. Methodological framing ("they used pattern X, we
@@ -281,6 +281,37 @@ Hard rules (4):
    asymptotic / empirical). The coherence gate grades every claim (T4). Do
    NOT self-censor ambition to dodge the grading: a strong claim with
    honest stated assumptions is BETTER than a hedged weak claim.
+
+5. **Every number carries provenance.** (a) PARAMETERS: any quantity the
+   procedure READS AS A PARAMETER — a threshold, budget, window, interval,
+   count, weight — must be a NAMED symbol carrying a default value and a
+   one-clause selection rule ("epsilon = 0.03, swept over 0.02-0.05";
+   "n_min = 30, the usual floor for a stable rate estimate"). A bare
+   literal buried in prose ("gate on >= 95% agreement", "the top 5", "every
+   2e3 tokens") is forbidden: an unnamed quantity cannot be swept by the
+   falsification plan, cannot carry an assumption at T4, and reads to a
+   reviewer as a tuned magic number. This does NOT apply to numbers that
+   are not parameters — named artifact versions (Qwen2.5-72B, EAGLE-3),
+   algebraic/structural constants inside a formula (O(1), the 2 in mod 2,
+   an interval endpoint), definitional settings (temperature 0), a
+   control arm's defining value when it is already bound to a named
+   parameter (epsilon = 0), or experiment-campaign scale. The
+   parameter-vs-scale line is BEHAVIOURAL: a number that changes what the
+   algorithm DOES (a budget it spends, a window it fits over, the point at
+   which it freezes or switches regime) is a parameter and must be named;
+   a number that only sizes the evaluation campaign (corpus size,
+   checkpoint count, the library size a curve runs out to) is scale. Name
+   it once and reuse it — the binding may live in any method field. (b) FALSIFICATION NUMBERS: `falsification_prediction`
+   states the metric and its DIRECTION plus the control — that is what makes
+   it falsifiable. A numeric bar is permitted ONLY when it is DERIVED (an
+   analytic consequence of the mechanism or the setup — say from what) or
+   MEASURED (reported in a cited paper — say which paper_id); tag it
+   inline as `derived:` / `measured in <paper_id>`. Do NOT invent a bar:
+   an unsourced "rho >= 0.6" or "recovers >= 80%" adds no falsifiability
+   (the control already supplies it) and can either kill the idea against
+   a made-up threshold or bless it against too low a one. Replication and
+   scale counts (">= 3 seeds", "grow to ~200 skills") are experiment
+   design, not outcome bars, and are unaffected.
 
 Notes:
 

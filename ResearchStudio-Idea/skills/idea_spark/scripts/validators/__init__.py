@@ -35,6 +35,7 @@ from .expansion_completeness import validate_expansion_completeness
 from .subpattern_citation_consistency import validate_subpattern_citation_consistency
 from .implementability_completeness import validate_implementability_completeness
 from .implementability_readability import validate_implementability_readability
+from .threat_grounding import validate_threat_grounding
 
 
 def run_all_validators(phase2_path=None, phase3_path=None, phase4_path=None, phase1_path=None,
@@ -56,5 +57,7 @@ def run_all_validators(phase2_path=None, phase3_path=None, phase4_path=None, pha
 
     if phase4_impl_path:
         findings.extend(validate_implementability_readability(phase4_impl_path))
+    if phase3_path:
+        findings.extend(validate_threat_grounding(phase3_path))
 
     return findings

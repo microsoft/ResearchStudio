@@ -174,23 +174,30 @@ def main():
     until = (now - timedelta(days=30 * args.window_min_months)).strftime('%Y-%m-%d') \
         if (args.window_min_months > 0 or args.as_of) else None
 
-    seen = set(); merged = []
+    per_query = []
     for q in queries:
         try:
             hits = search(q, since, until_date=until, published_only=args.published_only,
                           max_results=args.max_per_query)
         except Exception as e:
-            print(f'  openalex {q!r} failed: {e}', file=sys.stderr); continue
-        for h in hits:
-            key = h['title_norm']
-            if not key or key in seen: continue
-            seen.add(key); merged.append(h)
+            print(f'  openalex {q!r} failed: {e}', file=sys.stderr)
+            per_query.append([])
+            continue
+        per_query.append(hits)
         time.sleep(0.1)  # generous-but-considerate
 
-    # Apply the BM25 cap HERE (before the semantic booster) so the recall papers are
-    # additive on top of the capped BM25 pool rather than being truncated away by it.
-    if args.max_results > 0:
-        merged = merged[:args.max_results]
+    # Round-robin across queries, and apply the BM25 cap HERE (before the semantic
+    # booster) so the recall papers are additive on top of the capped BM25 pool
+    # rather than being truncated away by it. Round-robin instead of concatenate-
+    # then-truncate: the old path made query ORDER the priority and starved every
+    # query after the first. See scripts/_merge.py for the measured evidence.
+    from scripts._merge import interleave_by_query
+    merged = interleave_by_query(per_query, lambda h: h.get('title_norm'),
+                                 args.max_results, queries=queries)
+    seen = {h['title_norm'] for h in merged if h.get('title_norm')}
+    if len(queries) > 1:
+        print(f'  openalex: {sum(len(p) for p in per_query)} BM25 hits across '
+              f'{len(queries)} queries -> {len(merged)} kept (round-robin)', file=sys.stderr)
 
     # --- semantic recall booster (opt-in) -----------------------------------
     # Runs AFTER BM25 so the BM25 pool defines the "home field(s)" used as the relevance gate.
@@ -225,6 +232,11 @@ def main():
                 # Day-window gate: semantic only filters by year; enforce the exact window client-side.
                 iso = h.get('published_iso') or ''
                 if iso and not (since <= iso <= (until or '9999-12-31')): continue
+                # Stamp provenance here too: these records bypass interleave_by_query,
+                # so without this they reach the per-query yield report as
+                # '(unattributed)' and the semantic booster's contribution — the one
+                # pass whose value is hardest to judge by eye — stays unmeasurable.
+                h = dict(h, from_query=[q])
                 seen.add(key); merged.append(h); kept += 1; n_added += 1
             time.sleep(1.2)  # semantic endpoint is rate-limited to 1 req/s
         print(f'  openalex[semantic] added {n_added} recall-booster papers '

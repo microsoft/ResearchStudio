@@ -172,7 +172,10 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                      'Phase 0: produce queries FIRST, then run retrieval', 'llm_subagent',
                      prompt=str(ref / 'intent-recognition.md') + ' (Map mode — read it yourself, no sub-agent needed for query writing)',
                      inputs=['the user query'],
-                     output='4-6 search queries (incl. one ESCAPE-MECHANISM query in solution vocabulary)',
+                     output='4 search queries (3-5 only with a stated reason) — incl. one ESCAPE-MECHANISM query in '
+                            'the vocabulary THIS FIELD itself uses for that solution; caps saturate and the '
+                            'merge is round-robin, so an extra low-yield query spends slots instead of '
+                            'adding coverage',
                      run=[skill_cd + f'phase0 --query "{q}" '
                           f'--queries "q1|q2|q3|q4" --out "{d}/phase0/"'],
                      notes='Passing --queries up front skips a full sentinel round-trip (rc=10). '
@@ -185,6 +188,42 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                            'read). OOD short-circuit: if the query matches intake-routing.md '
                            'trigger #1/#2, skip retrieval and go straight to Phase 1 with a '
                            'do_not_generate routing.',
+                     run_dir=d)
+    # ---- Phase 0.4 host relevance-partition (precision gate before tagging) ----
+    # Retrieval casts a wide net, so the host first partitions the raw pool into
+    # core|adjacent|off_topic on title+abstract. off_topic is archived and dropped
+    # from the gap corpus; only `core` feeds the deep-read pool; adjacent stays a
+    # citeable baseline. Runs BEFORE tagging so the per-paper pass only sees
+    # survivors. Disable with IDEASPARK_RELEVANCE_PARTITION=off.
+    partition_on = os.environ.get('IDEASPARK_RELEVANCE_PARTITION', '').lower() not in ('off', '0', 'false')
+    part_file = p0 / 'relevance_partition.json'
+    part_done = (p0 / '.partition_applied').exists()
+    if partition_on and not part_done and not (p0 / 'lit_table.md').exists():
+        if not part_file.exists():
+            return _emit('Papers retrieved; running the relevance partition before tagging.',
+                         'Phase 0.4 — relevance partition (core / adjacent / off_topic)',
+                         'llm_subagent',
+                         prompt=str(ref / 'relevance-partition-rubric.md'),
+                         inputs=["the USER'S ORIGINAL research question", str(p0 / 'lit_results.json')],
+                         output=str(part_file),
+                         notes='Use YOUR OWN model (open-ended relevance judgment — do NOT '
+                               'downgrade). Read every record\'s title+abstract and label each '
+                               'paper_id core|adjacent|off_topic (+ one-line reason). BE '
+                               'CONSERVATIVE: when unsure between core and adjacent pick core; '
+                               'hard-label off_topic ONLY when the paper is clearly outside the '
+                               'research direction (cross-domain "memory-augmented" false '
+                               'positives — wireless / recommendation / NLP — pure surveys, '
+                               'unrelated fields). Write a JSON list [{paper_id, relevance, '
+                               'reason}]; every record appears exactly once. This is the one '
+                               'precision pass — off_topic is dropped from the corpus next.',
+                         run_dir=d)
+        return _emit('Relevance partition written; applying it (archive off_topic, stamp relevance).',
+                     'Phase 0.4 — apply partition (deterministic)', 'bash',
+                     run=[skill_cd + f'apply_partition --out "{p0}/" --partition "{part_file}"'
+                          + f'  &&  touch "{p0 / ".partition_applied"}"'],
+                     notes='off_topic records are archived to off_topic.md and removed from '
+                           'lit_results.json; core/adjacent get a relevance stamp. Tagging then '
+                           'runs only on the survivors. Marker guards re-runs.',
                      run_dir=d)
     if not (p0 / 'lit_table.md').exists():
         return _emit('Papers retrieved; lit_table.md not yet written.',
@@ -202,13 +241,87 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                            'slices, mechanically concatenated in input order; verify total row '
                            'count == paper count before accepting). Routing signal: none (just the file).',
                      run_dir=d)
+    # ---- Phase 0.5 coverage check (host-recall补充通道) --------------------------
+    # After tagging and before fulltext: the host, having read the whole table,
+    # names load-bearing work the retrieval pool obviously missed; add_host_refs
+    # VERIFIES each via a connector (hallucinations rejected) and merges the real
+    # records into lit_results with retrieved_via=host_*. Three sub-states, one
+    # marker (.coverage_check_done). Disable with IDEASPARK_COVERAGE_CHECK=off.
+    coverage_on = os.environ.get('IDEASPARK_COVERAGE_CHECK', '').lower() not in ('off', '0', 'false')
+    cov_done = (p0 / '.coverage_check_done').exists()
+    noms = p0 / 'host_refs_nominations.json'
+    host_refs = p0 / 'host_refs.json'
+    if coverage_on and not cov_done and not (p0 / 'fulltext_cache.json').exists():
+        if not noms.exists():
+            return _emit('lit_table.md written; running the coverage check before fulltext.',
+                         'Phase 0.5 — coverage check (name load-bearing work the pool missed)',
+                         'llm_subagent',
+                         inputs=['the USER\'S ORIGINAL research question',
+                                 str(p0 / 'lit_table.md')],
+                         output=str(noms),
+                         notes='Use YOUR OWN model (open-ended judgment, do NOT downgrade). Read the '
+                               'whole table against the user\'s direction and list up to 8 clearly '
+                               'load-bearing works that are ABSENT. PRIORITIZE the last ~12 months: '
+                               'recent/frontier work the dated retrieval windows likely under-sampled '
+                               'is the primary target — recovering it is why this channel exists, and '
+                               'it is what keeps the diagnosed gap current. Older foundational papers '
+                               '(canonical base policies, >12-month landmarks) are mostly Phase 1 '
+                               'lineage\'s job, not the corpus: nominate one ONLY when it is a '
+                               'load-bearing backbone/baseline the candidate will literally build on '
+                               'or be measured against, and keep such older picks to a small minority '
+                               'of the list. WebSearch is allowed HERE ONLY, and only to find TITLES '
+                               '— never to fabricate a record. Write a JSON list [{title, '
+                               'id_hint?(arxiv/DOI/URL), why(one line — state the recency, or the '
+                               'load-bearing-baseline reason if older), relevance(core|adjacent: '
+                               'core = a recent mechanism paper worth deep-reading; adjacent = a '
+                               'foundational backbone/baseline to cite but NOT deep-read), '
+                               'source: parametric|websearch}]. '
+                               'An empty list [] is a valid, honest output (the pool was already '
+                               'complete). Every nomination is verified by a connector next — '
+                               'unresolvable titles are rejected, not trusted.',
+                         run_dir=d)
+        if not host_refs.exists():
+            return _emit('Coverage nominations written; resolving them via the connectors.',
+                         'Phase 0.5 — resolve + merge host refs (deterministic)', 'bash',
+                         run=[skill_cd + f'add_host_refs --out "{p0}/" --refs "{noms}"'],
+                         notes='Each nomination is looked up via Semantic Scholar / arXiv; only '
+                               'title-verified records (>=0.9 match) enter lit_results with '
+                               'retrieved_via=host_recall|host_web. Unresolved titles land in '
+                               'host_refs_unresolved.md and are NOT admitted.',
+                         run_dir=d)
+        # host refs resolved: tag any newly-admitted rows into lit_table, else finalize.
+        admitted = _read_json(host_refs) or []
+        lit_txt = (p0 / 'lit_table.md').read_text() if (p0 / 'lit_table.md').exists() else ''
+        new_ids = [r.get('paper_id') for r in admitted
+                   if r.get('paper_id') and r.get('paper_id') not in lit_txt]
+        if new_ids:
+            return _emit(f'{len(new_ids)} host-recall paper(s) admitted; tag them into lit_table.',
+                         'Phase 0.5 — tag the admitted host refs', 'llm_subagent',
+                         prompt=str(ref / 'pattern-summary-rubric.md'),
+                         inputs=[str(p0 / 'lit_results.json') + f' (tag ONLY these newly-admitted '
+                                 f'paper_ids: {", ".join(new_ids)})'],
+                         output=str(p0 / '_host_rows.md') + ' (the new rows only, 9-column format)',
+                         run=None,
+                         notes='Fast tier. Produce one lit_table row per newly-admitted paper_id '
+                               '(same 9 columns), then merge + mark done: '
+                               + skill_cd + f'lit_table_merge --out "{p0}/" --shards '
+                               f'"{p0 / "lit_table.md"}" "{p0 / "_host_rows.md"}"  &&  '
+                               f'touch "{p0 / ".coverage_check_done"}"',
+                         run_dir=d)
+        return _emit('Coverage check complete (no new admissions); marking done.',
+                     'Phase 0.5 — finalize coverage check', 'bash',
+                     run=[f'touch "{p0 / ".coverage_check_done"}"'],
+                     notes='No host refs were admitted (empty nomination, all unresolved, or all '
+                           'already present). Marker prevents re-running on resume.',
+                     run_dir=d)
+
     if not (p0 / 'fulltext_cache.json').exists():
         return _emit('lit_table.md written; full-text cache missing (Phase 1 hard-gates on it).',
                      'Phase 0+ full-text fetch', 'bash',
                      run=[skill_cd + f'phase0_fulltext --out "{d}/phase0/"'],
                      notes='LAST CALL for user refs: title-named papers must be registered '
-                           '(add_user_ref) BEFORE this step — the fetch pool\'s U tier reads '
-                           'user_refs.json now.',
+                           '(add_user_ref) BEFORE this step — the fetch pool\'s U/H tiers read '
+                           'user_refs.json / host_refs.json now.',
                      run_dir=d)
 
     # ---- Phase 1 -------------------------------------------------------------
@@ -956,11 +1069,15 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
 
 def cmd_next(args) -> int:
     run_dir = Path(args.dir).resolve()
+    # A missing run dir is NOT an error: `next` is read-only, and nothing on disk
+    # means nothing has run — exactly the Phase 0 emit below. Returning rc=2 here
+    # made a normal first call fatal for any host that inspects before creating the
+    # directory. `phase0` mkdir -p's its own --out, so none is needed before step 1;
+    # malformed/unexpanded --dir is still caught by _guard_project_path.
     if not run_dir.exists():
-        print(f'ERROR: run dir {run_dir} does not exist. Create it first '
-              f'(mkdir -p) — it is the --out root every phase writes under. '
-              f'Convention: $PWD/ideaspark_run/<topic-slug> (one run = one dir; '
-              f'never reuse a dir that already has a phase0/).', file=sys.stderr)
-        return 2
+        print(f'note: run dir {run_dir} does not exist yet — treating this as a fresh '
+              f'run. The Phase 0 command below creates it (`--out` is mkdir -p\'d). '
+              f'Convention: $PWD/ideaspark_run/<topic-slug>, one run per dir; never '
+              f'reuse a dir that already has a phase0/.', file=sys.stderr)
     root = Path(__file__).resolve().parent.parent
     return next_step(run_dir, root, getattr(args, 'query', None) or None)
