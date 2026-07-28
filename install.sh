@@ -92,7 +92,8 @@ ask_yn() {
   if [ "$NONINTERACTIVE" = 1 ] || [ ! -t 0 ]; then
     [ "$def" = "Y" ] && return 0 || return 1
   fi
-  local hint="[y/n]"; [ "$def" = "N" ] && hint="[y/n]"
+  local hint="[Y/n]"
+  [ "$def" = "N" ] && hint="[y/N]"
   printf '\033[1m%s %s \033[0m' "$q" "$hint"
   read -r ans || true
   ans="${ans:-$def}"
