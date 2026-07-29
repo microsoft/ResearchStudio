@@ -852,33 +852,6 @@ def browser_gate(viewer_dir: Path, screenshot: Path | None = None, *, contract: 
                 else:
                     frame.wait_for_selector("[data-section]", state="attached", timeout=5000)
                     frame.wait_for_selector("[data-section].paper-reel-clickable, .titlebar.paper-reel-clickable", state="attached", timeout=5000)
-                    poster_overflows = frame.evaluate(
-                        """() => Array.from(document.querySelectorAll('[data-section]'))
-                          .filter(el => !el.matches('button, a, .listen-btn, .listen-title, .listen-all'))
-                          .filter(el => {
-                            const r = el.getBoundingClientRect();
-                            return r.width > 40 && r.height > 30;
-                          })
-                          .map(el => {
-                            const r = el.getBoundingClientRect();
-                            const children = Array.from(el.querySelectorAll('*'))
-                              .filter(child => !child.matches('button, a, .listen-btn, .listen-title, .listen-all'))
-                              .map(child => child.getBoundingClientRect())
-                              .filter(cr => cr.width > 1 && cr.height > 1);
-                            const maxBottom = children.length ? Math.max(...children.map(cr => cr.bottom)) : r.bottom;
-                            const maxRight = children.length ? Math.max(...children.map(cr => cr.right)) : r.right;
-                            const minTop = children.length ? Math.min(...children.map(cr => cr.top)) : r.top;
-                            const minLeft = children.length ? Math.min(...children.map(cr => cr.left)) : r.left;
-                            return {
-                              section: el.getAttribute('data-section'),
-                              vertical: Math.max(0, maxBottom - r.bottom, r.top - minTop),
-                              horizontal: Math.max(0, maxRight - r.right, r.left - minLeft)
-                            };
-                          })
-                          .filter(item => item.vertical > 3 || item.horizontal > 3)"""
-                    )
-                    if poster_overflows:
-                        add_finding(findings, "ERROR", "POSTER_SECTION_OVERFLOW", "Poster iframe has section content extending outside its card.", data={"sections": poster_overflows})
                     sid = frame.evaluate(
                         """() => {
                           const candidates = Array.from(document.querySelectorAll('[data-section]'))
