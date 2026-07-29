@@ -29,6 +29,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 from serve_reel import RangeRequestHandler, ThreadedRangeHTTPServer  # noqa: E402
+from reel_downloads import (  # noqa: E402
+    ARCHIVE_META,
+    ARCHIVE_ORDER,
+    DOWNLOAD_MANIFEST_PATH,
+    validate_download_manifest,
+)
 
 DEFAULT_CONTRACT_PATH = SKILL_DIR / "assets" / "section_modal_contract.json"
 DOWNLOAD_ARCHIVES = {
@@ -78,6 +84,7 @@ DEFAULT_CONTRACT = {
         "double-click tooltip": "Double Click to Open",
         "local-open poster embed": "const POSTER_HTML =",
         "local-open runtime switch": "shouldUseLocalOpenRuntime",
+        "local-open on-demand guard": "onDemand && window.location.protocol === 'file:'",
     },
     "forbidden_html_markers": {
         "old poster tab": 'id="posterTab"',
@@ -88,7 +95,14 @@ DEFAULT_CONTRACT = {
     },
     "required_download_labels": ["All", "Poster", "Video", "Blog"],
     "required_poster_debug_markers": ["window.__togglePosterDebug", "body.debug", "dbg-bbox"],
-    "required_output_paths": ["reel.html", "content_alignment.json", "manifest.json", "assets/poster/poster.html", "assets/ui/reel-wordmark.png"],
+    "required_output_paths": [
+        "reel.html",
+        "content_alignment.json",
+        "manifest.json",
+        "assets/poster/poster.html",
+        "assets/ui/reel-wordmark.png",
+        "assets/meta/reel_downloads.json",
+    ],
     "required_media_subdirs": ["assets/media/clips", "assets/media/captions", "assets/media/slide_clips"],
     "min_blog_text_chars": 80,
     "min_download_buttons": 4,
@@ -339,6 +353,97 @@ def validate_download_archives(
             )
 
 
+def validate_download_contract(
+    findings: list[dict[str, Any]],
+    viewer_dir: Path,
+) -> dict[str, Any] | None:
+    """Validate the explicit delivery mode and its corresponding artifacts."""
+    manifest_path = viewer_dir / DOWNLOAD_MANIFEST_PATH
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        add_finding(
+            findings,
+            "ERROR",
+            "DOWNLOAD_MANIFEST_MISSING",
+            "assets/meta/reel_downloads.json is missing.",
+            path=rel(manifest_path, viewer_dir),
+        )
+        return None
+    except json.JSONDecodeError as exc:
+        add_finding(
+            findings,
+            "ERROR",
+            "DOWNLOAD_MANIFEST_INVALID",
+            f"Download manifest is invalid JSON: {exc}",
+            path=rel(manifest_path, viewer_dir),
+        )
+        return None
+    issues = validate_download_manifest(
+        payload,
+        bundle_root=viewer_dir,
+        require_sources=(
+            isinstance(payload, dict) and payload.get("delivery") == "on_demand"
+        ),
+    )
+    for issue in issues:
+        issue_path = str(issue.get("path") or "")
+        add_finding(
+            findings,
+            "ERROR",
+            str(issue["code"]),
+            str(issue["message"]),
+            path=(
+                f"{DOWNLOAD_MANIFEST_PATH.as_posix()}:{issue_path}"
+                if issue_path
+                else DOWNLOAD_MANIFEST_PATH.as_posix()
+            ),
+            data=issue.get("data") if isinstance(issue.get("data"), dict) else {},
+        )
+
+    if not isinstance(payload, dict):
+        return None
+    delivery = payload.get("delivery")
+    if delivery == "materialized":
+        validate_download_archives(findings, viewer_dir)
+    elif delivery == "on_demand":
+        downloads_dir = viewer_dir / "assets" / "downloads"
+        stale_archives = (
+            sorted(
+                path
+                for path in downloads_dir.rglob("*")
+                if path.is_file() and path.suffix.lower() == ".zip"
+            )
+            if downloads_dir.is_dir()
+            else []
+        )
+        if stale_archives:
+            add_finding(
+                findings,
+                "ERROR",
+                "ON_DEMAND_ARCHIVE_PERSISTED",
+                "On-demand Reel bundles must not persist ZIP archives under assets/downloads.",
+                path=rel(downloads_dir, viewer_dir),
+                data={"files": [rel(path, viewer_dir) for path in stale_archives[:20]]},
+            )
+    return payload
+
+
+def download_delivery(viewer_dir: Path) -> str | None:
+    try:
+        payload = json.loads(
+            (viewer_dir.resolve() / DOWNLOAD_MANIFEST_PATH).read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        return None
+    if isinstance(payload, dict) and payload.get("delivery") in {
+        "materialized",
+        "on_demand",
+    }:
+        return str(payload["delivery"])
+    return None
+
+
 def validate_local_open_resources(findings: list[dict[str, Any]], poster_html: str, poster_path: Path, root: Path) -> None:
     resource_patterns = {
         "external script": r"<script\b[^>]*\bsrc\s*=\s*['\"]https?://",
@@ -405,7 +510,7 @@ def validate_static(
     html = html_path.read_text(encoding="utf-8") if html_path.is_file() else ""
     poster_html = poster_path.read_text(encoding="utf-8") if poster_path.is_file() else ""
     validate_no_backup_files(findings, viewer_dir)
-    validate_download_archives(findings, viewer_dir)
+    download_manifest = validate_download_contract(findings, viewer_dir)
     validate_no_local_paths(findings, html, path=rel(html_path, viewer_dir))
     validate_local_open_resources(findings, poster_html, poster_path, viewer_dir)
     required_html_markers = contract.get("required_html_markers") if isinstance(contract.get("required_html_markers"), dict) else {}
@@ -531,6 +636,23 @@ def validate_static(
     if not any((viewer_dir / "assets" / "slides").glob("slide_*.*")):
         add_finding(findings, "ERROR", "SLIDE_FRAMES_MISSING", "assets/slides/ contains no slide frames.", path="assets/slides/")
     downloads = alignment.get("downloads") if isinstance(alignment.get("downloads"), list) else []
+    delivery = (
+        str(download_manifest.get("delivery"))
+        if isinstance(download_manifest, dict)
+        else None
+    )
+    if alignment.get("download_delivery") != delivery:
+        add_finding(
+            findings,
+            "ERROR",
+            "DOWNLOAD_DELIVERY_MISMATCH",
+            "content_alignment.json and reel_downloads.json must declare the same delivery mode.",
+            path=rel(alignment_path, viewer_dir),
+            data={
+                "alignment": alignment.get("download_delivery"),
+                "manifest": delivery,
+            },
+        )
     min_downloads = int(contract.get("min_download_buttons") or 0)
     if len(downloads) < min_downloads:
         add_finding(findings, "ERROR", "DOWNLOADS_MISSING", "Top menu must expose every download bundle required by the golden viewer contract.", path=rel(alignment_path, viewer_dir), data={"count": len(downloads), "required": min_downloads})
@@ -538,12 +660,42 @@ def validate_static(
     for label in contract.get("required_download_labels") or []:
         if str(label) not in download_labels:
             add_finding(findings, "ERROR", "DOWNLOAD_LABEL_MISSING", "A required top-menu download label is missing.", path=rel(alignment_path, viewer_dir), data={"label": label, "found": sorted(download_labels)})
+    expected_hrefs = {
+        kind: (
+            f"assets/downloads/{ARCHIVE_META[kind]['filename']}"
+            if delivery == "materialized"
+            else f"__download__/{kind}"
+        )
+        for kind in ARCHIVE_ORDER
+    }
+    label_to_kind = {
+        str(ARCHIVE_META[kind]["label"]): kind
+        for kind in ARCHIVE_ORDER
+    }
     for item in downloads:
         if not isinstance(item, dict):
             continue
+        label = str(item.get("label") or "")
         href = str(item.get("href") or "")
-        if not href or not (viewer_dir / href).is_file():
-            add_finding(findings, "ERROR", "DOWNLOAD_FILE_MISSING", "Download bundle listed in content_alignment.json is missing.", path=href or rel(alignment_path, viewer_dir))
+        kind = label_to_kind.get(label)
+        expected_href = expected_hrefs.get(kind) if kind else None
+        if href != expected_href:
+            add_finding(
+                findings,
+                "ERROR",
+                "DOWNLOAD_HREF_INVALID",
+                "Download link does not match the declared delivery mode.",
+                path=href or rel(alignment_path, viewer_dir),
+                data={"label": label, "actual": href, "expected": expected_href},
+            )
+        elif delivery == "materialized" and not (viewer_dir / href).is_file():
+            add_finding(
+                findings,
+                "ERROR",
+                "DOWNLOAD_FILE_MISSING",
+                "Materialized download listed in content_alignment.json is missing.",
+                path=href,
+            )
 
     for raw_section in sections:
         if not isinstance(raw_section, dict):
@@ -646,6 +798,54 @@ def validate_range_support(base_url: str, viewer_dir: Path, findings: list[dict[
         )
 
 
+def validate_on_demand_endpoints(
+    base_url: str,
+    findings: list[dict[str, Any]],
+) -> None:
+    """Verify every dynamic link resolves without materializing its ZIP."""
+    for kind in ARCHIVE_ORDER:
+        url = f"{base_url}/__download__/{kind}"
+        request = urllib.request.Request(url, method="HEAD")
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                status = int(response.status)
+                content_type = str(response.headers.get("Content-Type") or "")
+                disposition = str(response.headers.get("Content-Disposition") or "")
+        except urllib.error.HTTPError as exc:
+            status = int(exc.code)
+            content_type = str(exc.headers.get("Content-Type") or "")
+            disposition = str(exc.headers.get("Content-Disposition") or "")
+        except Exception as exc:
+            add_finding(
+                findings,
+                "ERROR",
+                "DOWNLOAD_ENDPOINT_REQUEST_FAILED",
+                "Browser QA server could not validate an on-demand download endpoint.",
+                path=f"__download__/{kind}",
+                data={"error": str(exc)},
+            )
+            continue
+        expected_filename = str(ARCHIVE_META[kind]["filename"])
+        if (
+            status != 200
+            or "application/zip" not in content_type.lower()
+            or expected_filename not in disposition
+        ):
+            add_finding(
+                findings,
+                "ERROR",
+                "DOWNLOAD_ENDPOINT_INVALID",
+                "On-demand download endpoint did not return the expected ZIP response.",
+                path=f"__download__/{kind}",
+                data={
+                    "status": status,
+                    "content_type": content_type,
+                    "content_disposition": disposition,
+                    "expected_filename": expected_filename,
+                },
+            )
+
+
 def direct_video_seek(page: Any, findings: list[dict[str, Any]], *, label: str) -> None:
     try:
         result = page.evaluate(
@@ -701,7 +901,13 @@ def direct_video_seek(page: Any, findings: list[dict[str, Any]], *, label: str) 
         )
 
 
-def validate_topbar_layout(page: Any, findings: list[dict[str, Any]], *, label: str) -> None:
+def validate_topbar_layout(
+    page: Any,
+    findings: list[dict[str, Any]],
+    *,
+    label: str,
+    downloads_expected: bool = True,
+) -> None:
     try:
         result = page.evaluate(
             """() => {
@@ -738,7 +944,10 @@ def validate_topbar_layout(page: Any, findings: list[dict[str, Any]], *, label: 
     if not isinstance(result, dict):
         add_finding(findings, "ERROR", "TOPBAR_LAYOUT_CHECK_FAILED", "Top menu layout inspection returned no data.", data={"label": label, "result": result})
         return
-    missing = [name for name in ("brand", "rail", "downloads", "help") if not result.get(name)]
+    required_elements = ["brand", "rail", "help"]
+    if downloads_expected:
+        required_elements.append("downloads")
+    missing = [name for name in required_elements if not result.get(name)]
     if missing:
         add_finding(findings, "ERROR", "TOPBAR_ELEMENT_MISSING", "Top menu is missing an element required by the current layout.", data={"label": label, "missing": missing, "result": result})
         return
@@ -753,12 +962,17 @@ def validate_topbar_layout(page: Any, findings: list[dict[str, Any]], *, label: 
     rail = result["rail"]
     downloads = result["downloads"]
     help_btn = result["help"]
-    if not (brand["left"] < rail["left"] < downloads["left"] < help_btn["left"]):
+    ordered = (
+        brand["left"] < rail["left"] < downloads["left"] < help_btn["left"]
+        if downloads_expected
+        else brand["left"] < rail["left"] < help_btn["left"]
+    )
+    if not ordered:
         add_finding(
             findings,
             "ERROR",
             "TOPBAR_LAYOUT_ORDER_WRONG",
-            "Top menu must place the Reel wordmark and editorial section tabs on the left, with downloads and Help on the right.",
+            "Top menu elements are not in the required editorial order.",
             data={"label": label, "layout": result},
         )
     try:
@@ -894,6 +1108,7 @@ def validate_browser_seek_interactions(page: Any, findings: list[dict[str, Any]]
 def browser_gate(viewer_dir: Path, screenshot: Path | None = None, *, contract: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     contract = contract or load_contract()
+    delivery = download_delivery(viewer_dir)
     min_downloads = int(contract.get("min_download_buttons") or DEFAULT_CONTRACT["min_download_buttons"])
     min_blog_text = int(contract.get("min_blog_text_chars") or DEFAULT_CONTRACT["min_blog_text_chars"])
     try:
@@ -910,6 +1125,8 @@ def browser_gate(viewer_dir: Path, screenshot: Path | None = None, *, contract: 
         base_url = f"http://127.0.0.1:{port}"
         url = f"{base_url}/reel.html"
         validate_range_support(base_url, viewer_dir.resolve(), findings)
+        if delivery == "on_demand":
+            validate_on_demand_endpoints(base_url, findings)
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
@@ -1119,6 +1336,7 @@ def file_browser_gate(viewer_dir: Path, screenshot: Path | None = None, *, contr
     """
     findings: list[dict[str, Any]] = []
     contract = contract or load_contract()
+    delivery = download_delivery(viewer_dir)
     min_downloads = int(contract.get("min_download_buttons") or DEFAULT_CONTRACT["min_download_buttons"])
     min_blog_text = int(contract.get("min_blog_text_chars") or DEFAULT_CONTRACT["min_blog_text_chars"])
     html_path = viewer_dir.resolve() / "reel.html"
@@ -1172,9 +1390,27 @@ def file_browser_gate(viewer_dir: Path, screenshot: Path | None = None, *, contr
             topbar_after_v = page.locator(".topbar").evaluate("el => getComputedStyle(el).display")
             if topbar_after_v == "none":
                 add_finding(findings, "ERROR", "MENU_SHORTCUT_BROKEN", "Shortcut v did not show the top menu in file-open mode.")
-            validate_topbar_layout(page, findings, label="file")
+            validate_topbar_layout(
+                page,
+                findings,
+                label="file",
+                downloads_expected=delivery != "on_demand",
+            )
             download_count = page.locator("#downloadLinks .download-link").count()
-            if download_count < min_downloads:
+            download_display = page.locator("#downloadLinks").evaluate(
+                "el => getComputedStyle(el).display"
+            )
+            if delivery == "on_demand" and (
+                download_count != 0 or download_display != "none"
+            ):
+                add_finding(
+                    findings,
+                    "ERROR",
+                    "FILE_ON_DEMAND_DOWNLOADS_VISIBLE",
+                    "Online-only downloads must be hidden when reel.html is opened through file://.",
+                    data={"count": download_count, "display": download_display},
+                )
+            elif delivery != "on_demand" and download_count < min_downloads:
                 add_finding(findings, "ERROR", "DOWNLOAD_BUTTONS_MISSING", "Top menu has fewer download buttons than the golden viewer contract requires in file-open mode.", data={"count": download_count, "required": min_downloads})
 
             frame = page.locator("#posterFrame").element_handle().content_frame()

@@ -20,6 +20,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from reel_downloads import (
+    DOWNLOAD_MANIFEST_PATH,
+    build_download_manifest,
+    validate_download_manifest,
+    write_download_manifest,
+)
+
 
 STATUS_PASS = "PASS"
 STATUS_MISSING = "MISSING"
@@ -296,7 +303,13 @@ def refresh_assets(bundle_dir: Path, source_pdf: Path, python_exe: str, *, dry_r
     run_cmd(cmd, dry_run=dry_run)
 
 
-def build_viewer_command(bundle_dir: Path, staging_dir: Path, slides_dir: Path, python_exe: str) -> list[str]:
+def build_viewer_command(
+    bundle_dir: Path,
+    staging_dir: Path,
+    slides_dir: Path,
+    python_exe: str,
+    download_mode: str = "materialized",
+) -> list[str]:
     cmd = [
         python_exe,
         str(BUILD_VIEWER),
@@ -306,6 +319,8 @@ def build_viewer_command(bundle_dir: Path, staging_dir: Path, slides_dir: Path, 
         str(slides_dir),
         "--outdir",
         str(staging_dir),
+        "--download-mode",
+        download_mode,
     ]
     optional_pairs = [
         ("--script-json", bundle_dir / "assets" / "audio" / "script.json"),
@@ -369,7 +384,12 @@ def copytree_replace(src: Path, dst: Path) -> None:
         shutil.copytree(src, dst)
 
 
-def sync_reel_into_bundle(staging_dir: Path, target_dir: Path) -> None:
+def sync_reel_into_bundle(
+    staging_dir: Path,
+    target_dir: Path,
+    *,
+    download_mode: str = "materialized",
+) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(staging_dir / "reel.html", target_dir / "reel.html")
     shutil.copy2(staging_dir / "content_alignment.json", target_dir / "content_alignment.json")
@@ -378,8 +398,14 @@ def sync_reel_into_bundle(staging_dir: Path, target_dir: Path) -> None:
     target_assets = target_dir / "assets"
     target_assets.mkdir(parents=True, exist_ok=True)
 
-    for name in ("poster", "media", "blog", "downloads", "ui"):
+    for name in ("poster", "media", "blog", "ui"):
         copytree_replace(stage_assets / name, target_assets / name)
+    target_downloads = target_assets / "downloads"
+    if download_mode == "materialized":
+        copytree_replace(stage_assets / "downloads", target_downloads)
+    elif target_downloads.exists():
+        # Reclaim historical ZIPs when publishing an on-demand Reel.
+        shutil.rmtree(target_downloads)
 
     stage_slides = stage_assets / "slides"
     target_slides = target_assets / "slides"
@@ -393,6 +419,31 @@ def sync_reel_into_bundle(staging_dir: Path, target_dir: Path) -> None:
     meta_dir = target_assets / "meta"
     meta_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(staging_dir / "manifest.json", meta_dir / "reel_manifest.json")
+    if download_mode == "materialized":
+        shutil.copy2(
+            staging_dir / DOWNLOAD_MANIFEST_PATH,
+            target_dir / DOWNLOAD_MANIFEST_PATH,
+        )
+    else:
+        download_manifest = build_download_manifest(
+            bundle_root=target_dir,
+            poster_source=target_dir,
+            video_source=target_dir,
+            blog_source=target_dir,
+            delivery="on_demand",
+        )
+        issues = validate_download_manifest(
+            download_manifest,
+            bundle_root=target_dir,
+            require_sources=True,
+        )
+        if issues:
+            first = issues[0]
+            raise SystemExit(
+                "Cannot publish on-demand Reel downloads: "
+                f"{first['code']}: {first['message']}"
+            )
+        write_download_manifest(target_dir / DOWNLOAD_MANIFEST_PATH, download_manifest)
 
     manifest_path = target_dir / "manifest.json"
     manifest = load_json(manifest_path, {})
@@ -409,9 +460,11 @@ def sync_reel_into_bundle(staging_dir: Path, target_dir: Path) -> None:
             "media_dir": "assets/media",
             "slides_dir": "assets/slides",
             "blog_dir": "assets/blog",
-            "downloads_dir": "assets/downloads",
+            "downloads_manifest": DOWNLOAD_MANIFEST_PATH.as_posix(),
             "ui_dir": "assets/ui",
         }
+        if download_mode == "materialized":
+            files["reel"]["downloads_dir"] = "assets/downloads"
     reel_manifest = load_json(staging_dir / "manifest.json", {})
     if isinstance(reel_manifest, dict) and isinstance(reel_manifest.get("local_open"), dict):
         manifest["reel_local_open"] = reel_manifest["local_open"]
@@ -429,6 +482,7 @@ def build_reel(
     section_tail_seconds: float,
     keep_staging: bool,
     ffmpeg: str,
+    download_mode: str = "materialized",
 ) -> None:
     slides_dir = resolve_slides_dir(bundle_dir)
     if slides_dir is None:
@@ -441,7 +495,16 @@ def build_reel(
 
     with tempfile.TemporaryDirectory(prefix="paper2reel-build-") as tmp:
         staging_dir = Path(tmp) / "reel"
-        run_cmd(build_viewer_command(bundle_dir, staging_dir, slides_dir, python_exe), dry_run=dry_run)
+        run_cmd(
+            build_viewer_command(
+                bundle_dir,
+                staging_dir,
+                slides_dir,
+                python_exe,
+                download_mode,
+            ),
+            dry_run=dry_run,
+        )
         run_cmd(
             build_media_command(
                 bundle_dir,
@@ -454,7 +517,11 @@ def build_reel(
         )
         if dry_run:
             return
-        sync_reel_into_bundle(staging_dir, target_dir)
+        sync_reel_into_bundle(
+            staging_dir,
+            target_dir,
+            download_mode=download_mode,
+        )
         if keep_staging:
             keep_dir = target_dir / "assets" / "meta" / "reel_build_staging"
             copytree_replace(staging_dir, keep_dir)
@@ -511,6 +578,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--section-tail-seconds", type=float, default=0.9)
     parser.add_argument("--ffmpeg", default="ffmpeg", help="ffmpeg executable for timeline-backed section media.")
     parser.add_argument("--keep-staging", action="store_true", help="Copy the temporary reel staging bundle into assets/meta for debugging.")
+    parser.add_argument(
+        "--download-mode",
+        choices=("materialized", "on_demand"),
+        default="materialized",
+        help=(
+            "materialized keeps standalone ZIP downloads; on_demand publishes "
+            "only the validated download manifest for the dynamic endpoint"
+        ),
+    )
     parser.add_argument("--python", default=sys.executable, help="Python interpreter for child scripts.")
     return parser.parse_args()
 
@@ -560,6 +636,7 @@ def main() -> int:
             section_tail_seconds=args.section_tail_seconds,
             keep_staging=args.keep_staging,
             ffmpeg=args.ffmpeg,
+            download_mode=args.download_mode,
         )
         statuses = collect_statuses(bundle_dir, source_pdf, args.python, reel_dir=target_dir)
         for status in statuses:

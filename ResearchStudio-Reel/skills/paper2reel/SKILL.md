@@ -94,7 +94,9 @@ Build the user-facing viewer directly in a v2 reel bundle:
     media/
     slides/
     blog/
-    downloads/
+    meta/
+      reel_downloads.json
+    downloads/                           # materialized mode only
 ```
 
 This directory must be self-contained enough to serve locally: `reel.html`
@@ -117,6 +119,7 @@ python skills/paper2reel/scripts/build_poster_slides_view.py \
   --download-poster-dir <poster_outdir> \
   --download-blog-dir <blog_outdir> \
   --download-video-dir <video_outdir> \
+  --download-mode materialized \
   --outdir <reel_outdir>
 ```
 
@@ -142,7 +145,9 @@ The script writes:
     blog/
       figures/
         ...
-    downloads/
+    meta/
+      reel_downloads.json
+    downloads/                       # materialized mode only
       all_final.zip
       poster_final.zip
       blog_final.zip
@@ -159,14 +164,27 @@ figure directory. The builder will copy blog figures into `blog/figures/` and
 store section-level EN/CN blocks in `content_alignment.json`; the browser gate
 requires those blocks.
 
-When download directories are provided, the builder creates top-menu download
-links for the exact deliverable bundles shown in the viewer. `poster_final.zip`,
-`video_final.zip`, and `blog_final.zip` contain only their module's final
-deliverables; `all_final.zip` is their deduplicated union. Rebuilding in a
-shared v2 bundle must exclude `.claude/`, backup files, and
-`assets/downloads/` so archives never contain old archives or grow
-recursively. The final checker validates those archive boundaries. The menu is
-still hidden by default and appears with `v`.
+When download directories are provided, the builder always writes
+`assets/meta/reel_downloads.json` with schema
+`paper2reel.downloads.v1`. Its `archives` object contains exactly `all`,
+`poster`, `video`, and `blog`; every archive declares `label`, `filename`, and
+deduplicated `files` entries with bundle-relative POSIX `path`, ZIP `arcname`,
+and exact byte `size`.
+
+Download delivery has two explicit modes:
+
+- `materialized` is the standalone default. It preserves
+  `assets/downloads/{all,poster,video,blog}_final.zip` and full `file://`
+  download behavior.
+- `on_demand` writes no persistent ZIP. It uses relative
+  `__download__/{all,poster,video,blog}` links, which `serve_reel.py` resolves
+  from the manifest and streams as temporary ZIP responses. Direct `file://`
+  opening hides these online-only links.
+
+Both modes exclude `.claude/`, nested download directories, backups, and
+internal files. On-demand module entries are whitelisted and `all` is their
+deduplicated union. Use `on_demand` for Portal jobs and `materialized` for
+standalone offline bundles unless the caller explicitly chooses otherwise.
 
 ## Timeline-Backed Section Media
 
@@ -245,6 +263,12 @@ download pill with icon and `All | Poster | Video | Blog` links, section-rail
 hover styling, section clip, raw pre-subtitle playback video, toggleable VTT
 captions, blog images, or the fixed template/version markers.
 
+Download QA follows the manifest's explicit `delivery` field. In
+`materialized` mode it validates the four ZIPs using the existing archive
+boundaries. In `on_demand` mode it rejects persisted ZIPs, validates every
+manifest path, classification, source file, and byte size, checks the
+deduplicated All union, and probes each dynamic endpoint with HTTP HEAD.
+
 If the checker fails, treat it as an agent repair task first: fix the viewer and
 rerun the gate. Do not mark the stage `PASS` and do not ask the user to catch it
 by visually inspecting the page.
@@ -257,6 +281,9 @@ python skills/paper2reel/scripts/serve_reel.py <reel_outdir> --port 8900
 
 Open `http://127.0.0.1:8900/reel.html`. The preview is not considered faithful
 unless video requests return `206 Partial Content` for Range requests.
+For `on_demand` bundles this server also implements
+`/__download__/{all,poster,video,blog}` and creates each ZIP only for the
+request; it does not write archives into the bundle.
 
 For quick local sharing, users may also double-click `<reel_outdir>/reel.html`.
 Do not remove the `assets/` folder or copy only the HTML file; direct-open mode
@@ -267,6 +294,7 @@ still depends on the v2 bundle folder structure.
 `<reel_outdir>/manifest.json` must include `"layout": "v2-assets"` and
 root-relative paths for `reel.html`, `content_alignment.json`,
 `assets/poster/`, `assets/media/`, `assets/slides/`, `assets/blog/`, and
+`assets/meta/reel_downloads.json`. Materialized bundles also index
 `assets/downloads/`. Keep QA screenshots and reports under
 `assets/meta/previews/` and `assets/meta/reports/`.
 
@@ -313,8 +341,16 @@ Then follow its stage report:
 - When all upstream stages pass, let the helper assemble the reel:
 
   ```bash
-  python skills/paper2reel/scripts/build_reel_from_paper.py <paper.pdf-or-bundle> --run-missing
+  python skills/paper2reel/scripts/build_reel_from_paper.py \
+    <paper.pdf-or-bundle> \
+    --run-missing \
+    --download-mode materialized
   ```
+
+  Portal callers must pass `--download-mode on_demand`. After the staged Reel
+  is synchronized into the final shared bundle, the helper rebuilds the
+  manifest against that final bundle and removes any historical
+  `assets/downloads/` directory.
 
 The helper builds the viewer in a temporary staging directory and then copies
 only the reel deliverables back into the v2 bundle. This avoids the
@@ -322,7 +358,8 @@ only the reel deliverables back into the v2 bundle. This avoids the
 poster, blog, video, or paper2assets outputs. It preserves the v2 contract:
 `reel.html` and `content_alignment.json` at the bundle root, with reel support
 assets under `assets/poster/`, `assets/media/`, `assets/slides/`,
-`assets/blog/`, and `assets/downloads/`.
+`assets/blog/`, plus `assets/meta/reel_downloads.json`; only materialized mode
+adds `assets/downloads/`.
 
 If the helper reports a blocked stage, stop and complete that named full skill
 stage. Do not write a simplified poster, video, blog outline, slide image, or

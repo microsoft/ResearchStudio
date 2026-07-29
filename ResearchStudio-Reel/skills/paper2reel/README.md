@@ -34,7 +34,8 @@ Written back into the same v2 bundle root:
 | `assets/media/` | Video assets, section clips, VTT captions, and media metadata |
 | `assets/slides/` | Slide thumbnails / frames used for timeline navigation |
 | `assets/blog/` | HTML-rendered blog blocks and embedded blog images |
-| `assets/downloads/` | User-facing download bundle links |
+| `assets/meta/reel_downloads.json` | Structured All/Poster/Video/Blog source manifest |
+| `assets/downloads/` | Persisted ZIPs in standalone `materialized` mode only |
 
 `video_no_subtitles.mp4` is the playback source for the reel. The final subtitled `video.mp4` remains downloadable, but using it for in-reel playback would double-subtitle once the viewer CC toggle is enabled.
 
@@ -57,15 +58,19 @@ python skills/paper2reel/scripts/serve_reel.py ./my_paper/ --port 8900
 ```
 
 Open `http://127.0.0.1:8900/reel.html`. Do not use `python -m http.server` for validation; video seek requires HTTP Range support.
+The same server handles `__download__/{all,poster,video,blog}` for
+`on_demand` bundles and streams a temporary ZIP from
+`assets/meta/reel_downloads.json` without saving it in the bundle.
 
 The generated `reel.html` also supports direct local opening. You may double-click
 `reel.html` or open it through `file://` as long as the whole v2 bundle folder is
 kept together. Under `file://`, the viewer embeds the copied poster through
 `iframe.srcdoc`, localizes poster render resources such as MathJax into
 `assets/poster/`, and keeps the same poster hover, section modal, captions,
-blog, thumbnails, shortcuts, and downloads UI. The HTTP server remains the
-golden preview path for Range/206 validation; direct-open mode is validated by a
-separate file-browser gate.
+blog, thumbnails, and shortcuts. Standalone `materialized` bundles keep their
+offline ZIP links; `on_demand` bundles hide those online-only links under
+`file://`. The HTTP server remains the golden preview path for Range/206
+validation; direct-open mode is validated by a separate file-browser gate.
 
 ## How it works
 
@@ -82,6 +87,10 @@ separate file-browser gate.
 The default view is poster-first. Sections highlight on hover; double-clicking a poster section opens the section modal. The title region opens the full-paper modal. The modal places video on the left and blog on the right, with a draggable split, subtitle toggle, slide thumbnails that seek the video, and direct progress-bar seeking. Keyboard shortcuts include audio, help, and top-menu controls.
 
 Downloads and the top menu are part of the delivered UI, not optional extras.
+The explicit manifest field `delivery` selects `materialized` (default,
+persisted ZIPs) or `on_demand` (dynamic endpoint, no persisted ZIPs). Portal
+jobs must invoke `build_reel_from_paper.py --download-mode on_demand`; normal
+standalone use remains backward-compatible.
 
 ## Scripts
 
@@ -91,6 +100,7 @@ scripts/
 ├── build_poster_slides_view.py       # poster + slides base viewer
 ├── build_section_media_from_timeline.py # section clips/captions from video timeline
 ├── check_reel_package.py             # browser-backed hard QA gate
+├── reel_downloads.py                 # shared manifest/path/archive contract
 └── serve_reel.py                     # Range-capable local preview server
 ```
 

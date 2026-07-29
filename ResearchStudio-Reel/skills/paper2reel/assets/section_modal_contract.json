@@ -29,6 +29,7 @@
     "double-click tooltip": "Double Click to Open",
     "local-open poster embed": "const POSTER_HTML =",
     "local-open runtime switch": "shouldUseLocalOpenRuntime",
+    "local-open on-demand guard": "onDemand && window.location.protocol === 'file:'",
     "template version marker": "attention_golden_section_modal.v1"
   },
   "forbidden_html_markers": {
@@ -54,10 +55,7 @@
     "assets/ui/reel-wordmark.png",
     "assets/slides",
     "assets/blog/figures",
-    "assets/downloads/all_final.zip",
-    "assets/downloads/poster_final.zip",
-    "assets/downloads/video_final.zip",
-    "assets/downloads/blog_final.zip"
+    "assets/meta/reel_downloads.json"
   ],
   "required_media_subdirs": [
     "assets/media/clips",
@@ -65,5 +63,7 @@
     "assets/media/slide_clips"
   ],
   "min_blog_text_chars": 80,
-  "min_download_buttons": 4
+  "min_download_buttons": 4,
+  "download_schema_version": "paper2reel.downloads.v1",
+  "download_deliveries": ["materialized", "on_demand"]
 }

@@ -20,6 +20,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from reel_downloads import (
+    ARCHIVE_META,
+    DOWNLOAD_MANIFEST_PATH,
+    archive_links,
+    build_download_manifest,
+    selected_files,
+    validate_download_manifest,
+    write_download_manifest,
+)
+
 
 SCHEMA_VERSION = "paper2any_alignment.v1"
 VIEWER_VERSION = "section_modal.v2"
@@ -37,32 +47,6 @@ BLOG_FIGURES_DIR = "assets/blog/figures"
 DOWNLOADS_DIR = "assets/downloads"
 UI_DIR = "assets/ui"
 REEL_WORDMARK_SRC = REEL_ROOT / "docs" / "figures" / "reel-wordmark.png"
-DOWNLOAD_MODULE_FILES: dict[str, dict[str, set[str]]] = {
-    "poster": {
-        "files": {"poster.html", "poster.png", "poster.pdf", "poster.pptx"},
-        "directories": {
-            "assets/_pptx_build",
-            "assets/figures",
-            "assets/fonts",
-            "assets/logos",
-            "assets/qr",
-        },
-    },
-    "video": {
-        "files": {"video.mp4", "video.pptx"},
-        "directories": {"assets/captions"},
-    },
-    "blog": {
-        "files": {"blog_en.docx", "blog_zh.docx"},
-        "directories": set(),
-    },
-}
-DOWNLOAD_MODULE_ARCHIVES = {
-    "poster": "poster_final.zip",
-    "video": "video_final.zip",
-    "blog": "blog_final.zip",
-}
-
 MATHJAX_CDN_RE = re.compile(
     r"""(?P<prefix>\bsrc\s*=\s*)(?P<quote>["'])"""
     r"""(?P<url>https?://(?:cdn\.jsdelivr\.net/npm|unpkg\.com)/mathjax@[^"']*/es5/tex-svg\.js)"""
@@ -448,6 +432,15 @@ function renderRail() {
 function renderDownloads() {
   const box = document.getElementById('downloadLinks');
   const downloads = ALIGNMENT.downloads || [];
+  const onDemand = ALIGNMENT.download_delivery === 'on_demand';
+  if (onDemand && window.location.protocol === 'file:') {
+    box.innerHTML = '';
+    box.style.display = 'none';
+    box.setAttribute('aria-hidden', 'true');
+    return;
+  }
+  box.style.display = '';
+  box.removeAttribute('aria-hidden');
   const icon = '<span class="download-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 20h14"></path></svg></span>';
   const links = downloads.map((item, idx) => `${idx ? '<span class="download-sep" aria-hidden="true">|</span>' : ''}<a class="download-link" href="${escapeHtml(item.href)}" download>${escapeHtml(item.label)}</a>`).join('');
   box.innerHTML = icon + links;
@@ -1368,47 +1361,6 @@ def infer_slide_map(slides: list[dict[str, Any]], sections: list[dict[str, str]]
     return {sid: sorted(set(indexes)) for sid, indexes in out.items()}
 
 
-def is_internal_download_path(relative: Path) -> bool:
-    return bool(
-        not relative.parts
-        or relative.parts[0] == ".claude"
-        or relative.parts[:2] == ("assets", "downloads")
-        or is_backup_artifact_name(relative.name)
-    )
-
-
-def matches_download_module(relative: Path, module: str) -> bool:
-    spec = DOWNLOAD_MODULE_FILES[module]
-    relative_posix = relative.as_posix()
-    return (
-        relative_posix in spec["files"]
-        or any(
-            relative_posix.startswith(f"{directory}/")
-            for directory in spec["directories"]
-        )
-    )
-
-
-def download_archive_files(
-    source: Path,
-    *,
-    module: str | None = None,
-) -> list[tuple[Path, Path]]:
-    selected: list[tuple[Path, Path]] = []
-    if not source.is_dir():
-        return selected
-    for path in sorted(source.rglob("*")):
-        if not path.is_file():
-            continue
-        relative = path.relative_to(source)
-        if is_internal_download_path(relative):
-            continue
-        if module is not None and not matches_download_module(relative, module):
-            continue
-        selected.append((path, relative))
-    return selected
-
-
 def write_download_zip(files: list[tuple[Path, Path]], destination: Path) -> bool:
     if not files:
         return False
@@ -1425,8 +1377,9 @@ def build_downloads(
     poster_final_dir: Path | None,
     blog_final_dir: Path | None,
     video_final_dir: Path | None,
+    download_mode: str = "materialized",
 ) -> list[dict[str, str]]:
-    """Build separate module ZIPs and one deduplicated combined archive."""
+    """Build legacy ZIPs or an on-demand manifest, plus fixed viewer links."""
     outdir = Path(outdir)
     sources = {
         "poster": Path(poster_final_dir).resolve() if poster_final_dir else None,
@@ -1438,16 +1391,41 @@ def build_downloads(
         for module, source in sources.items()
         if source is not None and source.is_dir()
     }
+    resolved_sources = set(available.values())
+    manifest_root = next(iter(resolved_sources)) if len(resolved_sources) == 1 else outdir.resolve()
+    download_manifest = build_download_manifest(
+        bundle_root=manifest_root,
+        poster_source=available.get("poster"),
+        video_source=available.get("video"),
+        blog_source=available.get("blog"),
+        delivery=download_mode,
+    )
+    if download_mode == "on_demand":
+        issues = validate_download_manifest(
+            download_manifest,
+            bundle_root=manifest_root,
+            require_sources=True,
+        )
+        if issues:
+            first = issues[0]
+            raise SystemExit(
+                f"Cannot build on-demand Reel downloads: {first['code']}: {first['message']}"
+            )
+        downloads_dir = outdir / DOWNLOADS_DIR
+        if downloads_dir.exists():
+            shutil.rmtree(downloads_dir)
+        write_download_manifest(outdir / DOWNLOAD_MANIFEST_PATH, download_manifest)
+        return archive_links(download_mode)
+
     downloads_dir = outdir / DOWNLOADS_DIR
     downloads: list[dict[str, str]] = []
     if available:
-        resolved_sources = set(available.values())
         all_files: list[tuple[Path, Path]]
         if len(resolved_sources) == 1:
             source = next(iter(resolved_sources))
             union: dict[str, tuple[Path, Path]] = {}
             for module in available:
-                for path, relative in download_archive_files(source, module=module):
+                for path, relative in selected_files(source, module=module):
                     union[relative.as_posix()] = (path, relative)
             all_files = list(union.values())
         else:
@@ -1455,32 +1433,33 @@ def build_downloads(
             for module, source in available.items():
                 all_files.extend(
                     (path, Path(module) / relative)
-                    for path, relative in download_archive_files(source)
+                    for path, relative in selected_files(source, module=None)
                 )
-        all_path = downloads_dir / "all_final.zip"
+        all_path = downloads_dir / ARCHIVE_META["all"]["filename"]
         if write_download_zip(all_files, all_path):
             downloads.append({
-                "label": "All",
+                "label": ARCHIVE_META["all"]["label"],
                 "href": rel_to(all_path, outdir),
             })
 
     source_counts: dict[Path, int] = {}
     for source in available.values():
         source_counts[source] = source_counts.get(source, 0) + 1
-    for module, label in (("poster", "Poster"), ("video", "Video"), ("blog", "Blog")):
+    for module in ("poster", "video", "blog"):
         source = available.get(module)
         if source is None:
             continue
         shared = source_counts[source] > 1
-        archive_path = downloads_dir / DOWNLOAD_MODULE_ARCHIVES[module]
+        archive_path = downloads_dir / ARCHIVE_META[module]["filename"]
         if write_download_zip(
-            download_archive_files(source, module=module if shared else None),
+            selected_files(source, module=module if shared else None),
             archive_path,
         ):
             downloads.append({
-                "label": label,
+                "label": ARCHIVE_META[module]["label"],
                 "href": rel_to(archive_path, outdir),
             })
+    write_download_manifest(outdir / DOWNLOAD_MANIFEST_PATH, download_manifest)
     return downloads
 
 
@@ -1492,6 +1471,7 @@ def build_alignment(
     override_map: dict[str, list[int]],
     blog_outlines: dict[str, dict[str, Any] | None],
     downloads: list[dict[str, str]],
+    download_delivery: str,
 ) -> dict[str, Any]:
     sections = section_docs(poster_dir)
     auto_map = infer_slide_map(slides, sections)
@@ -1542,6 +1522,7 @@ def build_alignment(
             "poster": f"{POSTER_DIR}/poster.html",
             "slides_dir": SLIDES_DIR,
         },
+        "download_delivery": download_delivery,
         "downloads": downloads,
         "slides": [
             {
@@ -1558,6 +1539,18 @@ def build_alignment(
 
 
 def build_manifest(alignment: dict[str, Any]) -> dict[str, Any]:
+    files = {
+        "reel": "reel.html",
+        "content_alignment": "content_alignment.json",
+        "poster_dir": POSTER_DIR,
+        "slides_dir": SLIDES_DIR,
+        "blog_figures_dir": BLOG_FIGURES_DIR,
+        "media_dir": "assets/media",
+        "downloads_manifest": DOWNLOAD_MANIFEST_PATH.as_posix(),
+        "ui_dir": UI_DIR,
+    }
+    if alignment.get("download_delivery") == "materialized":
+        files["downloads_dir"] = DOWNLOADS_DIR
     return {
         "schema_version": "paper2reel.v1",
         "layout": LAYOUT_VERSION,
@@ -1569,16 +1562,7 @@ def build_manifest(alignment: dict[str, Any]) -> dict[str, Any]:
             "requires_bundle_folder": True,
             "poster_runtime": "iframe.srcdoc under file:; iframe.src under http:",
         },
-        "files": {
-            "reel": "reel.html",
-            "content_alignment": "content_alignment.json",
-            "poster_dir": POSTER_DIR,
-            "slides_dir": SLIDES_DIR,
-            "blog_figures_dir": BLOG_FIGURES_DIR,
-            "media_dir": "assets/media",
-            "downloads_dir": DOWNLOADS_DIR,
-            "ui_dir": UI_DIR,
-        },
+        "files": files,
         "counts": {
             "sections": len(alignment.get("sections") or []),
             "slides": len(alignment.get("slides") or []),
@@ -1609,6 +1593,15 @@ def parse_args() -> argparse.Namespace:
                     help="Optional paper2blog bundle directory to zip for the top menu download")
     ap.add_argument("--download-video-dir", type=Path,
                     help="Optional paper2video bundle directory to zip for the top menu download")
+    ap.add_argument(
+        "--download-mode",
+        choices=("materialized", "on_demand"),
+        default="materialized",
+        help=(
+            "materialized writes the legacy ZIPs; on_demand writes only "
+            "assets/meta/reel_downloads.json for a dynamic endpoint"
+        ),
+    )
     ap.add_argument("--outdir", required=True, type=Path,
                     help="Output reel bundle directory")
     ap.add_argument("--mathjax-cache", type=Path, default=default_mathjax_cache_dir(),
@@ -1646,6 +1639,7 @@ def main() -> int:
         poster_final_dir=download_poster_dir,
         blog_final_dir=download_blog_dir,
         video_final_dir=download_video_dir,
+        download_mode=args.download_mode,
     )
     alignment = build_alignment(
         poster_dir=poster_dir,
@@ -1657,6 +1651,7 @@ def main() -> int:
             "zh": load_blog_outline(blog_outline_zh, blog_asset_map),
         },
         downloads=downloads,
+        download_delivery=args.download_mode,
     )
     write_json(outdir / "content_alignment.json", alignment)
     write_json(outdir / "manifest.json", build_manifest(alignment))

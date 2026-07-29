@@ -16,12 +16,17 @@ import os
 import re
 import shutil
 import socketserver
+import tempfile
 import urllib.parse
+import zipfile
 from pathlib import Path
 from typing import BinaryIO
 
+from reel_downloads import archive_files, read_download_manifest
+
 
 RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)$")
+DOWNLOAD_ROUTE_RE = re.compile(r"^/__download__/(all|poster|video|blog)/?$")
 
 
 class RangeRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -36,6 +41,64 @@ class RangeRequestHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self) -> None:
         self.send_header("Accept-Ranges", "bytes")
         super().end_headers()
+
+    def _download_kind(self) -> str | None:
+        path = urllib.parse.urlsplit(self.path).path
+        match = DOWNLOAD_ROUTE_RE.fullmatch(path)
+        return match.group(1) if match else None
+
+    def _download_spec(self, kind: str) -> tuple[str, list[tuple[Path, str]]]:
+        bundle_root = Path(self.directory).resolve()
+        manifest = read_download_manifest(bundle_root)
+        return archive_files(manifest, kind, bundle_root=bundle_root)
+
+    def _serve_download(self, kind: str, *, head_only: bool) -> None:
+        try:
+            filename, files = self._download_spec(kind)
+        except ValueError as exc:
+            self.send_error(http.HTTPStatus.CONFLICT, str(exc))
+            return
+
+        if head_only:
+            self.send_response(http.HTTPStatus.OK)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+
+        with tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b") as stream:
+            with zipfile.ZipFile(
+                stream,
+                "w",
+                compression=zipfile.ZIP_DEFLATED,
+                allowZip64=True,
+            ) as archive:
+                for source, arcname in files:
+                    archive.write(source, arcname)
+            size = stream.tell()
+            stream.seek(0)
+            self.send_response(http.HTTPStatus.OK)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            shutil.copyfileobj(stream, self.wfile, length=64 * 1024)
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        kind = self._download_kind()
+        if kind is None:
+            super().do_HEAD()
+            return
+        self._serve_download(kind, head_only=True)
+
+    def do_GET(self) -> None:  # noqa: N802
+        kind = self._download_kind()
+        if kind is None:
+            super().do_GET()
+            return
+        self._serve_download(kind, head_only=False)
 
     def _parse_range(self, header: str, size: int) -> tuple[int, int] | None:
         match = RANGE_RE.match(header.strip())
