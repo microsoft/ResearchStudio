@@ -29,6 +29,7 @@ LOCAL_OPEN_RUNTIME = "srcdoc-poster.v1"
 MATHJAX_VERSION = "3.2.2"
 MATHJAX_TARBALL_URL = f"https://registry.npmjs.org/mathjax/-/mathjax-{MATHJAX_VERSION}.tgz"
 REEL_ROOT = Path(__file__).resolve().parents[3]
+KATEX_ASSET_DIR = REEL_ROOT / "skills" / "paper2poster" / "assets" / "katex"
 
 POSTER_DIR = "assets/poster"
 SLIDES_DIR = "assets/slides"
@@ -36,12 +37,58 @@ BLOG_FIGURES_DIR = "assets/blog/figures"
 DOWNLOADS_DIR = "assets/downloads"
 UI_DIR = "assets/ui"
 REEL_WORDMARK_SRC = REEL_ROOT / "docs" / "figures" / "reel-wordmark.png"
+DOWNLOAD_MODULE_FILES: dict[str, dict[str, set[str]]] = {
+    "poster": {
+        "files": {"poster.html", "poster.png", "poster.pdf", "poster.pptx"},
+        "directories": {
+            "assets/_pptx_build",
+            "assets/figures",
+            "assets/fonts",
+            "assets/logos",
+            "assets/qr",
+        },
+    },
+    "video": {
+        "files": {"video.mp4", "video.pptx"},
+        "directories": {"assets/captions"},
+    },
+    "blog": {
+        "files": {"blog_en.docx", "blog_zh.docx"},
+        "directories": set(),
+    },
+}
+DOWNLOAD_MODULE_ARCHIVES = {
+    "poster": "poster_final.zip",
+    "video": "video_final.zip",
+    "blog": "blog_final.zip",
+}
 
 MATHJAX_CDN_RE = re.compile(
     r"""(?P<prefix>\bsrc\s*=\s*)(?P<quote>["'])"""
     r"""(?P<url>https?://(?:cdn\.jsdelivr\.net/npm|unpkg\.com)/mathjax@[^"']*/es5/tex-svg\.js)"""
     r"""(?P=quote)""",
     re.IGNORECASE,
+)
+KATEX_CDN_REPLACEMENTS = (
+    (
+        re.compile(
+            r"https://cdn\.jsdelivr\.net/npm/katex@[^/\"']+/dist/katex\.min\.css"
+        ),
+        "katex/katex.min.css",
+    ),
+    (
+        re.compile(
+            r"https://cdn\.jsdelivr\.net/npm/katex@[^/\"']+/dist/katex\.min\.js"
+        ),
+        "katex/katex.min.js",
+    ),
+    (
+        re.compile(
+            r"https://cdn\.jsdelivr\.net/npm/katex@[^/\"']+/"
+            r"dist/contrib/auto-render\.min\.js"
+        ),
+        "katex/auto-render.min.js",
+    ),
 )
 
 
@@ -778,11 +825,15 @@ def copy_if_exists(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
+def is_backup_artifact_name(name: str) -> bool:
+    lowered = name.lower()
+    return lowered.endswith((".bak", ".backup")) or ".bak." in lowered
+
+
 def ignore_backup_artifacts(_dir: str, names: list[str]) -> set[str]:
     ignored: set[str] = set()
     for name in names:
-        lowered = name.lower()
-        if name == "_debug" or lowered.endswith((".bak", ".backup")) or ".bak." in lowered:
+        if name == "_debug" or is_backup_artifact_name(name):
             ignored.add(name)
     return ignored
 
@@ -869,6 +920,26 @@ def install_local_mathjax_if_needed(poster_html: str, poster_out: Path, cache_di
     return rewritten, count
 
 
+def install_local_katex_if_needed(poster_html: str, poster_out: Path) -> tuple[str, int]:
+    rewritten = poster_html
+    count = 0
+    for pattern, replacement in KATEX_CDN_REPLACEMENTS:
+        rewritten, replaced = pattern.subn(replacement, rewritten)
+        count += replaced
+    if count == 0:
+        return poster_html, 0
+    if not KATEX_ASSET_DIR.is_dir():
+        raise SystemExit(
+            "poster.html references CDN KaTeX, but paper2poster's local KaTeX "
+            f"assets are missing: {KATEX_ASSET_DIR}"
+        )
+    target = poster_out / "katex"
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(KATEX_ASSET_DIR, target, ignore=ignore_backup_artifacts)
+    return rewritten, count
+
+
 def inject_srcdoc_base(poster_html: str) -> str:
     head = poster_html.split("</head>", 1)[0]
     if re.search(r"<base\s", head, flags=re.IGNORECASE):
@@ -887,9 +958,13 @@ def inject_srcdoc_base(poster_html: str) -> str:
 
 def prepare_poster_for_local_open(poster_html: Path, cache_dir: Path) -> str:
     text = poster_html.read_text(encoding="utf-8")
+    text, katex_count = install_local_katex_if_needed(text, poster_html.parent)
     text, mathjax_count = install_local_mathjax_if_needed(text, poster_html.parent, cache_dir)
-    if mathjax_count:
+    if katex_count or mathjax_count:
         poster_html.write_text(text, encoding="utf-8")
+    if katex_count:
+        print(f"[paper2reel] localized {katex_count} KaTeX reference(s) for local-open")
+    if mathjax_count:
         print(f"[paper2reel] localized {mathjax_count} MathJax reference(s) for local-open")
     return inject_srcdoc_base(text)
 
@@ -1025,7 +1100,7 @@ def copy_blog_assets(outdir: Path, blog_figures_dir: Path | None) -> dict[str, s
     blog_out.mkdir(parents=True, exist_ok=True)
     mapping: dict[str, str] = {}
     for src in sorted(blog_figures_dir.iterdir()):
-        if not src.is_file():
+        if not src.is_file() or is_backup_artifact_name(src.name):
             continue
         dst = blog_out / src.name
         shutil.copy2(src, dst)
@@ -1293,40 +1368,55 @@ def infer_slide_map(slides: list[dict[str, Any]], sections: list[dict[str, str]]
     return {sid: sorted(set(indexes)) for sid, indexes in out.items()}
 
 
-def zip_directory(src_dir: Path, zip_path: Path) -> str | None:
-    if not src_dir.is_dir():
-        return None
-    zip_path.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for path in sorted(src_dir.rglob("*")):
-            if path.is_file():
-                zf.write(path, path.relative_to(src_dir))
-    return zip_path.as_posix()
+def is_internal_download_path(relative: Path) -> bool:
+    return bool(
+        not relative.parts
+        or relative.parts[0] == ".claude"
+        or relative.parts[:2] == ("assets", "downloads")
+        or is_backup_artifact_name(relative.name)
+    )
 
 
-def build_all_download(
+def matches_download_module(relative: Path, module: str) -> bool:
+    spec = DOWNLOAD_MODULE_FILES[module]
+    relative_posix = relative.as_posix()
+    return (
+        relative_posix in spec["files"]
+        or any(
+            relative_posix.startswith(f"{directory}/")
+            for directory in spec["directories"]
+        )
+    )
+
+
+def download_archive_files(
+    source: Path,
     *,
-    outdir: Path,
-    poster_final_dir: Path | None,
-    blog_final_dir: Path | None,
-    video_final_dir: Path | None,
-) -> dict[str, str] | None:
-    sources = [
-        ("poster", poster_final_dir),
-        ("blog", blog_final_dir),
-        ("video", video_final_dir),
-    ]
-    available = [(name, src) for name, src in sources if src is not None and src.is_dir()]
-    if not available:
-        return None
-    zip_path = outdir / DOWNLOADS_DIR / "all_final.zip"
-    zip_path.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for label, src_dir in available:
-            for path in sorted(src_dir.rglob("*")):
-                if path.is_file():
-                    zf.write(path, Path(label) / path.relative_to(src_dir))
-    return {"label": "All", "href": rel_to(zip_path, outdir)}
+    module: str | None = None,
+) -> list[tuple[Path, Path]]:
+    selected: list[tuple[Path, Path]] = []
+    if not source.is_dir():
+        return selected
+    for path in sorted(source.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(source)
+        if is_internal_download_path(relative):
+            continue
+        if module is not None and not matches_download_module(relative, module):
+            continue
+        selected.append((path, relative))
+    return selected
+
+
+def write_download_zip(files: list[tuple[Path, Path]], destination: Path) -> bool:
+    if not files:
+        return False
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path, archive_name in files:
+            archive.write(path, archive_name.as_posix())
+    return True
 
 
 def build_downloads(
@@ -1336,27 +1426,61 @@ def build_downloads(
     blog_final_dir: Path | None,
     video_final_dir: Path | None,
 ) -> list[dict[str, str]]:
+    """Build separate module ZIPs and one deduplicated combined archive."""
+    outdir = Path(outdir)
+    sources = {
+        "poster": Path(poster_final_dir).resolve() if poster_final_dir else None,
+        "video": Path(video_final_dir).resolve() if video_final_dir else None,
+        "blog": Path(blog_final_dir).resolve() if blog_final_dir else None,
+    }
+    available = {
+        module: source
+        for module, source in sources.items()
+        if source is not None and source.is_dir()
+    }
+    downloads_dir = outdir / DOWNLOADS_DIR
     downloads: list[dict[str, str]] = []
-    all_download = build_all_download(
-        outdir=outdir,
-        poster_final_dir=poster_final_dir,
-        blog_final_dir=blog_final_dir,
-        video_final_dir=video_final_dir,
-    )
-    if all_download:
-        downloads.append(all_download)
-    specs = [
-        ("Poster", poster_final_dir, "poster_final.zip"),
-        ("Video", video_final_dir, "video_final.zip"),
-        ("Blog", blog_final_dir, "blog_final.zip"),
-    ]
-    for label, src, filename in specs:
-        if src is None:
+    if available:
+        resolved_sources = set(available.values())
+        all_files: list[tuple[Path, Path]]
+        if len(resolved_sources) == 1:
+            source = next(iter(resolved_sources))
+            union: dict[str, tuple[Path, Path]] = {}
+            for module in available:
+                for path, relative in download_archive_files(source, module=module):
+                    union[relative.as_posix()] = (path, relative)
+            all_files = list(union.values())
+        else:
+            all_files = []
+            for module, source in available.items():
+                all_files.extend(
+                    (path, Path(module) / relative)
+                    for path, relative in download_archive_files(source)
+                )
+        all_path = downloads_dir / "all_final.zip"
+        if write_download_zip(all_files, all_path):
+            downloads.append({
+                "label": "All",
+                "href": rel_to(all_path, outdir),
+            })
+
+    source_counts: dict[Path, int] = {}
+    for source in available.values():
+        source_counts[source] = source_counts.get(source, 0) + 1
+    for module, label in (("poster", "Poster"), ("video", "Video"), ("blog", "Blog")):
+        source = available.get(module)
+        if source is None:
             continue
-        zip_path = outdir / DOWNLOADS_DIR / filename
-        written = zip_directory(src, zip_path)
-        if written:
-            downloads.append({"label": label, "href": rel_to(zip_path, outdir)})
+        shared = source_counts[source] > 1
+        archive_path = downloads_dir / DOWNLOAD_MODULE_ARCHIVES[module]
+        if write_download_zip(
+            download_archive_files(source, module=module if shared else None),
+            archive_path,
+        ):
+            downloads.append({
+                "label": label,
+                "href": rel_to(archive_path, outdir),
+            })
     return downloads
 
 

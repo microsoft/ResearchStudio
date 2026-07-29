@@ -10,14 +10,16 @@ from __future__ import annotations
 
 import argparse
 import functools
+import hashlib
 import json
 import re
 import sys
 import threading
 import urllib.error
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -29,6 +31,31 @@ if str(SCRIPT_DIR) not in sys.path:
 from serve_reel import RangeRequestHandler, ThreadedRangeHTTPServer  # noqa: E402
 
 DEFAULT_CONTRACT_PATH = SKILL_DIR / "assets" / "section_modal_contract.json"
+DOWNLOAD_ARCHIVES = {
+    "poster": "poster_final.zip",
+    "video": "video_final.zip",
+    "blog": "blog_final.zip",
+    "all": "all_final.zip",
+}
+DOWNLOAD_PROHIBITED_FILES = {
+    "poster": {"video.mp4", "video.pptx", "blog_en.docx", "blog_zh.docx"},
+    "video": {
+        "poster.html",
+        "poster.png",
+        "poster.pdf",
+        "poster.pptx",
+        "blog_en.docx",
+        "blog_zh.docx",
+    },
+    "blog": {
+        "poster.html",
+        "poster.png",
+        "poster.pdf",
+        "poster.pptx",
+        "video.mp4",
+        "video.pptx",
+    },
+}
 
 
 DEFAULT_CONTRACT = {
@@ -185,6 +212,133 @@ def validate_no_backup_files(findings: list[dict[str, Any]], viewer_dir: Path) -
             )
 
 
+def is_backup_archive_name(name: str) -> bool:
+    lowered = name.lower()
+    return lowered.endswith((".bak", ".backup")) or ".bak." in lowered
+
+
+def archive_internal_names(names: list[str]) -> list[str]:
+    internal: list[str] = []
+    for name in names:
+        archive_path = PurePosixPath(name.replace("\\", "/"))
+        parts = archive_path.parts
+        contains_downloads = any(
+            parts[index:index + 2] == ("assets", "downloads")
+            for index in range(max(0, len(parts) - 1))
+        )
+        if (
+            archive_path.is_absolute()
+            or ".." in parts
+            or ".claude" in parts
+            or contains_downloads
+            or any(is_backup_archive_name(part) for part in parts)
+        ):
+            internal.append(name)
+    return internal
+
+
+def archive_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def validate_download_archives(
+    findings: list[dict[str, Any]],
+    viewer_dir: Path,
+) -> None:
+    """Validate the four user-facing archives produced by paper2reel."""
+    downloads_dir = viewer_dir / "assets" / "downloads"
+    paths = {
+        module: downloads_dir / filename
+        for module, filename in DOWNLOAD_ARCHIVES.items()
+    }
+    names: dict[str, set[str]] = {}
+    valid_paths: dict[str, Path] = {}
+    for module, path in paths.items():
+        if not path.is_file():
+            add_finding(
+                findings,
+                "ERROR",
+                "DOWNLOAD_ARCHIVE_MISSING",
+                "A required Reel download archive is missing.",
+                path=rel(path, viewer_dir),
+                data={"module": module},
+            )
+            continue
+        try:
+            with zipfile.ZipFile(path) as archive:
+                archive_names = archive.namelist()
+                bad_file = archive.testzip()
+                if bad_file:
+                    raise zipfile.BadZipFile(f"CRC failure in {bad_file}")
+        except (OSError, zipfile.BadZipFile, RuntimeError) as exc:
+            add_finding(
+                findings,
+                "ERROR",
+                "DOWNLOAD_ARCHIVE_INVALID",
+                "A Reel download archive is unreadable or corrupt.",
+                path=rel(path, viewer_dir),
+                data={"module": module, "error": str(exc)},
+            )
+            continue
+
+        if len(archive_names) != len(set(archive_names)):
+            add_finding(
+                findings,
+                "ERROR",
+                "DOWNLOAD_ARCHIVE_DUPLICATE_PATH",
+                "A Reel download archive contains duplicate paths.",
+                path=rel(path, viewer_dir),
+                data={"module": module},
+            )
+        internal = archive_internal_names(archive_names)
+        if internal:
+            add_finding(
+                findings,
+                "ERROR",
+                "DOWNLOAD_ARCHIVE_INTERNAL_FILE",
+                "A Reel download archive contains internal, backup, or nested download files.",
+                path=rel(path, viewer_dir),
+                data={"module": module, "files": internal[:20]},
+            )
+        names[module] = set(archive_names)
+        valid_paths[module] = path
+
+    module_names = ("poster", "video", "blog")
+    if all(module in valid_paths for module in module_names):
+        hashes = [archive_sha256(valid_paths[module]) for module in module_names]
+        if len(set(hashes)) != len(hashes):
+            add_finding(
+                findings,
+                "ERROR",
+                "DOWNLOAD_MODULE_ARCHIVES_IDENTICAL",
+                "Poster, Video, and Blog archives must contain separate module deliverables.",
+                path=rel(downloads_dir, viewer_dir),
+            )
+
+    for module, forbidden in DOWNLOAD_PROHIBITED_FILES.items():
+        archive_names = names.get(module)
+        if archive_names is None:
+            continue
+        leaked = sorted(
+            name
+            for name in archive_names
+            if PurePosixPath(name).name in forbidden
+        )
+        if leaked:
+            add_finding(
+                findings,
+                "ERROR",
+                "DOWNLOAD_ARCHIVE_CROSS_MODULE_FILE",
+                "A Reel module archive contains another module's final deliverables.",
+                path=rel(paths[module], viewer_dir),
+                data={"module": module, "files": leaked[:20]},
+            )
+
+
 def validate_local_open_resources(findings: list[dict[str, Any]], poster_html: str, poster_path: Path, root: Path) -> None:
     resource_patterns = {
         "external script": r"<script\b[^>]*\bsrc\s*=\s*['\"]https?://",
@@ -251,6 +405,7 @@ def validate_static(
     html = html_path.read_text(encoding="utf-8") if html_path.is_file() else ""
     poster_html = poster_path.read_text(encoding="utf-8") if poster_path.is_file() else ""
     validate_no_backup_files(findings, viewer_dir)
+    validate_download_archives(findings, viewer_dir)
     validate_no_local_paths(findings, html, path=rel(html_path, viewer_dir))
     validate_local_open_resources(findings, poster_html, poster_path, viewer_dir)
     required_html_markers = contract.get("required_html_markers") if isinstance(contract.get("required_html_markers"), dict) else {}

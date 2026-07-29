@@ -160,8 +160,13 @@ store section-level EN/CN blocks in `content_alignment.json`; the browser gate
 requires those blocks.
 
 When download directories are provided, the builder creates top-menu download
-links for the exact deliverable bundles shown in the viewer. The menu is still
-hidden by default and appears with `v`.
+links for the exact deliverable bundles shown in the viewer. `poster_final.zip`,
+`video_final.zip`, and `blog_final.zip` contain only their module's final
+deliverables; `all_final.zip` is their deduplicated union. Rebuilding in a
+shared v2 bundle must exclude `.claude/`, backup files, and
+`assets/downloads/` so archives never contain old archives or grow
+recursively. The final checker validates those archive boundaries. The menu is
+still hidden by default and appears with `v`.
 
 ## Timeline-Backed Section Media
 
