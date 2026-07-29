@@ -49,6 +49,7 @@ NS = {
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
 }
 SCHEMA_VERSION = "paper2video_qa.v1"
+NON_BLOCKING_WARNING_CODES = frozenset({"audio_extra_files"})
 
 
 @dataclass
@@ -82,6 +83,28 @@ def utc_now() -> str:
 
 def add(findings: list[Finding], severity: str, code: str, message: str, *, location: str | None = None, **data: Any) -> None:
     findings.append(Finding(severity=severity, code=code, message=message, location=location, data=data))
+
+
+def findings_pass_gate(
+    findings: list[Finding],
+    *,
+    fail_on_warning: bool,
+) -> bool:
+    """Return whether findings pass the final package gate.
+
+    Unreferenced MP3s remain visible in the report but do not invalidate the
+    delivered timeline or MP4. Every other warning remains blocking when
+    strict/fail-on-warning policy is active, and errors always block.
+    """
+    if any(finding.severity == "error" for finding in findings):
+        return False
+    if not fail_on_warning:
+        return True
+    return not any(
+        finding.severity == "warning"
+        and finding.code not in NON_BLOCKING_WARNING_CODES
+        for finding in findings
+    )
 
 
 def read_json(path: Path) -> Any:
@@ -1762,7 +1785,7 @@ def main() -> None:
         "info": sum(1 for f in findings if f.severity == "info"),
     }
     fail_on_warning = args.fail_on_warning or args.strict
-    passed = counts["error"] == 0 and (counts["warning"] == 0 or not fail_on_warning)
+    passed = findings_pass_gate(findings, fail_on_warning=fail_on_warning)
     report = {
         "schema_version": SCHEMA_VERSION,
         "created_at": utc_now(),

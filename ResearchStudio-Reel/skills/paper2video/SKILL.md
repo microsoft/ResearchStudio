@@ -571,6 +571,11 @@ and re-render; do not bypass strict mode for final output. Only pass
 `--allow-missing-attention` for an explicitly user-approved degraded/debug run
 with no highlight.
 
+`audio_extra_files` remains visible in the QA report but is non-blocking: an
+unreferenced MP3 does not change `script.json`, the timeline, or either final
+MP4. Every other warning remains blocking under `--strict` or
+`--fail-on-warning`, and every error is always blocking.
+
 Write `$VIDEO_OUT/manifest.json` with `"layout": "v2-assets"` and root-relative
 paths for both MP4 deliverables plus `assets/audio/`, `assets/captions/`,
 `assets/slides/`, `assets/clips/`, and `assets/meta/reports/video_qa_report.json`.
