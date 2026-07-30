@@ -64,11 +64,26 @@ HIGHLIGHT_BORDER_ALPHA = 0.68
 HIGHLIGHT_BOX_EXPAND_MULTIPLIER = 1.0
 SPOTLIGHT_DIM_COLOR = "0x000000"
 SPOTLIGHT_BORDER_ALPHA = 0.34
-SPOTLIGHT_MAX_ALPHA = 0.24
-SPOTLIGHT_FEATHER_RATIO = 0.052
-SPOTLIGHT_MIN_FEATHER_PX = 56
-SPOTLIGHT_FEATHER_THICKNESS_MULTIPLIER = 8
+SPOTLIGHT_MAX_ALPHA = float(os.environ.get("VIDEO_SPOTLIGHT_DIM", "0.24"))
+SPOTLIGHT_FEATHER_RATIO = float(os.environ.get("VIDEO_SPOTLIGHT_FEATHER_RATIO", "0.052"))
+SPOTLIGHT_MIN_FEATHER_PX = int(os.environ.get("VIDEO_SPOTLIGHT_FEATHER_PX", "56"))
+SPOTLIGHT_FEATHER_THICKNESS_MULTIPLIER = int(os.environ.get("VIDEO_SPOTLIGHT_FEATHER_THICK_MULT", "8"))
 SPOTLIGHT_INNER_PAD_MULTIPLIER = 1.0
+# Ink-tighten: shrink a highlight box to the actually-painted (ink) pixels inside
+# it before building the spotlight mask. The upstream cue box is the shape's
+# DECLARED geometry (PPTX off/ext) or a semantic estimate, so a loose text box
+# spotlights a lot of empty leading/padding. Default on; needs Pillow+numpy and
+# degrades to the declared box when they are absent or confidence is low.
+INK_TIGHTEN = os.environ.get("VIDEO_SPOTLIGHT_INK_TIGHTEN", "1").strip().lower() not in ("0", "off", "false", "no")
+INK_TIGHTEN_PAD_FRAC = float(os.environ.get("VIDEO_SPOTLIGHT_INK_PAD", "0.012"))
+# Card/panel awareness: a highlight box whose border ring is mostly ONE fill
+# colour (>= CARD_UNIFORM of the ring hugs its median) that differs from the
+# SLIDE background by more than CARD_DELTA (summed RGB) sits on a FILLED
+# card/panel — its fill (including an accent bar and padding) is part of the
+# visual unit, so ink-tighten keeps the whole box instead of hugging the inner
+# glyphs (which would dim the card and leave a "hole"/short frame).
+INK_TIGHTEN_CARD_DELTA = float(os.environ.get("VIDEO_SPOTLIGHT_CARD_DELTA", "24"))
+INK_TIGHTEN_CARD_UNIFORM = float(os.environ.get("VIDEO_SPOTLIGHT_CARD_UNIFORM", "0.6"))
 CURSOR_MOVE_SECONDS = 0.55
 CURSOR_POINTER_FILL = "0x1E293B"
 CURSOR_POINTER_BORDER = "0xF8FAFC"
@@ -411,6 +426,11 @@ class VisualCue:
     border: int = 5
     size: int | None = None
     style: str = "spotlight_laser"
+    # When True the box is already the intended LOGICAL unit (a grouped
+    # multi-line label or a filled card) and must be used verbatim — skip
+    # ink-tighten, which would hug the inner glyphs and leave a fill-only
+    # card's background padding dimmed (the "hole in the card" defect).
+    no_ink_tighten: bool = False
 
 
 def _load_script_order(script_json: Path) -> list[str]:
@@ -731,7 +751,8 @@ def load_visual_cues(
                     sys.exit(f"[render_video] highlight cue on slide {pair.index} needs either point or box")
                 style = str(raw.get("style") or highlight_style).strip()
                 cue = VisualCue(cue_type=cue_type, start=start, end=end, box=box, point=point,
-                                color=color, opacity=opacity, border=border, size=size, style=style)
+                                color=color, opacity=opacity, border=border, size=size, style=style,
+                                no_ink_tighten=bool(raw.get("no_ink_tighten", False)))
             else:
                 point_vals = _as_float_list(raw.get("point"), length=2, field="point")
                 point = (_clamp01(point_vals[0]), _clamp01(point_vals[1]))
@@ -1199,6 +1220,83 @@ def _smoothstep(value: float) -> float:
     return value * value * (3.0 - 2.0 * value)
 
 
+def _ink_tighten_box(frame_path, box, *, width: int, height: int,
+                     pad_frac: float = INK_TIGHTEN_PAD_FRAC):
+    """Shrink a normalized (x, y, w, h) highlight box to the painted-pixel (ink)
+    bounds of the content inside it, measured from the rendered slide frame.
+
+    Samples the pixels inside the box, reads the local background from the box's
+    border ring, and tightens to the non-background (inked) content, so a loose
+    text box spotlights the glyphs rather than the leading/padding. Composes with
+    grouping: hand it a UNIONED multi-line box and it hugs all the lines. It is
+    CARD-AWARE — a box sitting on a filled card/panel (ring bg differs from the
+    slide bg) is kept verbatim so the card reads as one lit unit (no "hole"),
+    while transparent text is hugged to its glyphs. Best-effort: needs
+    Pillow+numpy; returns the ORIGINAL box on any error, low ink confidence, a
+    filled card, or when it would not meaningfully shrink (already tight)."""
+    try:
+        import numpy as np
+        from PIL import Image
+    except Exception:
+        return box
+    try:
+        x, y, w, h = box
+        img = Image.open(frame_path).convert("RGB")
+        iw, ih = img.size
+        # replicate the ffmpeg scale(decrease)+pad(black) that letterboxes the
+        # slide onto the video frame, so the normalized box maps to real pixels.
+        s = min(width / iw, height / ih)
+        nw, nh = max(1, round(iw * s)), max(1, round(ih * s))
+        canvas = Image.new("RGB", (width, height), (0, 0, 0))
+        canvas.paste(img.resize((nw, nh), Image.LANCZOS), ((width - nw) // 2, (height - nh) // 2))
+        px0 = max(0, min(width - 1, int(round(x * width))))
+        py0 = max(0, min(height - 1, int(round(y * height))))
+        pw = max(2, min(width - px0, int(round(w * width))))
+        ph = max(2, min(height - py0, int(round(h * height))))
+        crop = np.asarray(canvas.crop((px0, py0, px0 + pw, py0 + ph)), dtype=np.int16)
+        ring = np.concatenate([
+            crop[:2].reshape(-1, 3), crop[-2:].reshape(-1, 3),
+            crop[:, :2].reshape(-1, 3), crop[:, -2:].reshape(-1, 3)])
+        bg = np.median(ring, axis=0)
+        # Card/panel guard: keep the whole box when it sits on a FILLED card.
+        # page_bg = the dominant colour over a coarse grid of the SOURCE slide
+        # (robust to a corner accent bar, unlike sampling the four corners). The
+        # box is a filled panel when most of its border ring hugs one fill colour
+        # (close_frac, which survives a thin accent bar on one edge) AND that fill
+        # differs from the page bg. Then keep the box verbatim (its fill + accent
+        # + padding is one lit unit); otherwise fall through and hug the glyphs.
+        src = np.asarray(img, dtype=np.int16)
+        gy = max(1, ih // 24)
+        gx = max(1, iw // 24)
+        grid = ((src[::gy, ::gx].reshape(-1, 3)) // 12) * 12
+        uv, uc = np.unique(grid, axis=0, return_counts=True)
+        page_bg = uv[uc.argmax()].astype(np.int16)
+        close_frac = float((np.abs(ring - bg).sum(axis=1) < 30).mean())
+        if close_frac > INK_TIGHTEN_CARD_UNIFORM and float(np.abs(bg - page_bg).sum()) > INK_TIGHTEN_CARD_DELTA:
+            return box
+        mask = np.abs(crop - bg).sum(axis=2) > 40
+        if int(mask.sum()) < 0.002 * mask.size:          # too little ink -> not confident
+            return box
+        # Tight bbox of all inked pixels: trims the box's outer whitespace (leading,
+        # internal padding, top/middle anchor) down to the visible glyphs. This hugs
+        # whatever ink is in the box, so the box must already be the intended LOGICAL
+        # unit. Grouping fragments that belong together (e.g. a title split across two
+        # overlapping boxes) is the caller's / upstream's job — paper2video's
+        # generate_visual_cues unions same-group text fragments into the cue box;
+        # ink-tighten does not decide WHAT to highlight, only HOW tightly.
+        ys, xs = np.where(mask)
+        ix0, iy0, ix1, iy1 = int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+        pad = int(round(pad_frac * min(width, height)))
+        ix0 = max(0, ix0 - pad); iy0 = max(0, iy0 - pad)
+        ix1 = min(pw, ix1 + pad); iy1 = min(ph, iy1 + pad)
+        if (ix1 - ix0) * (iy1 - iy0) > 0.985 * pw * ph:  # already tight -> keep declared box
+            return box
+        return ((px0 + ix0) / width, (py0 + iy0) / height,
+                (ix1 - ix0) / width, (iy1 - iy0) / height)
+    except Exception:
+        return box
+
+
 def _write_spotlight_mask_png(
     path: Path,
     *,
@@ -1583,10 +1681,12 @@ def encode_segment(pair: SlidePair, out_seg: Path, *,
                 if cue.box is None:
                     continue
                 thickness = max(3, cue.border or min(width, height) // 180)
+                spot_box = (_ink_tighten_box(pair.frame, cue.box, width=width, height=height)
+                            if (INK_TIGHTEN and not cue.no_ink_tighten) else cue.box)
                 mask_path = Path(td) / f"spotlight_{index:02d}.png"
                 _write_spotlight_mask_png(
                     mask_path,
-                    box=cue.box,
+                    box=spot_box,
                     width=width,
                     height=height,
                     thickness=thickness,
