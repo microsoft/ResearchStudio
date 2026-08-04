@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ResearchStudio-Reel Gallery</title>
+<meta name="description" content="ResearchStudio-Reel turns one paper PDF into a print-ready poster, a narrated talk video, and a bilingual blog — bound into one interactive reel. A gallery of real, unedited runs."/>
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg"/>
+<link rel="preconnect" href="https://rsms.me/"/>
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css"/>
+<script>
+(() => {
+  let theme;
+  try { theme = localStorage.getItem('researchstudio-theme'); } catch (_) {}
+  if (theme !== 'light' && theme !== 'dark') {
+    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.dataset.theme = theme;
+})();
+</script>
+<script>MathJax={tex:{inlineMath:[['$','$'],['\\(','\\)']],displayMath:[['$$','$$'],['\\[','\\]']]},svg:{fontCache:'global'},startup:{typeset:false}};</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<style>
+/* ---------- ResearchStudio design tokens (shared with microsoft.github.io/ResearchStudio) ---------- */
+:root{
+  --brand-1:#0b1020; --brand-2:#6c5ce7; --brand-3:#00d4a8;
+  --brand-grad:linear-gradient(135deg,#6c5ce7 0%,#00d4a8 100%);
+  --bg:#ffffff; --bg-soft:#f7f8fb; --bg-elev:#ffffff;
+  --border:#e6e8ef; --border-strong:#d3d7e0;
+  --fg:#0b1020; --fg-muted:#555a6a; --fg-faint:#8a90a0;
+  --font-sans:'Inter var','Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
+  --shadow-sm:0 1px 2px rgba(11,16,32,.06),0 1px 1px rgba(11,16,32,.04);
+  --shadow-md:0 10px 30px -12px rgba(11,16,32,.18),0 4px 10px -4px rgba(11,16,32,.08);
+  --shadow-lg:0 30px 60px -20px rgba(11,16,32,.30),0 18px 36px -18px rgba(11,16,32,.18);
+  --radius:14px; --max:1320px;
+  color-scheme:light dark;
+  --line:var(--border); --card:var(--bg-elev); --ink:var(--fg); --dim:var(--fg-muted);
+  /* Microsoft brand colors (Reel wordmark + skill accents) */
+  --ms-red:#F25022; --ms-green:#7FBA00; --ms-blue:#00A4EF; --ms-yellow:#FFB900;
+}
+:root[data-theme="dark"]{
+  --bg:#0b0e1a; --bg-soft:#11142a; --bg-elev:#141832;
+  --border:#232846; --border-strong:#2f3656;
+  --fg:#eef0f7; --fg-muted:#aab0c4; --fg-faint:#7b8198;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow-md:0 10px 30px -12px rgba(0,0,0,.55),0 4px 10px -4px rgba(0,0,0,.35);
+  --shadow-lg:0 30px 60px -20px rgba(0,0,0,.65),0 18px 36px -18px rgba(0,0,0,.5);
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+html,body{margin:0;min-height:100%}
+body{font-family:var(--font-sans);font-feature-settings:'cv11','ss01','ss03';color:var(--fg);background:var(--bg);line-height:1.55;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow-x:hidden;display:flex;flex-direction:column;min-height:100vh}
+a{color:var(--brand-2);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+::selection{background:color-mix(in srgb,var(--brand-2) 35%,transparent);color:inherit}
+
+/* ---------- page controls (Theme / Language) ---------- */
+.page-controls{position:fixed;top:14px;right:24px;z-index:100;display:flex;align-items:center;gap:10px;font-family:var(--font-sans)}
+.mode-control,.language-control{position:relative;height:40px;margin:0;border:0;color:var(--fg-muted);background:transparent;white-space:nowrap}
+.mode-control summary,.language-control summary{height:40px;display:inline-flex;align-items:center;gap:6px;padding:0;border:0;color:var(--fg-muted);background:transparent;font:inherit;font-size:14.5px;font-weight:500;cursor:pointer;list-style:none}
+.mode-control summary::-webkit-details-marker,.language-control summary::-webkit-details-marker{display:none}
+.mode-control summary::after,.language-control summary::after{content:'⌄';color:var(--brand-2);font-size:.8em;transition:transform .15s ease}
+.mode-control[open] summary::after,.language-control[open] summary::after{transform:rotate(180deg)}
+.mode-options,.language-options{position:absolute;top:calc(100% + 5px);right:0;width:108px;display:grid;gap:2px;padding:5px;border:1px solid var(--border);border-radius:10px;background:var(--bg-elev);box-shadow:var(--shadow-md)}
+.mode-options button,.language-options button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:13.5px;text-align:left;padding:6px 9px;border-radius:7px;cursor:pointer}
+.mode-options button:hover,.language-options button:hover{background:var(--bg-soft)}
+.mode-options button[aria-pressed="true"],.language-options button[aria-pressed="true"]{color:var(--brand-2);font-weight:600}
+
+/* ---------- topbar ---------- */
+.topbar-wrap{position:sticky;top:0;z-index:50;backdrop-filter:saturate(180%) blur(14px);-webkit-backdrop-filter:saturate(180%) blur(14px);background:color-mix(in srgb,var(--bg) 75%,transparent);border-bottom:1px solid color-mix(in srgb,var(--border) 70%,transparent)}
+.topbar{max-width:var(--max);margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:22px}
+.brand{display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:17px;letter-spacing:-.2px;color:var(--fg)}
+.brand:hover{text-decoration:none}
+.brand img{display:inline-flex;border-radius:7px}
+.reelmark{font-weight:900;letter-spacing:-.5px}
+.reelmark .r{color:var(--ms-red)} .reelmark .e1{color:var(--ms-green)} .reelmark .e2{color:var(--ms-blue)} .reelmark .l{color:var(--ms-yellow)}
+.nav-links{display:flex;align-items:center;gap:4px;list-style:none;margin:0;padding:0}
+.nav-links li{display:inline-flex}
+.nav-links a{display:inline-flex;align-items:center;padding:7px 12px;border-radius:9px;color:var(--fg-muted);font-size:14.5px;font-weight:500}
+.nav-links a:hover{color:var(--fg);background:var(--bg-soft);text-decoration:none}
+.nav-links a.active{color:var(--brand-2);font-weight:600}
+.nav__cta{margin-left:auto;display:flex;align-items:center;gap:10px}
+.nav__cta .btn{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;font-size:14px;font-weight:600;border:1px solid var(--border-strong);color:var(--fg);background:transparent;transition:.15s;white-space:nowrap}
+.nav__cta .btn:hover{background:var(--bg-soft);text-decoration:none;transform:translateY(-1px)}
+.nav__cta .btn svg{flex-shrink:0}
+
+/* ---------- hero ---------- */
+.hero{position:relative;overflow:hidden;background:var(--bg);border-bottom:1px solid var(--border)}
+.hero__bg{position:absolute;inset:0;pointer-events:none;z-index:0}
+.hero__grid{position:absolute;inset:0;background-image:linear-gradient(to right,color-mix(in srgb,var(--border) 50%,transparent) 1px,transparent 1px),linear-gradient(to bottom,color-mix(in srgb,var(--border) 50%,transparent) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(ellipse at 50% 0%,#000 35%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse at 50% 0%,#000 35%,transparent 75%)}
+.hero__glow{position:absolute;filter:blur(80px);border-radius:50%}
+html[data-theme="light"] .hero__glow{opacity:.5}
+html[data-theme="dark"] .hero__glow{opacity:.35}
+.hero__glow--a{width:520px;height:520px;background:radial-gradient(closest-side,color-mix(in srgb,var(--brand-2) 55%,transparent),transparent);top:-120px;left:-120px}
+.hero__glow--b{width:460px;height:460px;background:radial-gradient(closest-side,color-mix(in srgb,var(--brand-3) 55%,transparent),transparent);top:-60px;right:-100px}
+.hero .container{position:relative;z-index:1;max-width:var(--max);margin:0 auto;padding:52px 32px 30px}
+.hero h1{margin:0 0 10px;font-size:clamp(30px,4.6vw,46px);font-weight:800;letter-spacing:-1px;line-height:1.1}
+.hero h1 .grad{background:var(--brand-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tagline{color:var(--fg-muted);font-size:16px;max-width:820px;margin:0 0 10px}
+.hero-row{display:flex;align-items:center;justify-content:space-between;gap:28px}
+.hero-text{flex:1;min-width:0}
+.hero-cta{flex:0 0 auto;position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;padding:16px 20px;border-radius:16px;background:var(--brand-grad);color:#fff;border:0;max-width:340px;transition:transform .2s,box-shadow .2s;box-shadow:0 14px 32px -10px color-mix(in srgb,var(--brand-2) 65%,transparent),0 4px 12px -4px color-mix(in srgb,var(--brand-3) 45%,transparent)}
+.hero-cta:hover{transform:translateY(-3px) scale(1.02);text-decoration:none;box-shadow:0 20px 46px -10px color-mix(in srgb,var(--brand-2) 78%,transparent),0 8px 18px -4px color-mix(in srgb,var(--brand-3) 55%,transparent)}
+.hero-cta::before{content:"";position:absolute;top:0;left:-60%;width:38%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.42),transparent);transform:skewX(-18deg);animation:cta-shine 3.4s ease-in-out infinite}
+@keyframes cta-shine{0%,58%{left:-60%}100%{left:135%}}
+.hero-cta-ic{width:46px;height:46px;flex:0 0 auto;border-radius:12px;display:grid;place-items:center;font-size:23px;background:rgba(255,255,255,.22);position:relative;z-index:1}
+.hero-cta-txt{display:flex;flex-direction:column;min-width:0;position:relative;z-index:1}
+.hero-cta-badge{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;background:rgba(255,255,255,.22);padding:2px 8px;border-radius:999px;margin-bottom:4px}
+.hero-cta-badge .dot{width:6px;height:6px;border-radius:50%;background:#fff;animation:cta-pulse 1.6s infinite}
+@keyframes cta-pulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.65)}70%{box-shadow:0 0 0 7px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+.hero-cta-h{font-size:15.5px;font-weight:800;color:#fff;letter-spacing:-.2px;line-height:1.2}
+.hero-cta-sub{font-size:12px;color:rgba(255,255,255,.85);margin-top:3px;line-height:1.35}
+.hero-cta-arrow{color:#fff;flex:0 0 auto;position:relative;z-index:1;transition:transform .2s}
+.hero-cta:hover .hero-cta-arrow{transform:translate(3px,-3px)}
+@media (max-width:820px){.hero-row{flex-direction:column;align-items:flex-start}.hero-cta{max-width:none;width:100%}}
+@media (prefers-reduced-motion:reduce){.hero-cta::before,.hero-cta-badge .dot{animation:none}}
+.hero-note{color:var(--fg-faint);font-size:13.5px;line-height:1.6;max-width:820px;margin:0 0 22px}
+.stats{display:flex;gap:30px;flex-wrap:wrap;margin:0}
+.stat{display:flex;flex-direction:column;gap:2px}
+.stat b{font-size:23px;font-weight:800;letter-spacing:-.3px;background:var(--brand-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat span{font-size:11.5px;color:var(--fg-faint);text-transform:uppercase;letter-spacing:.4px}
+.statsband{border-top:1px solid var(--border);margin-top:22px}
+.statsband .hero-note{margin:0 0 16px}
+
+/* ---------- section frame ---------- */
+.section{max-width:var(--max);margin:0 auto;padding:34px 32px 6px;width:100%}
+.section-h{display:flex;align-items:baseline;gap:12px;margin:0 0 4px}
+.section-h h2{font-size:21px;font-weight:800;letter-spacing:-.4px;margin:0}
+.section-h .sub{color:var(--fg-faint);font-size:13px}
+.section-lead{color:var(--fg-muted);font-size:14px;max-width:860px;margin:6px 0 18px}
+
+/* ---------- skills strip ---------- */
+.skills{display:grid;grid-template-columns:1fr 3fr 1fr;gap:14px;align-items:stretch}
+.skill{position:relative;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:16px 16px 15px;box-shadow:var(--shadow-sm);transition:.2s}
+.skill:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);border-color:color-mix(in srgb,var(--acc,var(--brand-2)) 45%,var(--line))}
+.skill .k{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;font-size:17px;background:color-mix(in srgb,var(--acc,var(--brand-2)) 16%,transparent);margin-bottom:10px}
+.skill h3{font-size:13.5px;font-weight:750;margin:0 0 5px;font-family:var(--font-mono);letter-spacing:-.2px}
+.skill p{font-size:12px;line-height:1.5;color:var(--dim);margin:0}
+.skill .step{position:absolute;top:14px;right:14px;font-size:10.5px;font-weight:800;color:var(--fg-faint)}
+.skills .s1{--acc:var(--brand-2)} .skills .s2{--acc:var(--ms-red)} .skills .s3{--acc:var(--ms-blue)} .skills .s4{--acc:var(--ms-green)} .skills .s5{--acc:var(--brand-3)}
+.stats-note{margin:12px 0 0;font-size:12px;line-height:1.6;color:var(--fg-faint);max-width:820px}
+.skill-group{position:relative;border:1.5px solid color-mix(in srgb,var(--brand-2) 34%,var(--line));border-radius:16px;padding:24px 12px 12px;background:color-mix(in srgb,var(--brand-2) 4%,transparent)}
+.sg-head{position:absolute;top:-11px;left:16px;display:inline-flex;align-items:center;gap:7px;padding:0 9px;background:var(--bg);font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--dim)}
+.sg-num{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--brand-2);color:#fff;font-size:11px;font-weight:800}
+.sg-inner{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;height:100%}
+.pipeflow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 2px 2px;font-size:12px;color:var(--dim)}
+.pipeflow code{background:var(--bg-soft);border:1px solid var(--line);border-radius:7px;padding:2px 8px;font-size:11.5px;color:var(--fg)}
+.pipeflow .arw{color:var(--brand-2);font-weight:800}
+
+/* modality showcase figures */
+.showfigs{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+.showfig{display:block;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-sm);transition:.2s}
+.showfig:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);text-decoration:none;border-color:color-mix(in srgb,var(--brand-2) 40%,var(--line))}
+.showfig img{width:100%;display:block;aspect-ratio:16/10;object-fit:cover;object-position:top}
+.showfig figcaption{font-size:11.5px;color:var(--dim);padding:8px 12px 10px}
+@media (max-width:820px){.skills{grid-template-columns:1fr}.sg-inner{grid-template-columns:1fr}.showfigs{grid-template-columns:1fr}}
+
+/* ---------- gallery controls ---------- */
+.controls{max-width:var(--max);margin:18px auto 0;padding:0 32px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.gallery-head{align-items:center;flex-wrap:wrap;gap:6px 14px}
+.gallery-head .controls{margin:0 0 0 auto;padding:0;max-width:none;flex-wrap:nowrap;gap:8px}
+.gallery-head .search{flex:0 1 300px;min-width:170px}
+.search{flex:1;min-width:220px;position:relative}
+.search input{width:100%;padding:11px 16px 11px 38px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:14px;font-family:inherit;outline:none;transition:.2s}
+.search input:focus{border-color:var(--brand-2);box-shadow:0 0 0 4px color-mix(in srgb,var(--brand-2) 15%,transparent)}
+.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.45;pointer-events:none}
+.viewtoggle{display:flex;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px}
+.viewtoggle button{border:none;background:transparent;color:var(--dim);font-size:12.5px;font-weight:600;font-family:inherit;padding:7px 14px;border-radius:8px;cursor:pointer;transition:.2s}
+.viewtoggle button.active{background:var(--fg);color:var(--bg)}
+.count-note{font-size:12px;color:var(--fg-faint);font-weight:600}
+
+/* ---------- poster wall (auto-scrolling rows, hover to enlarge) ---------- */
+main{max-width:var(--max);margin:0 auto;padding:10px 0 10px;width:100%;flex:1 0 auto}
+.wall-row{position:relative;margin:8px 0 22px}
+.wall-row+.wall-row{margin-top:28px}
+.wall-lbl{display:flex;align-items:center;gap:9px;padding:0 32px;margin-bottom:-10px}
+.wall-lbl .wl-name{font-size:14px;font-weight:750;letter-spacing:-.2px;color:var(--fg)}
+.wall-lbl .wl-ref{font-size:11px;font-weight:700;color:var(--brand-2);vertical-align:super;margin:0 2px 0 1px}
+.wall-lbl .wl-ref:hover{text-decoration:underline}
+.wall-lbl .wl-count{font-size:11px;font-weight:700;color:var(--dim);background:var(--line);padding:2px 9px;border-radius:999px}
+.wall-lbl .wl-date{font-size:11px;font-weight:650;color:var(--dim);padding-left:2px}
+.wall-lbl .wl-date-select{appearance:none;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--dim);font:inherit;font-size:11px;font-weight:650;line-height:1;padding:4px 25px 4px 9px;cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 11px) 50%,calc(100% - 7px) 50%;background-size:4px 4px,4px 4px;background-repeat:no-repeat}
+.wall-lbl .wl-date-select:hover,.wall-lbl .wl-date-select:focus{border-color:var(--brand-2);outline:none}
+.wall{display:flex;gap:16px;overflow-x:auto;scroll-behavior:smooth;padding:44px 32px;scrollbar-width:none}
+.wall::-webkit-scrollbar{display:none}
+.wall-wrap{position:relative}
+.cnav{position:absolute;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow-md);display:grid;place-items:center;cursor:pointer;z-index:30;color:var(--ink);transition:transform .15s,opacity .15s,background .15s;opacity:.9;padding:0}
+.cnav:hover{transform:translateY(-50%) scale(1.08);opacity:1;background:var(--bg-soft)}
+.cnav.prev{left:10px}.cnav.next{right:10px}
+.cnav svg{width:18px;height:18px}
+.tile{flex:0 0 auto;height:400px;border-radius:12px;overflow:hidden;position:relative;cursor:pointer;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow-sm);transition:transform .28s cubic-bezier(.2,.8,.2,1),box-shadow .28s,border-color .28s}
+.tile img{height:100%;width:auto;display:block;opacity:0;transition:opacity .4s ease}
+.tile img.loaded{opacity:1}
+.tile .cap{position:absolute;left:0;right:0;bottom:0;padding:22px 12px 9px;font-size:11.5px;font-weight:650;line-height:1.3;color:#fff;background:linear-gradient(to top,rgba(0,0,0,.82),rgba(0,0,0,.35) 55%,transparent);opacity:0;transform:translateY(6px);transition:.28s;pointer-events:none;white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tile .vbadge{position:absolute;top:8px;left:8px;display:flex;gap:4px}
+.tile .vbadge span{font-size:12px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+.tile:hover{transform:scale(1.18);z-index:20;box-shadow:var(--shadow-lg);border-color:color-mix(in srgb,var(--brand-2) 55%,var(--line))}
+.tile:hover .cap{opacity:1;transform:none}
+.tile .play{position:absolute;inset:0;display:grid;place-items:center;opacity:0;transition:.28s;pointer-events:none}
+.tile .play span{width:50px;height:50px;border-radius:50%;background:rgba(108,92,231,.94);color:#fff;display:grid;place-items:center;font-size:19px;padding-left:3px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.tile:hover .play{opacity:1}
+.tile.daily-tile .play{inset:42px 0 0}
+.daily-rank{position:absolute;z-index:8;top:9px;left:9px;display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;background:color-mix(in srgb,var(--card) 90%,transparent);color:var(--ink);font-size:11px;font-weight:800;box-shadow:var(--shadow-sm);backdrop-filter:blur(8px)}
+.daily-engagement{position:absolute;z-index:9;top:8px;right:8px;display:flex;gap:5px}
+.daily-vote{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border:1px solid color-mix(in srgb,var(--line) 78%,transparent);border-radius:999px;background:color-mix(in srgb,var(--card) 90%,transparent);color:var(--ink);font:inherit;font-size:11px;font-weight:700;cursor:pointer;box-shadow:var(--shadow-sm);backdrop-filter:blur(8px);transition:.15s}
+.daily-vote:hover{border-color:color-mix(in srgb,var(--brand-2) 55%,var(--line));background:var(--bg-soft)}
+.daily-vote[aria-pressed="true"]{border-color:var(--brand-2);color:var(--brand-2);background:color-mix(in srgb,var(--brand-2) 14%,var(--card))}
+.daily-vote:disabled{opacity:.55;cursor:wait}
+.daily-vote svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* grid view */
+.grid{display:none;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:18px;padding:20px 32px}
+.grid.on{display:grid}
+.grid .tile{height:auto;width:100%}
+.grid .tile img{width:100%;height:auto}
+.grid .tile:hover{transform:translateY(-4px) scale(1.02)}
+.grid .tile .cap{opacity:1;transform:none}
+.wall-mode.off{display:none}
+.empty-note{color:var(--dim);font-size:13px;font-style:italic;padding:30px;text-align:center}
+
+/* ---------- lightbox ---------- */
+#lb{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);opacity:0;pointer-events:none;transition:.28s;display:flex;align-items:center;justify-content:center;padding:0}
+#lb.show{opacity:1;pointer-events:auto}
+.lb-panel{position:relative;width:100%;height:100%;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;transform:none;transition:opacity .25s}
+#lb.show .lb-panel{transform:none}
+.lb-bar{flex:0 0 auto;height:44px;z-index:5;display:flex;align-items:center;gap:10px;padding:0 12px 0 18px;background:var(--bg-elev);border-bottom:1px solid var(--border)}
+.lb-title{flex:1;min-width:0;color:var(--fg);font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lb-close{width:30px;height:30px;border-radius:50%;background:var(--line);border:none;cursor:pointer;display:grid;place-items:center;color:var(--ink);font-size:14px;flex:0 0 auto}
+.lb-close:hover{background:var(--ms-red);color:#fff}
+.lb-opentab{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid var(--border-strong);color:var(--fg);background:var(--card);flex:0 0 auto;white-space:nowrap}
+.lb-opentab:hover{background:var(--bg-soft);text-decoration:none}
+.lb-stage{flex:1 1 auto;position:relative;overflow:hidden;background:#f3f4f8}
+:root[data-theme="dark"] .lb-stage{background:#0b0e1a}
+.lb-reel{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#fff}
+.lb-loading{position:absolute;inset:0;z-index:3;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg);color:var(--dim)}
+.lb-loading.on{display:flex}
+.lb-spinner{width:38px;height:38px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--brand-2);animation:lb-spin .8s linear infinite}
+.lb-loadtxt{font-size:13px;font-weight:600;letter-spacing:.2px}
+@keyframes lb-spin{to{transform:rotate(360deg)}}
+.lb-fallback{display:grid;place-items:center;height:100%;color:var(--dim);font-size:13px;padding:24px;text-align:center}
+.lb-fallback img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:var(--shadow-md)}
+
+/* ---------- footer ---------- */
+.footer{background:var(--bg);border-top:1px solid var(--border);padding:16px 0;color:var(--fg-muted);font-size:.85rem;flex-shrink:0;margin-top:20px}
+.footer-row{max-width:var(--max);margin:0 auto;padding:0 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.footer-brand{display:flex;align-items:center;gap:8px;flex:1}
+.footer-brand img{border-radius:5px}
+.footer-links{display:flex;gap:18px;flex:1;justify-content:flex-end}
+.footer-support{flex:1;color:var(--fg-faint);font-size:.8rem;text-align:center}
+.footer-links a{color:var(--fg-muted)} .footer-links a:hover{color:var(--fg)}
+
+@media (max-width:1740px){.topbar{padding-right:clamp(24px,calc(868px - 50vw),200px)}}
+@media (max-width:880px){.nav-links{display:none}}
+@media (max-width:760px){
+  .page-controls{top:10px;right:14px;gap:6px}
+  .hero .container{padding:38px 18px 24px}
+  .section,.controls{padding-left:18px;padding-right:18px}
+  .wall{padding-left:18px;padding-right:18px}
+  .wall-lbl{padding-left:18px;padding-right:18px}
+  .lb-panel{height:94vh}
+}
+</style>
+</head>
+<body>
+
+<div class="page-controls">
+  <details class="mode-control">
+    <summary data-i18n="theme_label">Theme</summary>
+    <div class="mode-options" aria-label="Theme options">
+      <button type="button" data-theme-option="light" data-i18n="theme_light" aria-pressed="false">Light</button>
+      <button type="button" data-theme-option="dark" data-i18n="theme_dark" aria-pressed="true">Dark</button>
+    </div>
+  </details>
+  <details class="language-control">
+    <summary data-i18n="language_label">Language</summary>
+    <div class="language-options" aria-label="Language options">
+      <button type="button" data-language-option="en" lang="en" data-i18n="language_en">English</button>
+      <button type="button" data-language-option="zh" lang="zh-CN" data-i18n="language_zh">Chinese</button>
+    </div>
+  </details>
+</div>
+
+<div class="topbar-wrap">
+  <nav class="topbar">
+    <a class="brand" href="https://microsoft.github.io/ResearchStudio/">
+      <img src="assets/logo.svg" alt="" width="28" height="28"/>
+      <span>ResearchStudio-<span class="reelmark"><span class="r">R</span><span class="e1">e</span><span class="e2">e</span><span class="l">l</span></span></span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="../idea-page/"><span data-i18n="nav_idea">Explore Idea</span></a></li>
+      <li><a class="active" href="#top"><span data-i18n="nav_reel">Explore Reel</span></a></li>
+    </ul>
+    <div class="nav__cta">
+      <a class="btn" href="https://github.com/microsoft/ResearchStudio" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1.01-.02-1.99-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.97.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.06 0 0 .97-.31 3.19 1.18a11.1 11.1 0 0 1 5.81 0c2.22-1.49 3.19-1.18 3.19-1.18.63 1.59.23 2.77.11 3.06.74.81 1.19 1.84 1.19 3.1 0 4.43-2.69 5.4-5.26 5.69.41.36.78 1.07.78 2.16 0 1.56-.01 2.81-.01 3.19 0 .31.21.68.8.56 4.56-1.52 7.85-5.83 7.85-10.91C23.5 5.65 18.35.5 12 .5z"/></svg>
+        <span data-i18n="github">Open on GitHub</span>
+      </a>
+    </div>
+  </nav>
+</div>
+
+<header class="hero" id="top">
+  <div class="hero__bg" aria-hidden="true">
+    <div class="hero__grid"></div>
+    <div class="hero__glow hero__glow--a"></div>
+    <div class="hero__glow hero__glow--b"></div>
+  </div>
+  <div class="container hero-row">
+    <div class="hero-text">
+      <h1><span data-i18n="hero_t1">One paper in.</span><br><span class="grad" data-i18n="hero_t2">A poster, a video, a blog out.</span></h1>
+      <p class="tagline" data-i18n="tagline">ResearchStudio-Reel automates the last mile of research — turning a single accepted-paper PDF into a print-ready conference poster, a narrated talk video, and a bilingual blog, all bound into one interactive reel.</p>
+    </div>
+    <a class="hero-cta" href="https://researchstudio.site/?tool=poster" target="_blank" rel="noopener">
+      <span class="hero-cta-ic">🖼️</span>
+      <span class="hero-cta-txt">
+        <span class="hero-cta-badge"><span class="dot"></span><span data-i18n="demo_badge">Live demo</span></span>
+        <span class="hero-cta-h" data-i18n="demo_h">Make your own poster</span>
+        <span class="hero-cta-sub" data-i18n="demo_sub">Turn any paper into one — try it now</span>
+      </span>
+      <svg class="hero-cta-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg>
+    </a>
+  </div>
+</header>
+
+<!-- ---------- gallery ---------- -->
+<section class="section" id="gallery-top" style="padding-bottom:0">
+  <div class="section-h gallery-head">
+    <h2 data-i18n="gallery_h">The reel gallery</h2>
+    <span class="sub"><span class="count-note" id="count-note"></span></span>
+    <div class="controls">
+      <div class="search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="searchbox" data-i18n-placeholder="search_ph" placeholder="Search titles, authors, venues…"/>
+      </div>
+      <div class="viewtoggle">
+        <button id="btn-wall" class="active" data-i18n="view_wall">Wall</button>
+        <button id="btn-grid" data-i18n="view_grid">Grid</button>
+      </div>
+    </div>
+  </div>
+  <p class="section-lead" data-i18n="gallery_lead">Every tile is a real, unedited run. Hover to enlarge a poster; click to open its video, blog, interactive reel, and summary.</p>
+</section>
+
+<main>
+  <div id="wall-view" class="wall-mode"></div>
+  <div id="grid-view" class="grid"></div>
+</main>
+
+<!-- ---------- skills / pipeline ---------- -->
+<section class="section" id="skills" style="padding-top:6px">
+  <div class="section-h"><h2 data-i18n="skills_h">Five skills, one pipeline</h2><span class="sub" data-i18n="skills_sub">extract once · generate three ways · converge</span></div>
+  <p class="section-lead" data-i18n="skills_lead">ResearchStudio-Reel runs as five composable skills inside Claude Code and Codex. A shared extractor reads the paper once; three generators produce editor-ready artifacts from that one bundle; a convergence layer binds them into a single navigable surface.</p>
+  <div class="skills">
+    <div class="skill s1"><span class="step">1</span><div class="k">📄</div><h3>paper2assets</h3><p data-i18n="sk_assets">Reads the PDF once into one reusable bundle — body text, cleaned figures, captions, metadata, and a nine-section spec that every generator consumes.</p></div>
+    <div class="skill-group">
+      <div class="sg-head"><span class="sg-num">2</span><span data-i18n="sg_label">Generate — in parallel</span></div>
+      <div class="sg-inner">
+        <div class="skill s2"><div class="k">🖼️</div><h3>paper2poster</h3><p data-i18n="sk_poster">Composes a print-ready poster in four coupled formats — HTML, PDF, PNG, and editable PowerPoint — tuned by a measured fill-loop.</p></div>
+        <div class="skill s3"><div class="k">🎬</div><h3>paper2video</h3><p data-i18n="sk_video">Plans narration and builds a captioned talk video with an editable deck and narration-aligned visual highlights.</p></div>
+        <div class="skill s4"><div class="k">✍️</div><h3>paper2blog</h3><p data-i18n="sk_blog">Writes a bilingual editorial package — a Chinese WeChat piece and an English research blog — as editable Word files sharing one evidence base.</p></div>
+      </div>
+    </div>
+    <div class="skill s5"><span class="step">3</span><div class="k">🎞️</div><h3>paper2reel</h3><p data-i18n="sk_reel">Binds poster regions, video segments, slide thumbnails, captions, and blog passages into one interactive, downloadable viewer.</p></div>
+  </div>
+  <div class="pipeflow">
+    <code>paper2assets</code><span class="arw">→</span>
+    <code>paper2poster</code><span style="opacity:.5">·</span><code>paper2video</code><span style="opacity:.5">·</span><code>paper2blog</code>
+    <span class="arw">→</span><code>paper2reel</code>
+  </div>
+</section>
+
+<!-- ---------- stats band ---------- -->
+<section class="section statsband">
+  <p class="hero-note" data-i18n="hero_note">Every reel below is an unedited end-to-end run on the 100-paper Paper2Poster benchmark. One shared extraction pass reads the paper once and feeds every generator, so the poster, video, and blog stay grounded in the same figures, numbers, and claims. Click any poster to open its interactive reel.</p>
+  <div class="stats">
+    <div class="stat"><b>100</b><span data-i18n="stat_papers">Benchmark papers</span></div>
+    <div class="stat"><b>5</b><span data-i18n="stat_skills">Composable skills</span></div>
+    <div class="stat"><b>3</b><span data-i18n="stat_artifacts">Artifacts / paper</span></div>
+    <div class="stat"><b>3.56<span style="font-size:14px;color:var(--fg-faint);-webkit-text-fill-color:var(--fg-faint)"> vs 3.03</span></b><span data-i18n="stat_aesthetic">Poster aesthetics vs authors</span></div>
+    <div class="stat"><b>74–95<span style="font-size:14px;color:var(--fg-faint);-webkit-text-fill-color:var(--fg-faint)">/100</span></b><span data-i18n="stat_wins">Wins vs author posters</span></div>
+  </div>
+  <p class="stats-note" data-i18n="stats_note">Poster aesthetics and win-rate are scored against the papers' original author posters on the Paper2Poster benchmark (100 papers).</p>
+</section>
+
+<!-- ---------- lightbox ---------- -->
+<div id="lb">
+  <div class="lb-panel">
+    <div class="lb-bar">
+      <div class="lb-title" id="lb-title"></div>
+      <a class="lb-opentab" id="lb-open-tab" target="_blank" rel="noopener">↗ <span data-i18n="open_tab">Open in new tab</span></a>
+      <button class="lb-close" id="lb-close" aria-label="Close">✕</button>
+    </div>
+    <div class="lb-stage" id="lb-stage">
+      <div class="lb-loading" id="lb-loading"><div class="lb-spinner"></div><div class="lb-loadtxt" data-i18n="loading">Loading reel…</div></div>
+      <iframe class="lb-reel" id="lb-reel-el" title="reel" allow="fullscreen; autoplay"></iframe>
+      <div class="lb-fallback" id="lb-fallback" hidden></div>
+    </div>
+  </div>
+</div>
+
+<footer class="footer">
+  <div class="footer-row">
+    <div class="footer-brand">
+      <img src="assets/logo.svg" alt="" width="22" height="22"/>
+      <span>ResearchStudio · MIT License</span>
+    </div>
+    <span class="footer-support" data-i18n="demo_support">Demo hosting supported by NTU.</span>
+    <div class="footer-links">
+      <a href="https://github.com/microsoft/ResearchStudio" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/microsoft/ResearchStudio/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+    </div>
+  </div>
+</footer>
+
+<script src="config.js?v=20260804-hf-daily"></script>
+<script src="gallery_data.js"></script>
+<script src="daily_preview_data.js?v=20260804-hf-daily"></script>
+<script src="gallery.js?v=20260804-hf-daily-3"></script>
+<script>
+(() => {
+  const copy = {
+    en: {
+      title: 'ResearchStudio-Reel Gallery',
+      nav_idea: 'Explore Idea', nav_reel: 'Explore Reel', github: 'Open on GitHub',
+      theme_label: 'Theme', theme_light: 'Light', theme_dark: 'Dark',
+      language_label: 'Language', language_en: 'English', language_zh: 'Chinese',
+      hero_t1: 'One paper in.', hero_t2: 'A poster, a video, a blog out.', demo_badge: 'Live demo', demo_h: 'Make your own poster', demo_sub: 'Turn any paper into one — try it now',
+      tagline: 'ResearchStudio-Reel automates the last mile of research — turning a single accepted-paper PDF into a print-ready conference poster, a narrated talk video, and a bilingual blog, all bound into one interactive reel.',
+      hero_note: 'Every reel below is an unedited end-to-end run on the 100-paper Paper2Poster benchmark. One shared extraction pass reads the paper once and feeds every generator, so the poster, video, and blog stay grounded in the same figures, numbers, and claims. Click any poster to open its interactive reel.',
+      stats_note: 'Poster aesthetics and win-rate are scored against the papers\' original author posters on the Paper2Poster benchmark (100 papers).',
+      sg_label: 'Generate — in parallel',
+      stat_reels: 'Reels shown', stat_papers: 'Benchmark papers', stat_skills: 'Composable skills',
+      stat_artifacts: 'Artifacts / paper', stat_aesthetic: 'Poster aesthetics vs authors', stat_wins: 'Wins vs author posters',
+      skills_h: 'Five skills, one pipeline', skills_sub: 'extract once · generate three ways · converge',
+      skills_lead: 'ResearchStudio-Reel runs as five composable skills inside Claude Code and Codex. A shared extractor reads the paper once; three generators produce editor-ready artifacts from that one bundle; a convergence layer binds them into a single navigable surface.',
+      sk_assets: 'Reads the PDF once into one reusable bundle — body text, cleaned figures, captions, metadata, and a nine-section spec that every generator consumes.',
+      sk_poster: 'Composes a print-ready poster in four coupled formats — HTML, PDF, PNG, and editable PowerPoint — tuned by a measured fill-loop.',
+      sk_video: 'Plans narration and builds a captioned talk video with an editable deck and narration-aligned visual highlights.',
+      sk_blog: 'Writes a bilingual editorial package — a Chinese WeChat piece and an English research blog — as editable Word files sharing one evidence base.',
+      sk_reel: 'Binds poster regions, video segments, slide thumbnails, captions, and blog passages into one interactive, downloadable viewer.',
+      fig_video: 'Narrated talk video with aligned highlights', fig_blog: 'Bilingual editorial blog package', fig_reel: 'One interactive reel binding all three',
+      gallery_h: 'The reel gallery',
+      gallery_lead: 'Every tile is a real, unedited run. Hover to enlarge a poster; click to open its video, blog, interactive reel, and summary.',
+      search_ph: 'Search titles, authors, venues…', view_wall: 'Wall', view_grid: 'Grid',
+      foot_project: 'Project', demo_support: 'Demo hosting supported by NTU.',
+      lb_poster: 'Poster', lb_video: 'Video', lb_blog: 'Blog', lb_reel: 'Reel', lb_about: 'About',
+      open_pdf: 'Open poster PDF', open_pptx: 'Editable PPTX', dl_zh: 'Chinese blog (.docx)', dl_en: 'English blog (.docx)',
+      open_reel: 'Open interactive reel', open_tab: 'Open in new tab', open_paper: 'Paper', loading: 'Loading reel…',
+      no_asset: 'Not available for this run.', reel_hint: 'The reel viewer loads video and figures from the asset host; give it a moment.',
+      count_tpl: '{n} reels'
+    },
+    zh: {
+      title: 'ResearchStudio-Reel 画廊',
+      nav_idea: '探索 Idea', nav_reel: '探索 Reel', github: '在 GitHub 打开',
+      theme_label: '主题', theme_light: '浅色', theme_dark: '深色',
+      language_label: '语言', language_en: '英文', language_zh: '中文',
+      hero_t1: '一篇论文进,', hero_t2: '海报、视频、博客同时产出。', demo_badge: '在线体验', demo_h: '生成你的海报', demo_sub: '把任意论文变成海报,立即试用',
+      tagline: 'ResearchStudio-Reel 自动化科研的"最后一公里"——把一篇录用论文的 PDF 一次性转成可印刷会议海报、带解说的讲解视频,以及中英双语博客,并汇聚成一个可交互的 Reel。',
+      hero_note: '下方每个 Reel 都是在 100 篇 Paper2Poster 基准上未经人工编辑的端到端运行。一次共享的抽取先把论文读一遍再喂给每个生成器,因此海报、视频与博客都锚定在相同的图、数字与论断上。点击任意海报即可打开它的交互 Reel。',
+      stats_note: '海报美观度与胜率均在 Paper2Poster 基准(100 篇)上、对阵论文原作者的海报进行评测。',
+      sg_label: '生成 · 并行',
+      stat_reels: '展示的 Reel', stat_papers: '基准论文数', stat_skills: '可组合技能',
+      stat_artifacts: '每篇产出物', stat_aesthetic: '海报美观度 vs 作者', stat_wins: '对阵作者海报胜出',
+      skills_h: '五个技能,一条流程', skills_sub: '抽取一次 · 三路生成 · 汇聚',
+      skills_lead: 'ResearchStudio-Reel 以五个可组合技能运行于 Claude Code 与 Codex。共享抽取器把论文读一遍;三个生成器基于同一份 bundle 产出可编辑的产物;汇聚层把它们绑成一个可导航的整体。',
+      sk_assets: '把 PDF 只读一次,产出可复用的 bundle——正文、清洗后的图、图注、元数据,以及每个生成器都会用到的九段式摘要。',
+      sk_poster: '把 bundle 组成可印刷海报,一次给出四种耦合格式——HTML、PDF、PNG 与可编辑 PowerPoint,由"测量填充回路"调优排版。',
+      sk_video: '规划解说词,生成带字幕的讲解视频,附可编辑幻灯片与随解说对齐的视觉高亮。',
+      sk_blog: '产出中英双语稿件——中文微信公众号版与英文研究博客版,均为共享同一证据库的可编辑 Word 文件。',
+      sk_reel: '把海报分区、视频片段、幻灯片缩略图、字幕与博客段落绑成一个可交互、可下载的查看器。',
+      fig_video: '带对齐高亮的讲解视频', fig_blog: '中英双语博客产物', fig_reel: '汇聚三者的交互 Reel',
+      gallery_h: 'Reel 画廊',
+      gallery_lead: '每个卡片都是真实、未经编辑的运行。悬停放大海报;点击打开它的视频、博客、交互 Reel 与摘要。',
+      search_ph: '搜索标题、作者、会议…', view_wall: '滚动墙', view_grid: '网格',
+      foot_project: '项目', demo_support: 'Demo 托管由 NTU 提供支持。',
+      lb_poster: '海报', lb_video: '视频', lb_blog: '博客', lb_reel: 'Reel', lb_about: '简介',
+      open_pdf: '打开海报 PDF', open_pptx: '可编辑 PPTX', dl_zh: '中文博客 (.docx)', dl_en: '英文博客 (.docx)',
+      open_reel: '打开交互 Reel', open_tab: '在新标签打开', open_paper: '论文', loading: '正在加载 Reel…',
+      no_asset: '该运行暂无此产物。', reel_hint: 'Reel 查看器会从资源服务器加载视频与图片,请稍候。',
+      count_tpl: '{n} 个 Reel'
+    }
+  };
+  window.I18N = copy; // gallery.js reads the active dict for dynamic strings
+
+  const languageControl = document.querySelector('.language-control');
+  const modeControl = document.querySelector('.mode-control');
+  const languageOptions = document.querySelectorAll('[data-language-option]');
+  const themeOptions = document.querySelectorAll('[data-theme-option]');
+  let language;
+  try { language = localStorage.getItem('researchstudio-language'); } catch (_) {}
+  if (!['en', 'zh'].includes(language)) {
+    language = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  }
+
+  function applyLanguage(next) {
+    language = next;
+    window.LANG = language;
+    document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
+    document.title = copy[language].title;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const v = copy[language][el.dataset.i18n];
+      if (v !== undefined) el.textContent = v;
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const v = copy[language][el.dataset.i18nPlaceholder];
+      if (v !== undefined) el.placeholder = v;
+    });
+    languageOptions.forEach(o => o.setAttribute('aria-pressed', String(o.dataset.languageOption === language)));
+    try { localStorage.setItem('researchstudio-language', language); } catch (_) {}
+    if (window.onLanguageChange) window.onLanguageChange(language);
+  }
+  languageOptions.forEach(o => o.addEventListener('click', () => { applyLanguage(o.dataset.languageOption); languageControl.open = false; }));
+
+  function applyTheme(theme, persist = false) {
+    document.documentElement.dataset.theme = theme;
+    themeOptions.forEach(o => o.setAttribute('aria-pressed', String(o.dataset.themeOption === theme)));
+    if (persist) { try { localStorage.setItem('researchstudio-theme', theme); } catch (_) {} }
+  }
+  themeOptions.forEach(o => o.addEventListener('click', () => { applyTheme(o.dataset.themeOption, true); modeControl.open = false; }));
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    let saved; try { saved = localStorage.getItem('researchstudio-theme'); } catch (_) {}
+    if (saved !== 'light' && saved !== 'dark') applyTheme(e.matches ? 'dark' : 'light');
+  });
+  modeControl.addEventListener('toggle', () => { if (modeControl.open) languageControl.open = false; });
+  languageControl.addEventListener('toggle', () => { if (languageControl.open) modeControl.open = false; });
+
+  applyTheme(document.documentElement.dataset.theme);
+  applyLanguage(language);
+})();
+</script>
+</body>
+</html>
