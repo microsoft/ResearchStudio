@@ -203,7 +203,8 @@ main{max-width:var(--max);margin:0 auto;padding:10px 0 10px;width:100%;flex:1 0 
 .tile .play span{width:50px;height:50px;border-radius:50%;background:rgba(108,92,231,.94);color:#fff;display:grid;place-items:center;font-size:19px;padding-left:3px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 .tile:hover .play{opacity:1}
 .tile.daily-tile .play{inset:42px 0 0}
-.daily-rank{position:absolute;z-index:8;top:9px;left:9px;display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;background:color-mix(in srgb,var(--card) 90%,transparent);color:var(--ink);font-size:11px;font-weight:800;box-shadow:var(--shadow-sm);backdrop-filter:blur(8px)}
+.tile-direct-link{position:absolute;inset:0;z-index:7;border-radius:inherit}
+.daily-rank{position:absolute;z-index:8;top:9px;left:9px;display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;background:color-mix(in srgb,var(--card) 90%,transparent);color:var(--ink);font-size:11px;font-weight:800;box-shadow:var(--shadow-sm);backdrop-filter:blur(8px);pointer-events:none}
 .daily-engagement{position:absolute;z-index:9;top:8px;right:8px;display:flex;gap:5px}
 .daily-vote{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border:1px solid color-mix(in srgb,var(--line) 78%,transparent);border-radius:999px;background:color-mix(in srgb,var(--card) 90%,transparent);color:var(--ink);font:inherit;font-size:11px;font-weight:700;cursor:pointer;box-shadow:var(--shadow-sm);backdrop-filter:blur(8px);transition:.15s}
 .daily-vote:hover{border-color:color-mix(in srgb,var(--brand-2) 55%,var(--line));background:var(--bg-soft)}
@@ -417,7 +418,7 @@ main{max-width:var(--max);margin:0 auto;padding:10px 0 10px;width:100%;flex:1 0 
 <script src="config.js?v=20260804-hf-daily"></script>
 <script src="gallery_data.js"></script>
 <script src="daily_preview_data.js?v=20260804-hf-daily"></script>
-<script src="gallery.js?v=20260804-hf-daily-3"></script>
+<script src="gallery.js?v=20260804-hf-daily-4"></script>
 <script>
 (() => {
   const copy = {

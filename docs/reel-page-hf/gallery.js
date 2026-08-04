@@ -136,6 +136,12 @@ function filtered(){
 function tileHTML(e){
   const ar = (e.w && e.h) ? ` style="aspect-ratio:${e.w}/${e.h}"` : "";
   const isDaily = e.source === "hf_daily";
+  const directReel = isDaily && !e.embed_ready
+    ? String((e.rel && e.rel.reel) || e.result_url || e.paper_url || "")
+    : "";
+  const directLink = directReel
+    ? `<a class="tile-direct-link" href="${esc(directReel)}" target="_blank" rel="noopener noreferrer" aria-label="Open interactive Reel: ${esc(e.title)}"></a>`
+    : "";
   const dailyControls = isDaily ? `<span class="daily-rank">HF #${esc(e.rank)}</span>
     <span class="daily-engagement" aria-label="ResearchStudio feedback">
       <button type="button" class="daily-vote" data-engagement-action="like" data-token="${esc(e.token)}" aria-label="Like this Reel" aria-pressed="false">
@@ -148,6 +154,7 @@ function tileHTML(e){
       </button>
     </span>` : "";
   return `<div class="tile${isDaily ? " daily-tile" : ""}" data-slug="${esc(e.slug)}" title="${esc(e.title)}">
+    ${directLink}
     ${dailyControls}
     <img${ar} data-src="${esc(posterURL(e))}" alt="${esc(e.title)}"/>
     <div class="play"><span>▶</span></div>
@@ -406,6 +413,15 @@ let openSlug = null;
 function openReel(slug){
   const e = BY_SLUG[slug];
   if (!e) return;
+  // Preview entries cannot be embedded cross-origin before the edition is
+  // published, but their completed Reel is still a valid top-level page.
+  // Open that real interactive deliverable directly instead of presenting a
+  // poster-only lightbox that looks like a dead card.
+  if (e.source === "hf_daily" && !e.embed_ready) {
+    const directReel = String((e.rel && e.rel.reel) || e.result_url || e.paper_url || "");
+    if (directReel) window.open(directReel, "_blank", "noopener,noreferrer");
+    return;
+  }
   openSlug = slug;
   document.getElementById("lb-title").textContent = e.title;
 
@@ -459,6 +475,7 @@ function setView(v){
 
 // ---------- events ----------
 document.addEventListener("click", (ev) => {
+  if (ev.target.closest(".tile-direct-link")) return;
   const engagementButton = ev.target.closest(".daily-vote");
   if (engagementButton){
     toggleDailyEngagement(
