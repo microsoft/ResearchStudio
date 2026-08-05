@@ -1,6 +1,19 @@
 ---
 name: paper2assets
-description: Extract a research paper PDF into a structured set of poster-agnostic assets reusable by any downstream renderer (paper2poster, paper2blog, paper2audio, paper2video). Produces a `<outdir>/` containing the paper's full text (assets/meta/text.txt), per-figure captions (assets/meta/captions.json), cleaned figure rasters (assets/figures/*.png + assets/meta/figures.json manifest), paper metadata (assets/meta/metadata.json: title / authors / institutes / venue / paper_url / code_url), institute logos (assets/logos/*), URL QR codes (assets/qr/*), and a 9-section structured paper summary (assets/meta/paper_spec.md). The bundle follows the Output Contract layout (deliverables at top, everything else under `assets/`). Use when the user wants to extract paper content into reusable assets, OR as the mandatory upstream stage of any paper-rendering pipeline — e.g., "extract this paper", "build paper assets", "get the figures and spec from this PDF", "paper2assets".
+description: >-
+  Extract a research paper PDF into a structured set of poster-agnostic assets
+  reusable by any downstream renderer (paper2poster, paper2blog, paper2audio,
+  paper2video). Produces a `<outdir>/` containing the paper's full text
+  (assets/meta/text.txt), per-figure captions (assets/meta/captions.json),
+  cleaned figure rasters (assets/figures/*.png + assets/meta/figures.json
+  manifest), paper metadata (assets/meta/metadata.json: title / authors /
+  institutes / venue / paper_url / code_url), institute logos (assets/logos/*),
+  URL QR codes (assets/qr/*), and a 9-section structured paper summary
+  (assets/meta/paper_spec.md). The bundle follows the Output Contract layout
+  (deliverables at top, everything else under `assets/`). Use when the user
+  wants to extract paper content into reusable assets, OR as the mandatory
+  upstream stage of any paper-rendering pipeline — e.g., "extract this paper",
+  "build paper assets", "get the figures and spec from this PDF", "paper2assets".
 allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, AskUserQuestion, WebFetch, WebSearch
 ---
 
