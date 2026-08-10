@@ -10,22 +10,22 @@ Pipeline position (Stage 3 of paper2video):
         --out         : MP4 destination path
 
     Steps:
-        1. Prefer ppt-master's final SVG frames (svg_final/*.svg) → PNG/slide
-           via a browser renderer; fall back to PPTX → PDF → PNG only when SVG
-           frames are unavailable or explicitly disabled.
+        1. Use the current PPTX for editable animation manifests. Otherwise,
+           prefer ppt-master's final SVG frames and fall back to PPTX/PDF.
         2. Pair each slide PNG with its matching MP3 (by script order)
         3. Probe each MP3's duration with ffprobe
         4. Build a per-slide concat segment, optionally pad trailing silence
         5. Concat into a single H.264 / AAC MP4 with ffmpeg's concat demuxer
         6. Verify the output plays and report duration
 
-Why prefer svg_final over PPTX → LibreOffice → PDF:
+Why the non-editable authoring route prefers svg_final over PPTX/PDF:
     ppt-master authors and previews slides as SVG before exporting the PPTX.
     LibreOffice can reflow text and vector geometry differently from
     PowerPoint/Keynote, producing video frames that no longer match the deck the
     user inspected. The final SVGs are the same 16:9 visual source used before
-    PPTX export, including expanded icon paths, so they are the safest source
-    for the video raster frames. The PPTX remains a required deliverable.
+    PPTX export. In the editable route, this preference is intentionally
+    reversed: the current PPTX supplies all static and animated pixels so user
+    changes cannot be hidden by an older SVG export.
 
 ffmpeg fallback:
     If system ffmpeg/ffprobe aren't on PATH, we fall back to imageio_ffmpeg's
@@ -52,6 +52,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from editable_pptx import ProtocolError, file_sha256, write_reveal_variant
+
 RESOLUTIONS = {
     "720p":  (1280, 720),
     "1080p": (1920, 1080),
@@ -60,15 +66,43 @@ RESOLUTIONS = {
 }
 
 DURATION_REPORT_SCHEMA_VERSION = "paper2video_duration_report.v1"
+ANIMATION_RENDER_REPORT_SCHEMA_VERSION = "paper2video_animation_render.v1"
+SUPPORTED_ANIMATION_NAMES = frozenset(
+    {
+        "Appear",
+        "Fade In",
+        "Dissolve In",
+        "Fly In",
+        "Wipe In",
+        "Zoom In",
+        "Circle In",
+        "Diamond In",
+    }
+)
 HIGHLIGHT_BORDER_ALPHA = 0.68
 HIGHLIGHT_BOX_EXPAND_MULTIPLIER = 1.0
 SPOTLIGHT_DIM_COLOR = "0x000000"
 SPOTLIGHT_BORDER_ALPHA = 0.34
-SPOTLIGHT_MAX_ALPHA = 0.24
-SPOTLIGHT_FEATHER_RATIO = 0.052
-SPOTLIGHT_MIN_FEATHER_PX = 56
-SPOTLIGHT_FEATHER_THICKNESS_MULTIPLIER = 8
+SPOTLIGHT_MAX_ALPHA = float(os.environ.get("VIDEO_SPOTLIGHT_DIM", "0.24"))
+SPOTLIGHT_FEATHER_RATIO = float(os.environ.get("VIDEO_SPOTLIGHT_FEATHER_RATIO", "0.052"))
+SPOTLIGHT_MIN_FEATHER_PX = int(os.environ.get("VIDEO_SPOTLIGHT_FEATHER_PX", "56"))
+SPOTLIGHT_FEATHER_THICKNESS_MULTIPLIER = int(os.environ.get("VIDEO_SPOTLIGHT_FEATHER_THICK_MULT", "8"))
 SPOTLIGHT_INNER_PAD_MULTIPLIER = 1.0
+# Ink-tighten: shrink a highlight box to the actually-painted (ink) pixels inside
+# it before building the spotlight mask. The upstream cue box is the shape's
+# DECLARED geometry (PPTX off/ext) or a semantic estimate, so a loose text box
+# spotlights a lot of empty leading/padding. Default on; needs Pillow+numpy and
+# degrades to the declared box when they are absent or confidence is low.
+INK_TIGHTEN = os.environ.get("VIDEO_SPOTLIGHT_INK_TIGHTEN", "1").strip().lower() not in ("0", "off", "false", "no")
+INK_TIGHTEN_PAD_FRAC = float(os.environ.get("VIDEO_SPOTLIGHT_INK_PAD", "0.012"))
+# Card/panel awareness: a highlight box whose border ring is mostly ONE fill
+# colour (>= CARD_UNIFORM of the ring hugs its median) that differs from the
+# SLIDE background by more than CARD_DELTA (summed RGB) sits on a FILLED
+# card/panel — its fill (including an accent bar and padding) is part of the
+# visual unit, so ink-tighten keeps the whole box instead of hugging the inner
+# glyphs (which would dim the card and leave a "hole"/short frame).
+INK_TIGHTEN_CARD_DELTA = float(os.environ.get("VIDEO_SPOTLIGHT_CARD_DELTA", "24"))
+INK_TIGHTEN_CARD_UNIFORM = float(os.environ.get("VIDEO_SPOTLIGHT_CARD_UNIFORM", "0.6"))
 CURSOR_MOVE_SECONDS = 0.55
 CURSOR_POINTER_FILL = "0x1E293B"
 CURSOR_POINTER_BORDER = "0xF8FAFC"
@@ -247,7 +281,9 @@ def _resolve_svg_asset_href(raw: str, *, svg_path: Path, project_path: Path) -> 
     return raw
 
 
-def _inline_svg_html(svg_path: Path, project_path: Path) -> str:
+def _inline_svg_html(
+    svg_path: Path, project_path: Path, *, transparent: bool = False,
+) -> str:
     text = svg_path.read_text(encoding="utf-8")
     text = re.sub(r"^\s*<\?xml[^>]*>\s*", "", text)
 
@@ -258,11 +294,12 @@ def _inline_svg_html(svg_path: Path, project_path: Path) -> str:
 
     text = re.sub(r"((?:xlink:)?href)=(['\"])([^'\"]+)\2", replace_href, text)
     base_uri = svg_path.parent.resolve().as_uri() + "/"
+    page_background = "transparent" if transparent else "white"
     return (
         "<!doctype html><html><head><meta charset=\"utf-8\">"
         f"<base href=\"{base_uri}\">"
         "<style>"
-        "html,body{margin:0;width:100%;height:100%;overflow:hidden;background:white;}"
+        f"html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:{page_background};}}"
         "body>svg{width:100vw!important;height:100vh!important;display:block;}"
         "</style></head><body>"
         f"{text}"
@@ -411,6 +448,479 @@ class VisualCue:
     border: int = 5
     size: int | None = None
     style: str = "spotlight_laser"
+    # When True the box is already the intended LOGICAL unit (a grouped
+    # multi-line label or a filled card) and must be used verbatim — skip
+    # ink-tighten, which would hug the inner glyphs and leave a fill-only
+    # card's background padding dimmed (the "hole in the card" defect).
+    no_ink_tighten: bool = False
+
+
+@dataclass
+class AnimationEffect:
+    order: int
+    locator: str
+    name: str
+    start: float
+    duration: float
+    timing_source: str
+    shape_id: str | None = None
+
+
+@dataclass
+class AnimationSlide:
+    index: int
+    slide_id: str
+    effects: list[AnimationEffect]
+
+
+@dataclass
+class AnimationLayer:
+    effect: AnimationEffect
+    path: Path
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+def animation_manifest_metadata(path: Path | None) -> dict[str, str]:
+    if path is None:
+        return {"source_kind": "svg"}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        sys.exit(f"[render_video] invalid animation manifest {path}: {exc}")
+    source_kind = str(payload.get("source_kind") or "svg")
+    if source_kind not in {"svg", "pptx"}:
+        sys.exit(
+            f"[render_video] animation manifest has unsupported source_kind {source_kind!r}"
+        )
+    return {
+        "source_kind": source_kind,
+        "source_sha256": str(payload.get("source_sha256") or ""),
+        "source_pptx": str(payload.get("source_pptx") or ""),
+    }
+
+
+@dataclass
+class AnimationSlideAssets:
+    index: int
+    base_frame: Path
+    layers: list[AnimationLayer]
+
+
+def load_animation_manifest(
+    path: Path | None,
+    pairs: list[SlidePair],
+    *,
+    pad_tail: float,
+) -> dict[int, AnimationSlide]:
+    if path is None:
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        sys.exit(f"[render_video] invalid animation manifest {path}: {exc}")
+    if payload.get("schema_version") != "paper2video_animation_manifest.v1":
+        sys.exit(f"[render_video] unsupported animation manifest schema in {path}")
+    source_kind = str(payload.get("source_kind") or "svg")
+    if source_kind not in {"svg", "pptx"}:
+        sys.exit(
+            f"[render_video] animation manifest has unsupported source_kind {source_kind!r}"
+        )
+    slides = payload.get("slides") or []
+    if len(slides) != len(pairs):
+        sys.exit(
+            f"[render_video] animation manifest has {len(slides)} slides, "
+            f"expected {len(pairs)}"
+        )
+    result: dict[int, AnimationSlide] = {}
+    total_effects = 0
+    for pair, raw_slide in zip(pairs, slides):
+        index = int(raw_slide.get("index") or 0)
+        if index != pair.index:
+            sys.exit(
+                f"[render_video] animation slide index {index} != expected {pair.index}"
+            )
+        slide_id = str(raw_slide.get("id") or "").strip()
+        if slide_id != pair.audio.stem:
+            sys.exit(
+                f"[render_video] animation slide {index} id {slide_id!r} does not "
+                f"match audio/script id {pair.audio.stem!r}"
+            )
+        effects: list[AnimationEffect] = []
+        for raw in raw_slide.get("effects") or []:
+            start = float(raw.get("start") or 0.0)
+            duration = float(raw.get("duration") or 0.0)
+            locator = str(raw.get("locator") or "").strip()
+            name = str(raw.get("name") or "").strip()
+            timing_source = str(raw.get("timing_source") or "")
+            if not locator or not name:
+                sys.exit(f"[render_video] slide {index} has an animation without locator/name")
+            shape_id = str(raw.get("shape_id") or "").strip() or None
+            if source_kind == "pptx" and shape_id is None:
+                sys.exit(
+                    f"[render_video] slide {index} PPTX animation {locator!r} "
+                    "is missing shape_id"
+                )
+            if name not in SUPPORTED_ANIMATION_NAMES:
+                sys.exit(
+                    f"[render_video] slide {index} animation {locator!r} has unsupported "
+                    f"effect name {name!r}"
+                )
+            if start < 0 or duration <= 0 or start + duration > pair.duration + pad_tail + 0.01:
+                sys.exit(
+                    f"[render_video] slide {index} animation {locator!r} has invalid timing "
+                    f"start={start}, duration={duration}, segment={pair.duration + pad_tail:.3f}"
+                )
+            if timing_source not in {"edge_word_alignment", "animation_pane"}:
+                sys.exit(
+                    f"[render_video] slide {index} animation {locator!r} has "
+                    f"unsupported timing source {timing_source!r}"
+                )
+            order = int(raw.get("order") or len(effects) + 1)
+            if order != len(effects) + 1:
+                sys.exit(
+                    f"[render_video] slide {index} animation order {order} is not "
+                    f"the expected contiguous order {len(effects) + 1}"
+                )
+            effects.append(
+                AnimationEffect(
+                    order=order,
+                    locator=locator,
+                    name=name,
+                    start=start,
+                    duration=duration,
+                    timing_source=timing_source,
+                    shape_id=shape_id,
+                )
+            )
+        result[index] = AnimationSlide(
+            index=index,
+            slide_id=slide_id,
+            effects=effects,
+        )
+        total_effects += len(effects)
+    declared = int(payload.get("effect_count") or 0)
+    if declared != total_effects:
+        sys.exit(
+            f"[render_video] animation manifest effect_count {declared} != {total_effects}"
+        )
+    return result
+
+
+def render_svg_animation_assets(
+    svgs: list[Path],
+    animation_map: dict[int, AnimationSlide],
+    out_dir: Path,
+    *,
+    project_path: Path,
+    width: int,
+    height: int,
+    browser_executable: str | None = None,
+) -> dict[int, AnimationSlideAssets]:
+    """Rasterize one static base plus transparent SVG-group layers per slide."""
+    if not animation_map:
+        return {}
+    try:
+        from PIL import Image  # type: ignore
+        from playwright.sync_api import sync_playwright  # type: ignore
+    except Exception:
+        sys.exit(
+            "[render_video] animated SVG rendering requires Pillow and Playwright."
+        )
+    if len(svgs) != len(animation_map):
+        sys.exit(
+            f"[render_video] animation SVG count {len(svgs)} != manifest slide count "
+            f"{len(animation_map)}"
+        )
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    html_dir = out_dir / "html"
+    html_dir.mkdir(parents=True, exist_ok=True)
+    browser_path = browser_executable or find_chrome()
+    launch_kwargs: dict[str, object] = {"headless": True}
+    if browser_path:
+        launch_kwargs["executable_path"] = browser_path
+    assets: dict[int, AnimationSlideAssets] = {}
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(**launch_kwargs)
+            page = browser.new_page(
+                viewport={"width": width, "height": height}, device_scale_factor=1,
+            )
+            for index, svg_path in enumerate(svgs, start=1):
+                slide = animation_map[index]
+                slide_dir = out_dir / f"slide-{index:02d}"
+                slide_dir.mkdir(parents=True, exist_ok=True)
+                html_path = html_dir / f"slide-{index:02d}.html"
+                html_path.write_text(
+                    _inline_svg_html(svg_path, project_path, transparent=True),
+                    encoding="utf-8",
+                )
+                uri = html_path.resolve().as_uri()
+                locators = [effect.locator for effect in slide.effects]
+                page.goto(uri, wait_until="networkidle", timeout=60000)
+                missing = page.evaluate(
+                    """ids => ids.filter(id => !Array.from(
+                        document.querySelector('svg').children
+                    ).some(el => el.id === id))""",
+                    locators,
+                )
+                if missing:
+                    sys.exit(
+                        f"[render_video] slide {index} animation SVG locators missing: {missing}"
+                    )
+                page.evaluate(
+                    """ids => {
+                        const root = document.querySelector('svg');
+                        for (const id of ids) {
+                            const el = Array.from(root.children).find(node => node.id === id);
+                            if (el) el.style.display = 'none';
+                        }
+                    }""",
+                    locators,
+                )
+                base_path = slide_dir / "base.png"
+                page.screenshot(
+                    path=str(base_path), full_page=False, omit_background=True,
+                )
+
+                layer_cache: dict[str, tuple[Path, int, int, int, int]] = {}
+                layers: list[AnimationLayer] = []
+                for effect in slide.effects:
+                    if effect.locator not in layer_cache:
+                        page.goto(uri, wait_until="networkidle", timeout=60000)
+                        page.evaluate(
+                            """target => {
+                                const root = document.querySelector('svg');
+                                for (const el of Array.from(root.children)) {
+                                    const tag = el.tagName.toLowerCase();
+                                    if (tag !== 'defs' && el.id !== target) {
+                                        el.style.display = 'none';
+                                    }
+                                }
+                            }""",
+                            effect.locator,
+                        )
+                        full_path = slide_dir / f"layer-{len(layer_cache) + 1:02d}-full.png"
+                        page.screenshot(
+                            path=str(full_path), full_page=False, omit_background=True,
+                        )
+                        with Image.open(full_path) as source:
+                            image = source.convert("RGBA")
+                            bbox = image.getchannel("A").getbbox()
+                            if bbox is None:
+                                sys.exit(
+                                    f"[render_video] slide {index} animation layer "
+                                    f"{effect.locator!r} rendered empty"
+                                )
+                            x0, y0, x1, y1 = bbox
+                            cropped = image.crop(bbox)
+                            layer_path = slide_dir / f"layer-{len(layer_cache) + 1:02d}.png"
+                            cropped.save(layer_path)
+                        full_path.unlink(missing_ok=True)
+                        layer_cache[effect.locator] = (
+                            layer_path, x0, y0, x1 - x0, y1 - y0,
+                        )
+                    layer_path, x, y, layer_w, layer_h = layer_cache[effect.locator]
+                    layers.append(
+                        AnimationLayer(
+                            effect=effect,
+                            path=layer_path,
+                            x=x,
+                            y=y,
+                            width=layer_w,
+                            height=layer_h,
+                        )
+                    )
+                assets[index] = AnimationSlideAssets(
+                    index=index, base_frame=base_path, layers=layers,
+                )
+            browser.close()
+    except SystemExit:
+        raise
+    except Exception as exc:
+        sys.exit(f"[render_video] animated SVG layer render failed: {exc}")
+    return assets
+
+
+def _pdf_to_scaled_pngs(
+    pdf_path: Path,
+    out_dir: Path,
+    *,
+    width: int,
+    height: int,
+    pdftoppm: str,
+) -> list[Path]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    prefix = out_dir / "slide"
+    cmd = [
+        pdftoppm,
+        "-png",
+        "-r",
+        "144",
+        "-scale-to-x",
+        str(width),
+        "-scale-to-y",
+        str(height),
+        str(pdf_path),
+        str(prefix),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if proc.returncode != 0:
+        sys.exit(f"[render_video] pdftoppm animation-state render failed:\n{proc.stderr}")
+    frames = sorted(out_dir.glob("slide-*.png"), key=natural_key)
+    if not frames:
+        sys.exit(f"[render_video] no animation-state frames produced under {out_dir}")
+    return frames
+
+
+def _pptx_diff_layer(
+    before_path: Path,
+    after_path: Path,
+    output_path: Path,
+) -> tuple[int, int, int, int]:
+    """Create a transparent layer from two deterministic PPTX reveal states."""
+    try:
+        import numpy as np  # type: ignore
+        from PIL import Image, ImageFilter  # type: ignore
+    except Exception:
+        sys.exit("[render_video] editable PPTX animation rendering requires Pillow and numpy")
+    with Image.open(before_path) as before_source, Image.open(after_path) as after_source:
+        before = before_source.convert("RGB")
+        after = after_source.convert("RGB")
+        if before.size != after.size:
+            sys.exit(
+                "[render_video] editable PPTX reveal states have mismatched dimensions "
+                f"{before.size} != {after.size}"
+            )
+        before_array = np.asarray(before, dtype=np.int16)
+        after_array = np.asarray(after, dtype=np.int16)
+        delta = np.abs(after_array - before_array).max(axis=2).astype(np.float32)
+        visible = delta >= 2.0
+        ys, xs = np.nonzero(visible)
+        if len(xs) == 0 or len(ys) == 0:
+            sys.exit(
+                "[render_video] editable PPTX animation target produced no visible pixel change; "
+                "check that the shape is visible and has a real entrance effect"
+            )
+        pad = 2
+        x0 = max(0, int(xs.min()) - pad)
+        y0 = max(0, int(ys.min()) - pad)
+        x1 = min(after.width, int(xs.max()) + pad + 1)
+        y1 = min(after.height, int(ys.max()) + pad + 1)
+        alpha = np.clip((delta - 1.0) * 18.0, 0.0, 255.0).astype(np.uint8)
+        alpha[~visible] = 0
+        alpha_image = Image.fromarray(alpha, mode="L").filter(ImageFilter.GaussianBlur(0.45))
+        cropped = after.crop((x0, y0, x1, y1)).convert("RGBA")
+        cropped.putalpha(alpha_image.crop((x0, y0, x1, y1)))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        cropped.save(output_path)
+    return x0, y0, x1 - x0, y1 - y0
+
+
+def render_pptx_animation_assets(
+    pptx_path: Path,
+    animation_map: dict[int, AnimationSlide],
+    out_dir: Path,
+    *,
+    width: int,
+    height: int,
+    libreoffice: str,
+    pdftoppm: str,
+) -> dict[int, AnimationSlideAssets]:
+    """Render Author Notes animations from the current editable PPTX pixels.
+
+    The function creates cumulative reveal variants. State 0 removes all
+    protocol targets; state N keeps the first N targets on every slide. A
+    layer is the pixel delta between adjacent states, so PowerPoint text,
+    color, geometry, image, add, delete, and style edits all flow into video.
+    """
+    if not animation_map:
+        return {}
+    slide_shape_ids: list[list[str]] = []
+    max_effects = 0
+    for index in range(1, len(animation_map) + 1):
+        slide = animation_map[index]
+        shape_ids = [str(effect.shape_id or "") for effect in slide.effects]
+        if any(not shape_id for shape_id in shape_ids):
+            sys.exit(f"[render_video] slide {index} editable PPTX effect is missing shape_id")
+        if len(set(shape_ids)) != len(shape_ids):
+            sys.exit(
+                f"[render_video] slide {index} has multiple entrance effects for one shape; "
+                "the editable renderer currently requires one entrance per target"
+            )
+        slide_shape_ids.append(shape_ids)
+        max_effects = max(max_effects, len(shape_ids))
+
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    variants_dir = out_dir / "variants"
+    states_dir = out_dir / "states"
+    variants_dir.mkdir(parents=True, exist_ok=True)
+    states_dir.mkdir(parents=True, exist_ok=True)
+
+    state_frames: dict[int, list[Path]] = {}
+    for reveal_count in range(max_effects + 1):
+        variant = variants_dir / f"state-{reveal_count:02d}.pptx"
+        try:
+            write_reveal_variant(
+                pptx_path,
+                slide_shape_ids,
+                reveal_count,
+                variant,
+            )
+        except ProtocolError as exc:
+            sys.exit(f"[render_video] could not build editable PPTX reveal state: {exc}")
+        state_root = states_dir / f"state-{reveal_count:02d}"
+        pdf = pptx_to_pdf(variant, state_root / "pdf", libreoffice)
+        frames = _pdf_to_scaled_pngs(
+            pdf,
+            state_root / "frames",
+            width=width,
+            height=height,
+            pdftoppm=pdftoppm,
+        )
+        if len(frames) != len(animation_map):
+            sys.exit(
+                f"[render_video] reveal state {reveal_count} rendered {len(frames)} slides, "
+                f"expected {len(animation_map)}"
+            )
+        state_frames[reveal_count] = frames
+
+    assets: dict[int, AnimationSlideAssets] = {}
+    for index in range(1, len(animation_map) + 1):
+        slide = animation_map[index]
+        slide_dir = out_dir / f"slide-{index:02d}"
+        slide_dir.mkdir(parents=True, exist_ok=True)
+        base_path = slide_dir / "base.png"
+        shutil.copy2(state_frames[0][index - 1], base_path)
+        layers: list[AnimationLayer] = []
+        for effect_index, effect in enumerate(slide.effects, start=1):
+            layer_path = slide_dir / f"layer-{effect_index:02d}.png"
+            x, y, layer_width, layer_height = _pptx_diff_layer(
+                state_frames[effect_index - 1][index - 1],
+                state_frames[effect_index][index - 1],
+                layer_path,
+            )
+            layers.append(
+                AnimationLayer(
+                    effect=effect,
+                    path=layer_path,
+                    x=x,
+                    y=y,
+                    width=layer_width,
+                    height=layer_height,
+                )
+            )
+        assets[index] = AnimationSlideAssets(
+            index=index,
+            base_frame=base_path,
+            layers=layers,
+        )
+    return assets
 
 
 def _load_script_order(script_json: Path) -> list[str]:
@@ -731,7 +1241,8 @@ def load_visual_cues(
                     sys.exit(f"[render_video] highlight cue on slide {pair.index} needs either point or box")
                 style = str(raw.get("style") or highlight_style).strip()
                 cue = VisualCue(cue_type=cue_type, start=start, end=end, box=box, point=point,
-                                color=color, opacity=opacity, border=border, size=size, style=style)
+                                color=color, opacity=opacity, border=border, size=size, style=style,
+                                no_ink_tighten=bool(raw.get("no_ink_tighten", False)))
             else:
                 point_vals = _as_float_list(raw.get("point"), length=2, field="point")
                 point = (_clamp01(point_vals[0]), _clamp01(point_vals[1]))
@@ -1199,6 +1710,83 @@ def _smoothstep(value: float) -> float:
     return value * value * (3.0 - 2.0 * value)
 
 
+def _ink_tighten_box(frame_path, box, *, width: int, height: int,
+                     pad_frac: float = INK_TIGHTEN_PAD_FRAC):
+    """Shrink a normalized (x, y, w, h) highlight box to the painted-pixel (ink)
+    bounds of the content inside it, measured from the rendered slide frame.
+
+    Samples the pixels inside the box, reads the local background from the box's
+    border ring, and tightens to the non-background (inked) content, so a loose
+    text box spotlights the glyphs rather than the leading/padding. Composes with
+    grouping: hand it a UNIONED multi-line box and it hugs all the lines. It is
+    CARD-AWARE — a box sitting on a filled card/panel (ring bg differs from the
+    slide bg) is kept verbatim so the card reads as one lit unit (no "hole"),
+    while transparent text is hugged to its glyphs. Best-effort: needs
+    Pillow+numpy; returns the ORIGINAL box on any error, low ink confidence, a
+    filled card, or when it would not meaningfully shrink (already tight)."""
+    try:
+        import numpy as np
+        from PIL import Image
+    except Exception:
+        return box
+    try:
+        x, y, w, h = box
+        img = Image.open(frame_path).convert("RGB")
+        iw, ih = img.size
+        # replicate the ffmpeg scale(decrease)+pad(black) that letterboxes the
+        # slide onto the video frame, so the normalized box maps to real pixels.
+        s = min(width / iw, height / ih)
+        nw, nh = max(1, round(iw * s)), max(1, round(ih * s))
+        canvas = Image.new("RGB", (width, height), (0, 0, 0))
+        canvas.paste(img.resize((nw, nh), Image.LANCZOS), ((width - nw) // 2, (height - nh) // 2))
+        px0 = max(0, min(width - 1, int(round(x * width))))
+        py0 = max(0, min(height - 1, int(round(y * height))))
+        pw = max(2, min(width - px0, int(round(w * width))))
+        ph = max(2, min(height - py0, int(round(h * height))))
+        crop = np.asarray(canvas.crop((px0, py0, px0 + pw, py0 + ph)), dtype=np.int16)
+        ring = np.concatenate([
+            crop[:2].reshape(-1, 3), crop[-2:].reshape(-1, 3),
+            crop[:, :2].reshape(-1, 3), crop[:, -2:].reshape(-1, 3)])
+        bg = np.median(ring, axis=0)
+        # Card/panel guard: keep the whole box when it sits on a FILLED card.
+        # page_bg = the dominant colour over a coarse grid of the SOURCE slide
+        # (robust to a corner accent bar, unlike sampling the four corners). The
+        # box is a filled panel when most of its border ring hugs one fill colour
+        # (close_frac, which survives a thin accent bar on one edge) AND that fill
+        # differs from the page bg. Then keep the box verbatim (its fill + accent
+        # + padding is one lit unit); otherwise fall through and hug the glyphs.
+        src = np.asarray(img, dtype=np.int16)
+        gy = max(1, ih // 24)
+        gx = max(1, iw // 24)
+        grid = ((src[::gy, ::gx].reshape(-1, 3)) // 12) * 12
+        uv, uc = np.unique(grid, axis=0, return_counts=True)
+        page_bg = uv[uc.argmax()].astype(np.int16)
+        close_frac = float((np.abs(ring - bg).sum(axis=1) < 30).mean())
+        if close_frac > INK_TIGHTEN_CARD_UNIFORM and float(np.abs(bg - page_bg).sum()) > INK_TIGHTEN_CARD_DELTA:
+            return box
+        mask = np.abs(crop - bg).sum(axis=2) > 40
+        if int(mask.sum()) < 0.002 * mask.size:          # too little ink -> not confident
+            return box
+        # Tight bbox of all inked pixels: trims the box's outer whitespace (leading,
+        # internal padding, top/middle anchor) down to the visible glyphs. This hugs
+        # whatever ink is in the box, so the box must already be the intended LOGICAL
+        # unit. Grouping fragments that belong together (e.g. a title split across two
+        # overlapping boxes) is the caller's / upstream's job — paper2video's
+        # generate_visual_cues unions same-group text fragments into the cue box;
+        # ink-tighten does not decide WHAT to highlight, only HOW tightly.
+        ys, xs = np.where(mask)
+        ix0, iy0, ix1, iy1 = int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+        pad = int(round(pad_frac * min(width, height)))
+        ix0 = max(0, ix0 - pad); iy0 = max(0, iy0 - pad)
+        ix1 = min(pw, ix1 + pad); iy1 = min(ph, iy1 + pad)
+        if (ix1 - ix0) * (iy1 - iy0) > 0.985 * pw * ph:  # already tight -> keep declared box
+            return box
+        return ((px0 + ix0) / width, (py0 + iy0) / height,
+                (ix1 - ix0) / width, (iy1 - iy0) / height)
+    except Exception:
+        return box
+
+
 def _write_spotlight_mask_png(
     path: Path,
     *,
@@ -1519,9 +2107,207 @@ def _attention_filters(
 # Stage C — encode each slide as an MP4 segment, then concat
 # ---------------------------------------------------------------------------
 
+def _animation_strategy(name: str) -> str:
+    if name == "Appear":
+        return "appear"
+    if name in {"Fade In", "Dissolve In"}:
+        return "alpha_fade"
+    if name == "Fly In":
+        return "fly_from_left"
+    if name == "Wipe In":
+        return "wipe_from_left"
+    if name == "Zoom In":
+        return "zoom_in"
+    if name == "Circle In":
+        return "circle_reveal"
+    if name == "Diamond In":
+        return "diamond_reveal"
+    raise ValueError(f"unsupported animation effect: {name}")
+
+
+def _animation_sample_times(
+    strategy: str,
+    *,
+    global_start: float,
+    duration: float,
+    segment_start: float,
+    fps: int,
+) -> tuple[float, float]:
+    """Choose pixel-QA samples that straddle an instant Appear transition."""
+    if strategy == "appear":
+        frame_step = 1.25 / max(1, fps)
+        return (
+            max(segment_start, global_start - frame_step),
+            global_start + frame_step,
+        )
+    return (
+        global_start + duration * 0.20,
+        global_start + duration * 0.85,
+    )
+
+
+def _animation_overlay_filters(
+    layer: AnimationLayer,
+    *,
+    input_index: int,
+    current_label: str,
+    sequence: int,
+    fps: int,
+) -> tuple[list[str], str]:
+    effect = layer.effect
+    start = effect.start
+    duration = max(0.05, effect.duration)
+    strategy = _animation_strategy(effect.name)
+    source_label = f"animsrc{sequence}"
+    output_label = f"animbase{sequence}"
+    progress = f"min(max((t-{start:.3f})/{duration:.3f},0),1)"
+    alpha_progress = f"min(max((T-{start:.3f})/{duration:.3f},0),1)"
+    x_expr = f"{layer.x}"
+    y_expr = f"{layer.y}"
+    # Layer inputs are static PNGs read at 1 fps to avoid image-demux queues
+    # growing by tens of gigabytes in a long multi-input filter graph. Restore
+    # the delivery frame rate lazily inside the filter graph before animation.
+    source_filter = f"[{input_index}:v]fps={fps},format=rgba"
+    if strategy == "alpha_fade":
+        source_filter += f",fade=t=in:st={start:.3f}:d={duration:.3f}:alpha=1"
+    if strategy == "fly_from_left":
+        source_filter += f",fade=t=in:st={start:.3f}:d={min(0.18, duration):.3f}:alpha=1"
+        travel = max(96, min(420, int(round(layer.width * 0.55))))
+        x_expr = f"{layer.x}-{travel}*(1-{progress})"
+    elif strategy == "wipe_from_left":
+        # `crop` dimensions are configured once, so use a per-frame alpha mask.
+        source_filter += (
+            ",geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
+            f"a='alpha(X,Y)*lte(X,W*{alpha_progress})'"
+        )
+    elif strategy == "zoom_in":
+        # Scale into a fixed transparent canvas so overlay geometry never jumps.
+        scale = f"0.72+0.28*{progress}"
+        pad_margin = 2
+        source_filter += (
+            f",scale=w='min({layer.width},max(2,floor({layer.width}*({scale}))))':"
+            f"h='min({layer.height},max(2,floor({layer.height}*({scale}))))':eval=frame,"
+            f"pad=w={layer.width + pad_margin * 2}:h={layer.height + pad_margin * 2}:"
+            "x='(ow-iw)/2':y='(oh-ih)/2':"
+            "color=0x00000000:eval=frame,"
+            f"fade=t=in:st={start:.3f}:d={min(0.20, duration):.3f}:alpha=1"
+        )
+        x_expr = f"{layer.x - pad_margin}"
+        y_expr = f"{layer.y - pad_margin}"
+    elif strategy == "circle_reveal":
+        radius = math.hypot(layer.width / 2.0, layer.height / 2.0)
+        source_filter += (
+            ",geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
+            f"a='alpha(X,Y)*lte(hypot(X-W/2,Y-H/2),{radius:.3f}*{alpha_progress})'"
+        )
+    elif strategy == "diamond_reveal":
+        source_filter += (
+            ",geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
+            f"a='alpha(X,Y)*lte(abs(X-W/2)/(W/2)+abs(Y-H/2)/(H/2),{alpha_progress})'"
+        )
+    source_filter += f"[{source_label}]"
+    filters = [
+        source_filter,
+        f"[{current_label}][{source_label}]overlay=x='{x_expr}':y='{y_expr}':"
+        f"enable='gte(t,{start:.3f})'"
+        f"[{output_label}]",
+    ]
+    return filters, output_label
+
+
+def write_animation_render_report(
+    path: Path,
+    *,
+    manifest_path: Path,
+    out_path: Path,
+    pairs: list[SlidePair],
+    animation_map: dict[int, AnimationSlide],
+    animation_assets: dict[int, AnimationSlideAssets],
+    source_kind: str,
+    source_path: Path,
+    source_sha256: str,
+    start_pad: float,
+    pad_tail: float,
+    fps: int,
+    width: int,
+    height: int,
+) -> dict[str, object]:
+    """Persist the exact Author Notes animation mapping rendered into MP4 pixels."""
+    segment_start = start_pad
+    slides: list[dict[str, object]] = []
+    effect_count = 0
+    for pair in pairs:
+        slide = animation_map[pair.index]
+        assets = animation_assets[pair.index]
+        effects: list[dict[str, object]] = []
+        for layer in assets.layers:
+            effect = layer.effect
+            global_start = segment_start + effect.start
+            global_end = global_start + effect.duration
+            strategy = _animation_strategy(effect.name)
+            sample_early, sample_late = _animation_sample_times(
+                strategy,
+                global_start=global_start,
+                duration=effect.duration,
+                segment_start=segment_start,
+                fps=fps,
+            )
+            effects.append(
+                {
+                    "order": effect.order,
+                    "shape_id": effect.shape_id,
+                    "locator": effect.locator,
+                    "name": effect.name,
+                    "strategy": strategy,
+                    "start": round(effect.start, 3),
+                    "duration": round(effect.duration, 3),
+                    "global_start": round(global_start, 3),
+                    "global_end": round(global_end, 3),
+                    "timing_source": effect.timing_source,
+                    "bbox": [layer.x, layer.y, layer.width, layer.height],
+                    "sample_early": round(sample_early, 3),
+                    "sample_late": round(sample_late, 3),
+                    "rendered": True,
+                }
+            )
+            effect_count += 1
+        segment_end = segment_start + pair.duration + pad_tail
+        slides.append(
+            {
+                "index": pair.index,
+                "id": slide.slide_id,
+                "segment_start": round(segment_start, 3),
+                "segment_end": round(segment_end, 3),
+                "effect_count": len(effects),
+                "effects": effects,
+            }
+        )
+        segment_start = segment_end
+    report: dict[str, object] = {
+        "schema_version": ANIMATION_RENDER_REPORT_SCHEMA_VERSION,
+        "created_at": _utc_now(),
+        "manifest": str(manifest_path),
+        "output": str(out_path),
+        "source_kind": source_kind,
+        "source_path": str(source_path),
+        "source_sha256": source_sha256,
+        "timing_source": "author_notes_or_animation_pane",
+        "slide_count": len(slides),
+        "effect_count": effect_count,
+        "start_pad": start_pad,
+        "pad_tail": pad_tail,
+        "fps": fps,
+        "resolution": {"width": width, "height": height},
+        "slides": slides,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return report
+
 def encode_segment(pair: SlidePair, out_seg: Path, *,
                    width: int, height: int, fps: int, pad_tail: float,
-                   ffmpeg: str, visual_cues: list[VisualCue] | None = None) -> None:
+                   ffmpeg: str, visual_cues: list[VisualCue] | None = None,
+                   animation_assets: AnimationSlideAssets | None = None) -> None:
     """Render one PNG + one MP3 → an MP4 segment of length audio + pad_tail.
 
     Image is scaled to fit `width`x`height` while preserving aspect ratio,
@@ -1571,27 +2357,38 @@ def encode_segment(pair: SlidePair, out_seg: Path, *,
         f"apad"
     )
 
-    if spotlight_cues or cursor_cues or laser_cues:
+    if animation_assets or spotlight_cues or cursor_cues or laser_cues:
         with tempfile.TemporaryDirectory(prefix="paper2video_attention_") as td:
+            base_frame = animation_assets.base_frame if animation_assets else pair.frame
             input_args = [
-                "-loop", "1", "-framerate", str(fps), "-i", str(pair.frame),
+                "-loop", "1", "-framerate", str(fps), "-i", str(base_frame),
                 "-i", str(pair.audio),
             ]
             next_input = 2
+            animation_inputs: list[tuple[int, AnimationLayer]] = []
+            if animation_assets:
+                for layer in animation_assets.layers:
+                    input_args.extend(
+                        ["-loop", "1", "-framerate", "1", "-i", str(layer.path)]
+                    )
+                    animation_inputs.append((next_input, layer))
+                    next_input += 1
             spotlight_inputs: list[tuple[int, VisualCue]] = []
             for index, cue in enumerate(spotlight_cues):
                 if cue.box is None:
                     continue
                 thickness = max(3, cue.border or min(width, height) // 180)
+                spot_box = (_ink_tighten_box(pair.frame, cue.box, width=width, height=height)
+                            if (INK_TIGHTEN and not cue.no_ink_tighten) else cue.box)
                 mask_path = Path(td) / f"spotlight_{index:02d}.png"
                 _write_spotlight_mask_png(
                     mask_path,
-                    box=cue.box,
+                    box=spot_box,
                     width=width,
                     height=height,
                     thickness=thickness,
                 )
-                input_args.extend(["-loop", "1", "-framerate", str(fps), "-i", str(mask_path)])
+                input_args.extend(["-loop", "1", "-framerate", "1", "-i", str(mask_path)])
                 spotlight_inputs.append((next_input, cue))
                 next_input += 1
 
@@ -1616,7 +2413,7 @@ def encode_segment(pair: SlidePair, out_seg: Path, *,
                     tip_y=tip_y,
                 )
                 if intervals:
-                    input_args.extend(["-loop", "1", "-framerate", str(fps), "-i", str(cursor_path)])
+                    input_args.extend(["-loop", "1", "-framerate", "1", "-i", str(cursor_path)])
                     cursor_input = next_input
                     next_input += 1
 
@@ -1639,16 +2436,25 @@ def encode_segment(pair: SlidePair, out_seg: Path, *,
                     tip_y=laser_tip_y,
                 )
                 if laser_intervals:
-                    input_args.extend(["-loop", "1", "-framerate", str(fps), "-i", str(laser_path)])
+                    input_args.extend(["-loop", "1", "-framerate", "1", "-i", str(laser_path)])
                     laser_input = next_input
                     next_input += 1
 
             filter_parts = [f"[0:v]{','.join(vf_filters)}[base0]"]
             current_label = "base0"
+            for index, (input_index, layer) in enumerate(animation_inputs):
+                layer_filters, current_label = _animation_overlay_filters(
+                    layer,
+                    input_index=input_index,
+                    current_label=current_label,
+                    sequence=index,
+                    fps=fps,
+                )
+                filter_parts.extend(layer_filters)
             for index, (input_index, cue) in enumerate(spotlight_inputs):
                 mask_label = f"spotmask{index}"
                 next_label = f"spotbase{index}"
-                filter_parts.append(f"[{input_index}:v]format=rgba[{mask_label}]")
+                filter_parts.append(f"[{input_index}:v]fps={fps},format=rgba[{mask_label}]")
                 filter_parts.append(
                     f"[{current_label}][{mask_label}]overlay=x=0:y=0:"
                     f"enable='between(t,{cue.start:.3f},{cue.end:.3f})'[{next_label}]"
@@ -1658,7 +2464,7 @@ def encode_segment(pair: SlidePair, out_seg: Path, *,
             if cursor_input is not None:
                 x_expr = _piecewise_overlay_expr(intervals, axis=0)
                 y_expr = _piecewise_overlay_expr(intervals, axis=1)
-                filter_parts.append(f"[{cursor_input}:v]format=rgba[cursor]")
+                filter_parts.append(f"[{cursor_input}:v]fps={fps},format=rgba[cursor]")
                 filter_parts.append(
                     f"[{current_label}][cursor]overlay=x='{x_expr}':y='{y_expr}':"
                     f"enable='between(t,{first_start:.3f},{last_end:.3f})'[withcursor]"
@@ -1668,7 +2474,7 @@ def encode_segment(pair: SlidePair, out_seg: Path, *,
             if laser_input is not None:
                 x_expr = _piecewise_overlay_expr(laser_intervals, axis=0)
                 y_expr = _piecewise_overlay_expr(laser_intervals, axis=1)
-                filter_parts.append(f"[{laser_input}:v]format=rgba[laser]")
+                filter_parts.append(f"[{laser_input}:v]fps={fps},format=rgba[laser]")
                 filter_parts.append(
                     f"[{current_label}][laser]overlay=x='{x_expr}':y='{y_expr}':"
                     f"enable='between(t,{laser_first_start:.3f},{laser_last_end:.3f})'[withlaser]"
@@ -1908,6 +2714,17 @@ def main() -> int:
                     help="JSON file describing per-slide highlight/cursor cues in normalized coordinates.")
     ap.add_argument("--allow-missing-visual-cues", action="store_true",
                     help="Degraded/debug only: allow highlight/cursor/both without --visual-cues.")
+    ap.add_argument("--animation-manifest", default=None,
+                    help="Author Notes animation manifest written by build_animation_manifest.py. "
+                         "Burns the mapped effects into MP4 pixels from SVG or editable PPTX states.")
+    ap.add_argument("--animation-source", choices=("auto", "svg", "pptx"), default="auto",
+                    help="Animation pixel source. auto follows animation_manifest.source_kind; "
+                         "editable PPTX manifests force the current PPTX to be the frame source.")
+    ap.add_argument("--animation-report-out", default=None,
+                    help="Persistent animation render report JSON. Defaults to "
+                         "<out_stem>_animation_report.json when animations are rendered.")
+    ap.add_argument("--require-animations", action="store_true",
+                    help="Fail unless a non-empty, Edge-aligned animation manifest is rendered.")
     ap.add_argument("--frames-only", action="store_true",
                     help="Stop after PNG export — useful for previewing slide rendering")
     ap.add_argument("--audio-only-check", action="store_true",
@@ -1924,11 +2741,43 @@ def main() -> int:
         sys.exit("[render_video] --target-minutes must be positive")
     if args.duration_tolerance_seconds < 0:
         sys.exit("[render_video] --duration-tolerance-seconds must be non-negative")
+    if args.require_animations and args.frames_only:
+        sys.exit("[render_video] --require-animations cannot be combined with --frames-only")
 
     audio_dir = Path(args.audio_dir).resolve() if args.audio_dir else project_path / "audio"
     script_json = Path(args.script_json).resolve() if args.script_json else None
     out_path = Path(args.out).resolve() if args.out else project_path / "exports" / f"{pptx_path.stem}.mp4"
     visual_cues_path = Path(args.visual_cues).resolve() if args.visual_cues else None
+    animation_manifest_path = (
+        Path(args.animation_manifest).resolve() if args.animation_manifest else None
+    )
+    animation_metadata = animation_manifest_metadata(animation_manifest_path)
+    animation_source = (
+        animation_metadata["source_kind"]
+        if args.animation_source == "auto"
+        else args.animation_source
+    )
+    animation_report_path = (
+        Path(args.animation_report_out).resolve() if args.animation_report_out else None
+    )
+    if args.require_animations and animation_manifest_path is None:
+        sys.exit("[render_video] --require-animations requires --animation-manifest")
+    if animation_report_path is not None and animation_manifest_path is None:
+        sys.exit("[render_video] --animation-report-out requires --animation-manifest")
+    if args.animation_source != "auto" and animation_manifest_path is None:
+        sys.exit("[render_video] --animation-source requires --animation-manifest")
+    if animation_manifest_path is not None and args.animation_source != "auto":
+        declared_source = animation_metadata["source_kind"]
+        if declared_source != animation_source:
+            sys.exit(
+                f"[render_video] --animation-source {animation_source!r} conflicts with "
+                f"manifest source_kind {declared_source!r}"
+            )
+    if animation_source == "pptx" and args.frame_source == "svg":
+        sys.exit(
+            "[render_video] editable PPTX animations cannot use --frame-source svg; "
+            "the current PPTX must supply both static and animated pixels"
+        )
     explicit_svg_dir = Path(args.svg_dir).resolve() if args.svg_dir else None
     frames_out = Path(args.frames_out).resolve() if args.frames_out else None
     browser_executable = Path(args.browser_executable).expanduser() if args.browser_executable else None
@@ -1947,10 +2796,14 @@ def main() -> int:
     work_root.mkdir(parents=True, exist_ok=True)
 
     png_dir = work_root / "frames"
-    svg_dir = discover_svg_dir(project_path, explicit_svg_dir, args.frame_source)
-    use_svg = args.frame_source in {"auto", "svg"} and svg_dir is not None
+    effective_frame_source = "pptx" if animation_source == "pptx" else args.frame_source
+    svg_dir = discover_svg_dir(project_path, explicit_svg_dir, effective_frame_source)
+    use_svg = effective_frame_source in {"auto", "svg"} and svg_dir is not None
     frame_source_used = "svg" if use_svg else "pptx"
 
+    svgs: list[Path] = []
+    libreoffice: str | None = None
+    pdftoppm: str | None = None
     if use_svg:
         svgs = collect_svgs(svg_dir)
         if svg_dir.name == "svg_output":
@@ -1989,6 +2842,28 @@ def main() -> int:
     pairs = pair_slides(frames, audio_files, ffprobe, ffmpeg)
     total_audio = sum(p.duration for p in pairs)
     print(f"[render_video]   {len(pairs)} slide(s), audio total {total_audio:.1f}s")
+    animation_map = load_animation_manifest(
+        animation_manifest_path,
+        pairs,
+        pad_tail=args.pad_tail,
+    )
+    if animation_map and animation_source == "svg" and not use_svg:
+        sys.exit(
+            "[render_video] Author Notes animations require SVG frame rendering; "
+            "pass --frame-source svg and --svg-dir."
+        )
+    if animation_map and animation_source == "pptx":
+        expected_sha = animation_metadata.get("source_sha256") or ""
+        actual_sha = file_sha256(pptx_path)
+        if not expected_sha:
+            sys.exit(
+                "[render_video] editable PPTX animation manifest is missing source_sha256"
+            )
+        if expected_sha != actual_sha:
+            sys.exit(
+                "[render_video] editable PPTX changed after the animation manifest was built; "
+                "rerun build_animation_manifest.py --pptx before rendering"
+            )
     if args.audio_only_check:
         print("[render_video] --audio-only-check passed.")
         return 0
@@ -2002,16 +2877,54 @@ def main() -> int:
         allow_missing_visual_cues=args.allow_missing_visual_cues,
     )
 
+    animation_assets: dict[int, AnimationSlideAssets] = {}
+    if animation_map:
+        print(
+            f"[render_video] Stage B2: rasterize {sum(len(s.effects) for s in animation_map.values())} "
+            "Author Notes animation layer(s)"
+        )
+        if animation_source == "pptx":
+            if libreoffice is None:
+                libreoffice = find_libreoffice()
+            if pdftoppm is None:
+                pdftoppm = find_pdftoppm()
+            animation_assets = render_pptx_animation_assets(
+                pptx_path,
+                animation_map,
+                work_root / "animation_layers",
+                width=width,
+                height=height,
+                libreoffice=libreoffice,
+                pdftoppm=pdftoppm,
+            )
+        else:
+            animation_assets = render_svg_animation_assets(
+                svgs,
+                animation_map,
+                work_root / "animation_layers",
+                project_path=project_path,
+                width=width,
+                height=height,
+                browser_executable=str(browser_executable) if browser_executable else None,
+            )
+
     print(f"[render_video] Stage C: encode {len(pairs)} segment(s) and concat")
     seg_dir = work_root / "segments"
     seg_dir.mkdir(exist_ok=True)
     segments: list[Path] = []
     for pair in pairs:
         seg_path = seg_dir / f"seg_{pair.index:04d}.mp4"
+        animation_count = len(animation_assets.get(pair.index).layers) if pair.index in animation_assets else 0
+        print(
+            f"[render_video]   segment {pair.index}/{len(pairs)}: {pair.audio.stem} "
+            f"({animation_count} animation effect(s))",
+            flush=True,
+        )
         encode_segment(pair, seg_path,
                        width=width, height=height, fps=args.fps,
                        pad_tail=args.pad_tail, ffmpeg=ffmpeg,
-                       visual_cues=visual_cue_map.get(pair.index))
+                       visual_cues=visual_cue_map.get(pair.index),
+                       animation_assets=animation_assets.get(pair.index))
         segments.append(seg_path)
 
     concat_segments(segments, out_path, ffmpeg,
@@ -2027,6 +2940,36 @@ def main() -> int:
     print(f"  duration: {duration:.1f}s  (expected ≈ {expected:.1f}s, drift {drift:+.1f}s)")
     print(f"  slides:   {len(pairs)}  resolution: {width}x{height}@{args.fps}fps")
     print(f"  frames:   {frame_source_used} → {png_dir}")
+
+    if animation_map:
+        if animation_report_path is None:
+            animation_report_path = out_path.with_name(
+                f"{out_path.stem}_animation_report.json"
+            )
+        animation_report = write_animation_render_report(
+            animation_report_path,
+            manifest_path=animation_manifest_path,
+            out_path=out_path,
+            pairs=pairs,
+            animation_map=animation_map,
+            animation_assets=animation_assets,
+            source_kind=animation_source,
+            source_path=pptx_path if animation_source == "pptx" else svg_dir,
+            source_sha256=(
+                file_sha256(pptx_path)
+                if animation_source == "pptx"
+                else animation_metadata.get("source_sha256", "")
+            ),
+            start_pad=args.start_pad,
+            pad_tail=args.pad_tail,
+            fps=args.fps,
+            width=width,
+            height=height,
+        )
+        print(
+            f"  animations: {animation_report['effect_count']} effect(s) → "
+            f"{animation_report_path}"
+        )
 
     report_path: Path | None = None
     if args.duration_report_out:

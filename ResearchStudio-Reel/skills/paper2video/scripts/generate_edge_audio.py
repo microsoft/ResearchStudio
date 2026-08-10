@@ -11,7 +11,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 try:
@@ -101,6 +104,74 @@ async def synthesize_section_with_timings(
     return words
 
 
+def probe_audio_duration(path: Path) -> float | None:
+    """Return the decoded clip duration when ffprobe is available."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe is None:
+        return None
+    probe = subprocess.run(
+        [
+            ffprobe,
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    try:
+        return float(probe.stdout.strip()) if probe.returncode == 0 else None
+    except ValueError:
+        return None
+
+
+def ensure_minimum_audio_duration(path: Path, minimum_seconds: float) -> bool:
+    """Pad a spoken clip with silence when native animation timing runs longer."""
+    if minimum_seconds <= 0:
+        return False
+    ffmpeg = shutil.which("ffmpeg")
+    current = probe_audio_duration(path)
+    if ffmpeg is None or current is None:
+        return False
+    if current + 0.02 >= minimum_seconds:
+        return False
+    with tempfile.NamedTemporaryFile(
+        prefix=path.stem + ".padded.",
+        suffix=".mp3",
+        dir=path.parent,
+        delete=False,
+    ) as temporary:
+        padded = Path(temporary.name)
+    try:
+        subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                str(path),
+                "-af",
+                "apad",
+                "-t",
+                str(minimum_seconds),
+                "-c:a",
+                "libmp3lame",
+                str(padded),
+            ],
+            check=True,
+        )
+        padded.replace(path)
+    finally:
+        padded.unlink(missing_ok=True)
+    return True
+
+
 async def synthesize_all(
     sections: list[dict],
     *,
@@ -117,32 +188,73 @@ async def synthesize_all(
         text = str(sec.get("text") or "").strip()
         if not sid:
             raise ValueError("every script section must have an id")
-        if not text:
-            raise ValueError(f"section {sid} has empty text")
         out_path = outdir / f"{sid}.mp3"
-        print(f"[edge-tts] {sid} ({len(text)} chars, voice={voice}, rate={rate}) -> {out_path}")
         words: list[dict] = []
-        if collect_timings:
-            words = await synthesize_section_with_timings(
-                text,
-                voice=voice,
-                rate=rate,
-                pitch=pitch,
-                out_path=out_path,
+        provider = "edge-tts"
+        if text:
+            print(
+                f"[edge-tts] {sid} ({len(text)} chars, voice={voice}, rate={rate}) "
+                f"-> {out_path}"
             )
+            if collect_timings:
+                words = await synthesize_section_with_timings(
+                    text,
+                    voice=voice,
+                    rate=rate,
+                    pitch=pitch,
+                    out_path=out_path,
+                )
+            else:
+                await synthesize_section(
+                    text,
+                    voice=voice,
+                    rate=rate,
+                    pitch=pitch,
+                    out_path=out_path,
+                )
         else:
-            await synthesize_section(text, voice=voice, rate=rate, pitch=pitch, out_path=out_path)
+            duration = max(1.0, float(sec.get("duration_seconds") or 1.0))
+            ffmpeg = shutil.which("ffmpeg")
+            if ffmpeg is None:
+                raise ValueError(
+                    f"section {sid} is silent and ffmpeg is required to create its audio track"
+                )
+            print(f"[edge-tts] {sid} (silent, {duration:.3f}s) -> {out_path}")
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "anullsrc=r=44100:cl=stereo",
+                    "-t",
+                    str(duration),
+                    "-c:a",
+                    "libmp3lame",
+                    str(out_path),
+                ],
+                check=True,
+            )
+            provider = "generated-silence"
         manifest.append({
             "id": sid,
             "heading": sec.get("heading", sid),
             "file": out_path.name,
             "bytes": out_path.stat().st_size,
-            "provider": "edge-tts",
+            "provider": provider,
             "voice": voice,
             "rate": rate,
             "pitch": pitch,
             "word_boundaries": len(words),
         })
+        ensure_minimum_audio_duration(
+            out_path,
+            max(0.0, float(sec.get("duration_seconds") or 0.0)),
+        )
+        manifest[-1]["bytes"] = out_path.stat().st_size
         if collect_timings:
             timing_sections.append({
                 "id": sid,

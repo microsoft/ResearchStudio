@@ -591,6 +591,93 @@ def geometry_text_overlap(chunk: str, semantic_region: Region, geometry_region: 
     return len((semantic_tokens | chunk_tokens) & geometry_tokens)
 
 
+# --- Wrapped-line grouping -------------------------------------------------
+# One logical text (a title or tagline) is frequently authored/exported as
+# SEVERAL per-line boxes under a single group. A cue that matches one line
+# should spotlight the whole wrapped run, so the box handed to the renderer is
+# the intended unit — the renderer's ink-tighten then hugs all the lines. This
+# unions ONLY genuine single-line continuations (same left edge, same line
+# height, nearly touching, each clearly one line = wide:short), so multi-line
+# PARAGRAPH blocks inside a card — which must keep their own focus for the
+# script's progression — are never merged.
+GROUP_WRAPPED_LINES = os.environ.get(
+    "VIDEO_CUE_GROUP_WRAPPED_LINES", "1").strip().lower() not in ("0", "off", "false", "no")
+WRAP_X_EPS = float(os.environ.get("VIDEO_CUE_WRAP_X_EPS", "0.02"))        # same left edge
+WRAP_MIN_ASPECT = float(os.environ.get("VIDEO_CUE_WRAP_MIN_ASPECT", "2.5"))  # w/h => one line
+WRAP_GAP_MAX_FRAC = float(os.environ.get("VIDEO_CUE_WRAP_GAP_FRAC", "0.15"))  # gap <= frac*line-h
+WRAP_H_LO, WRAP_H_HI = 0.6, 1.6                                           # line-height ratio band
+
+
+def _region_is_single_line(region: Region) -> bool:
+    _, _, w, h = region.box
+    return h > 0 and (w / h) >= WRAP_MIN_ASPECT
+
+
+def _wrapped_adjacent(a: Region, b: Region) -> bool:
+    """True when b is a wrapped continuation directly below a: same column, same
+    line height, nearly touching, both clearly single lines."""
+    ax, ay, aw, ah = a.box
+    bx, by, bw, bh = b.box
+    if abs(ax - bx) > WRAP_X_EPS:
+        return False
+    if ah <= 0 or bh <= 0 or not (WRAP_H_LO <= bh / ah <= WRAP_H_HI):
+        return False
+    if not (_region_is_single_line(a) and _region_is_single_line(b)):
+        return False
+    gap = by - (ay + ah)
+    minh = min(ah, bh)
+    return -0.5 * minh <= gap <= WRAP_GAP_MAX_FRAC * minh
+
+
+def _wrapped_run(target: Region, siblings: list[Region]) -> list[Region]:
+    order = sorted(siblings, key=lambda r: r.box[1])
+    try:
+        idx = order.index(target)
+    except ValueError:
+        return [target]
+    run = [target]
+    i = idx
+    while i + 1 < len(order) and _wrapped_adjacent(order[i], order[i + 1]):
+        run.append(order[i + 1])
+        i += 1
+    i = idx
+    while i - 1 >= 0 and _wrapped_adjacent(order[i - 1], order[i]):
+        run.insert(0, order[i - 1])
+        i -= 1
+    return run
+
+
+def union_wrapped_line_cues(cue_entries: list[dict], regions: list[Region]) -> None:
+    """In-place: expand each single-line-fragment cue to its full wrapped run so
+    the box is the whole title/tagline, not one line. Only pptx single-element
+    text cues are touched; clusters and multi-line blocks are left as-is."""
+    if not GROUP_WRAPPED_LINES:
+        return
+    by_id = {r.region_id: r for r in regions if r.source == "pptx"}
+    for cue in cue_entries:
+        if cue.get("geometry_source") != "pptx":
+            continue
+        target = by_id.get(cue.get("geometry_target"))
+        if target is None or target.shape_type != "TEXT_BOX" or not target.parent_id:
+            continue
+        if not _region_is_single_line(target):
+            continue
+        sibs = [r for r in by_id.values()
+                if r.parent_id == target.parent_id and r.shape_type == "TEXT_BOX"]
+        if len(sibs) < 2:
+            continue
+        run = _wrapped_run(target, sibs)
+        if len(run) < 2:
+            continue
+        ub = union_region_boxes(run)
+        if not ub:
+            continue
+        cue["box"] = round_list(ub)
+        cue["point"] = round_list(point_from_box(ub))
+        cue["geometry_box"] = round_list(ub)
+        cue["grouped_wrapped_lines"] = [r.region_id for r in run]
+
+
 def geometry_match_score(chunk: str, semantic_region: Region, geometry_region: Region) -> tuple[float, list[str], float, float, float]:
     semantic_box = semantic_region.box
     geometry_box = geometry_region.box
@@ -2094,6 +2181,10 @@ def generate(project: Path, *, svg_dir: Path, sections: list[Section],
                 "seconds": round(end - start, 3),
             })
 
+        # Union single-line title/tagline fragments so the cue box is the whole
+        # wrapped unit (renderer's ink-tighten then hugs all the lines). Multi-line
+        # paragraph blocks are never merged, preserving the script's progression.
+        union_wrapped_line_cues(cue_entries, regions)
         cues_payload["slides"].append({
             "index": sec.index,
             "id": sec.sid,

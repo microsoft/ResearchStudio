@@ -19,22 +19,27 @@ Pipeline position (optional post-step for paper2video):
         1. Read subtitle text from --script-json sections order when provided
            (falling back to notes/<id>.md if present), otherwise pair sorted
            notes/*.md with sorted audio/*.mp3 for legacy ppt-master projects.
-        2. Probe each audio/<id>.mp3 to get the spoken duration of that slide.
+        2. Probe each audio/<id>.mp3 for slide duration and load Edge word
+           boundaries when available.
         3. Split each slide's text into sentence-level cues (~80 chars each).
-        4. Distribute the slide's audio duration across its cues proportional
-           to character count, snapping cue boundaries inside [start, end].
+        4. Align every cue's normalized text to the exact Edge word sequence.
+           Each cue starts at its first spoken word and ends at its last spoken
+           word. Final renders require this alignment and never estimate cue
+           timing from character count.
         5. Walk slides in sorted order, advancing the clock by
            pad + audio_duration + tail to mirror render_video.py's layout.
-        6. Probe the bottom band of each slide for luminance; pick black text
-           on light slides and white text on dark ones. Add the opposite color
-           as an outline so the text is legible even when the picker is on
-           a borderline slide.
+        6. In the legacy overlay layout, probe the bottom band of each slide
+           for luminance; pick black text on light slides and white text on
+           dark ones. Add the opposite color as an outline so the text remains
+           legible on a borderline slide.
         7. Write the cues to <project>/exports/<stem>.srt and .vtt (always —
            useful as YouTube/archive sidecars and timeline/visualization input).
-        8. Default (hardsub): convert cues to an ASS file with a translucent
-           dark caption box and burn it into the video with ffmpeg's `ass=`
-           filter. The video is re-encoded (libx264 CRF 20 by default),
-           audio is stream-copied. Output:
+        8. Default (hardsub): append a short solid black band below the
+           unchanged slide frame, convert cues to an ASS file, and burn white
+           captions entirely inside that reserved band with ffmpeg's `ass=`
+           filter. No slide content is scaled, cropped, or covered. The video
+           is re-encoded (libx264 CRF 20 by default), audio is stream-copied.
+           Output:
                <project>/exports/<stem>_subbed.mp4
            The subtitles are now part of every frame — no player toggle, no
            font-rendering surprise on phones that don't honor mov_text.
@@ -63,7 +68,7 @@ Why ASS instead of just feeding SRT to the `subtitles=` filter:
     per dialogue line gives us deterministic per-cue color + outline. The
     SRT is still emitted as a sidecar.
 
-Per-slide text color (white vs. black) for readability:
+Per-slide text color (white vs. black) for the legacy overlay layout:
     Different slides may have different background colors (white hero pages,
     dark navy cover pages, photographic backgrounds, etc.). To keep the
     subtitle text legible on every slide we sample one frame per slide at
@@ -262,19 +267,23 @@ def _chunk_long_sentence(sentence: str, max_chars: int) -> list[str]:
     if buf:
         chunks.append(buf)
 
-    # Last-resort word chunking for any chunk still way over budget.
+    # Last-resort word chunking enforces the requested character cap. This is
+    # important for the default short subtitle bar, which is intentionally
+    # sized for one rendered line rather than two wrapped lines.
     final: list[str] = []
     for c in chunks:
-        if len(c) <= int(max_chars * 1.4):
+        if len(c) <= max_chars:
             final.append(c)
             continue
         words = c.split()
         cur: list[str] = []
         for w in words:
-            cur.append(w)
-            if len(" ".join(cur)) >= max_chars:
+            candidate = " ".join([*cur, w])
+            if cur and len(candidate) > max_chars:
                 final.append(" ".join(cur))
-                cur = []
+                cur = [w]
+            else:
+                cur.append(w)
         if cur:
             final.append(" ".join(cur))
     return final
@@ -301,6 +310,8 @@ def split_into_cues(text: str, max_chars: int) -> list[str]:
 # and flat-fill backgrounds and degrades well on older players.
 COLOR_WHITE = "#FFFFFF"
 COLOR_BLACK = "#000000"
+AUTO_FONT_SIZE_RATIO = 0.044
+MIN_AUTO_FONT_SIZE = 18
 
 # Fraction of the frame height where mov_text actually renders. Players vary
 # (QuickTime ~88%, VLC ~85%, mpv configurable) but the bottom 18%–8% band is
@@ -423,6 +434,125 @@ class Cue:
     end: float
     text: str
     color: str = COLOR_WHITE  # one of COLOR_WHITE / COLOR_BLACK
+
+
+class SubtitleTimingError(ValueError):
+    """Subtitle text cannot be mapped safely to actual spoken word boundaries."""
+
+
+def _normalized_alignment_text(value: object) -> str:
+    """Normalize script and Edge tokens without discarding non-Latin text."""
+    return "".join(char for char in str(value or "").casefold() if char.isalnum())
+
+
+def allocate_word_boundary_cues(
+    cues: list[str],
+    words: list[dict],
+    *,
+    slide_start: float,
+) -> tuple[list[tuple[float, float, str]], list[dict]]:
+    """Map cue chunks to exact Edge word-boundary intervals.
+
+    Punctuation belongs to the neighboring spoken words and therefore does not
+    receive an estimated duration of its own. Exact normalized-text equality
+    and cue boundaries between Edge words are required. This fail-closed rule
+    prevents visually plausible but semantically early subtitle changes.
+    """
+    if not cues:
+        return [], []
+    if not words:
+        raise SubtitleTimingError("narrated section has no Edge word boundaries")
+
+    usable: list[dict] = []
+    previous_start = -1.0
+    previous_end = -1.0
+    for source_index, word in enumerate(words):
+        token = _normalized_alignment_text(word.get("text"))
+        if not token:
+            continue
+        try:
+            start = float(word.get("start"))
+            end = float(word.get("end"))
+        except (TypeError, ValueError) as exc:
+            raise SubtitleTimingError(
+                f"word boundary {source_index} has non-numeric start/end"
+            ) from exc
+        if start < 0.0 or end < start:
+            raise SubtitleTimingError(
+                f"word boundary {source_index} has invalid interval {start}..{end}"
+            )
+        if start + 1e-6 < previous_start or end + 1e-6 < previous_end:
+            raise SubtitleTimingError("Edge word boundaries are not monotonic")
+        usable.append(
+            {
+                "source_index": source_index,
+                "text": str(word.get("text") or ""),
+                "normalized": token,
+                "start": start,
+                "end": end,
+            }
+        )
+        previous_start = start
+        previous_end = end
+
+    cue_tokens = [_normalized_alignment_text(cue) for cue in cues]
+    if any(not token for token in cue_tokens):
+        raise SubtitleTimingError("subtitle cue contains no spoken letters or digits")
+    script_token = "".join(cue_tokens)
+    edge_token = "".join(str(word["normalized"]) for word in usable)
+    if script_token != edge_token:
+        mismatch = next(
+            (
+                index
+                for index, (left, right) in enumerate(zip(script_token, edge_token))
+                if left != right
+            ),
+            min(len(script_token), len(edge_token)),
+        )
+        raise SubtitleTimingError(
+            "subtitle text does not exactly match Edge word boundaries "
+            f"(normalized mismatch at character {mismatch}, "
+            f"script={len(script_token)}, edge={len(edge_token)})"
+        )
+
+    timed: list[tuple[float, float, str]] = []
+    mappings: list[dict] = []
+    word_cursor = 0
+    normalized_cursor = 0
+    for cue_index, (cue, cue_token) in enumerate(zip(cues, cue_tokens), start=1):
+        target = normalized_cursor + len(cue_token)
+        first_word = word_cursor
+        while word_cursor < len(usable) and normalized_cursor < target:
+            normalized_cursor += len(str(usable[word_cursor]["normalized"]))
+            word_cursor += 1
+        if normalized_cursor != target or word_cursor <= first_word:
+            raise SubtitleTimingError(
+                f"cue {cue_index} ends inside an Edge word boundary"
+            )
+        last_word = word_cursor - 1
+        first = usable[first_word]
+        last = usable[last_word]
+        start = slide_start + float(first["start"])
+        end = slide_start + float(last["end"])
+        timed.append((start, end, cue))
+        mappings.append(
+            {
+                "cue_index": cue_index,
+                "text": cue,
+                "timing_source": "edge_word_boundary",
+                "word_start": int(first["source_index"]),
+                "word_end": int(last["source_index"]),
+                "first_word": first["text"],
+                "last_word": last["text"],
+                "relative_start": round(float(first["start"]), 3),
+                "relative_end": round(float(last["end"]), 3),
+                "absolute_start": round(start, 3),
+                "absolute_end": round(end, 3),
+            }
+        )
+    if word_cursor != len(usable):
+        raise SubtitleTimingError("unmapped Edge word boundaries remain after final cue")
+    return timed, mappings
 
 
 def allocate_slide_cues(cues: list[str], audio_duration: float,
@@ -624,6 +754,33 @@ def _ass_timestamp(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:05.2f}"
 
 
+def resolve_subtitle_font_size(font_size: int | None, video_h: int) -> int:
+    """Return an explicit size or a resolution-aware default.
+
+    ASS sizes are expressed in PlayRes units. A fixed value that looks balanced
+    at 1080p crowds the intentionally short subtitle band at 720p, so the
+    default tracks the unchanged source-slide height instead of the padded
+    output height.
+    """
+    if font_size is not None:
+        if font_size <= 0:
+            raise ValueError("subtitle font size must be positive")
+        return font_size
+    if video_h <= 0:
+        raise ValueError("video height must be positive")
+    return max(MIN_AUTO_FONT_SIZE, int(round(video_h * AUTO_FONT_SIZE_RATIO)))
+
+
+def subtitle_bar_vertical_margin(subtitle_bar_height: int) -> int:
+    """Return the libass bottom margin that visually centers one line."""
+    if subtitle_bar_height <= 0:
+        raise ValueError("subtitle bar height must be positive")
+    # Alignment=2 positions the ASS line box by its font baseline, not by the
+    # visible glyph bounds. Frame sampling at 720p and 1080p shows that roughly
+    # one third of the band gives balanced visible padding above and below.
+    return max(4, int(round(subtitle_bar_height * 0.34)))
+
+
 def write_ass(cues: list[Cue], path: Path, *,
               video_w: int, video_h: int,
               font_name: str, font_size: int,
@@ -634,10 +791,10 @@ def write_ass(cues: list[Cue], path: Path, *,
     """Emit an ASS subtitle file with per-event color overrides.
 
     The style block sets sensible defaults (font, size, outline/background).
-    By default paper2video uses a translucent dark box so burned-in subtitles
-    do not visually merge with PPT text. Bottom-bar mode reserves a solid black
-    band below a proportionally scaled slide; legacy no-box mode keeps the
-    per-event outline fallback for users who explicitly want plain captions.
+    By default paper2video appends a solid black band below the unchanged slide.
+    Legacy overlay mode can use a translucent dark box, while legacy no-box
+    mode keeps the per-event outline fallback for users who explicitly want
+    plain captions.
 
     PlayResX/PlayResY MUST match the output frame size or libass renders
     at the wrong scale (text either tiny or oversized). We pass video_w/h
@@ -652,7 +809,7 @@ def write_ass(cues: list[Cue], path: Path, *,
         style_primary = _hex_to_ass_color(COLOR_WHITE)
         style_outline_color = _hex_to_ass_color(COLOR_BLACK)
         style_back_color = _hex_to_ass_color(COLOR_BLACK)
-        margin_v = max(20, int(round(subtitle_bar_height * 0.34)))
+        margin_v = subtitle_bar_vertical_margin(subtitle_bar_height)
     elif subtitle_box:
         border_style = 3
         style_outline = max(0.0, float(box_padding))
@@ -740,24 +897,21 @@ def probe_video_dimensions(mp4: Path, ffmpeg: str) -> tuple[int, int]:
 def subtitle_bar_geometry(
     video_w: int, video_h: int, bar_height: int,
 ) -> tuple[int, int, int, int]:
-    """Return an even, aspect-preserving slide frame above a bottom bar.
+    """Return the unchanged slide frame plus an even appended bottom bar.
 
-    The final frame keeps the input resolution. The full slide is scaled
-    proportionally into the space above the bar, centered horizontally, and
-    never cropped or covered by captions.
+    The source slide keeps its exact width, height, and pixels at the top of
+    the output. The final canvas grows downward by ``actual_bar`` pixels, so
+    captions never create side bars, distort the slide, or cover its content.
     """
 
     if video_w < 2 or video_h < 2:
         raise ValueError("video dimensions must be positive")
     if bar_height <= 0 or bar_height >= video_h:
-        raise ValueError("subtitle bar height must fit inside the video frame")
-    content_h = max(2, video_h - bar_height)
-    content_h -= content_h % 2
-    content_w = max(2, int(video_w * (content_h / video_h)))
-    content_w -= content_w % 2
-    content_w = min(video_w - (video_w % 2), content_w)
-    x = max(0, (video_w - content_w) // 2)
-    return content_w, content_h, x, video_h - content_h
+        raise ValueError("subtitle bar height must be smaller than the video frame")
+    actual_bar = max(2, int(bar_height))
+    if (video_h + actual_bar) % 2:
+        actual_bar += 1
+    return video_w, video_h, 0, actual_bar
 
 
 def burn_subtitles(mp4: Path, ass: Path, out: Path, ffmpeg: str, *,
@@ -770,10 +924,9 @@ def burn_subtitles(mp4: Path, ass: Path, out: Path, ffmpeg: str, *,
     on Windows ffmpeg requires backslash-escaped drive letters (`C\\:`). We
     use the resolved absolute path so the filter doesn't depend on CWD.
 
-    Bottom-bar mode first scales the complete slide proportionally into the
-    upper region and pads the remaining frame black. Audio is stream-copied —
-    there's no reason to re-encode the AAC track a second time and it would
-    only add drift.
+    Bottom-bar mode leaves the slide pixels unchanged and extends the canvas
+    downward with a solid black band. Audio is stream-copied because there is
+    no reason to re-encode the AAC track a second time and add drift.
     """
     out.parent.mkdir(parents=True, exist_ok=True)
     ass_abs = str(ass.resolve())
@@ -783,13 +936,12 @@ def burn_subtitles(mp4: Path, ass: Path, out: Path, ffmpeg: str, *,
     # POSIX path passes through cleanly.
     filters: list[str] = []
     if subtitle_bar_height:
-        content_w, content_h, x, _ = subtitle_bar_geometry(
+        _, _, _, actual_bar = subtitle_bar_geometry(
             video_w, video_h, subtitle_bar_height,
         )
-        filters.extend([
-            f"scale={content_w}:{content_h}:flags=lanczos",
-            f"pad={video_w}:{video_h}:{x}:0:color=black",
-        ])
+        filters.append(
+            f"pad={video_w}:{video_h + actual_bar}:0:0:color=black"
+        )
     filters.append(f"ass={ass_abs}")
     cmd = [
         ffmpeg, "-y",
@@ -882,6 +1034,41 @@ def autodetect_script_json(project_path: Path, audio_dir: Path) -> Path | None:
     return None
 
 
+def load_word_timings(path: Path) -> dict[str, list[dict]]:
+    """Return the actual Edge word-boundary rows keyed by section id."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        sys.exit(f"[add_subtitles] invalid word timings {path}: {exc}")
+    timings: dict[str, list[dict]] = {}
+    for section in payload.get("sections") or []:
+        section_id = str(section.get("id") or "").strip()
+        if not section_id:
+            sys.exit(f"[add_subtitles] word timing section has no id in {path}")
+        if section_id in timings:
+            sys.exit(
+                f"[add_subtitles] duplicate word timing section {section_id!r} in {path}"
+            )
+        words = section.get("words") or []
+        if not isinstance(words, list):
+            sys.exit(
+                f"[add_subtitles] word timing section {section_id!r} has invalid words"
+            )
+        timings[section_id] = words
+    return timings
+
+
+def load_spoken_durations(path: Path) -> dict[str, float]:
+    """Backward-compatible helper returning each section's final spoken end."""
+    return {
+        section_id: max(
+            (float(word.get("end") or 0.0) for word in words),
+            default=0.0,
+        )
+        for section_id, words in load_word_timings(path).items()
+    }
+
+
 def collect_audio(audio_dir: Path) -> list[Path]:
     if not audio_dir.is_dir():
         sys.exit(f"[add_subtitles] audio dir not found: {audio_dir}")
@@ -938,11 +1125,10 @@ def collect_timed_inputs(
         if not mp3.is_file():
             missing_audio.append(mp3.name)
             continue
+        text = str(sec.get("text") or "")
         note_md = notes_dir / f"{sid}.md"
-        if note_md.is_file():
+        if not text.strip() and note_md.is_file():
             text = note_md.read_text(encoding="utf-8")
-        else:
-            text = str(sec.get("text") or "")
         rows.append((sid, text, mp3))
 
     if missing_audio:
@@ -971,7 +1157,7 @@ def autodetect_mp4(exports_dir: Path) -> Path:
 # Main
 # ---------------------------------------------------------------------------
 
-def main() -> int:
+def build_argument_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("project_path", help="ppt-master project root (contains notes/, audio/, exports/)")
     ap.add_argument("--mp4", default=None,
@@ -982,6 +1168,14 @@ def main() -> int:
                     help="Narration script JSON whose sections order defines subtitle/audio order. "
                          "Defaults to <audio-dir>/script.json, then <project>/assets/meta/narration.json, then <project>/narration.json, "
                          "then sorted notes/audio filenames.")
+    ap.add_argument("--word-timings", default=None,
+                    help="Edge word_timings.json used to align every cue to its actual words. "
+                         "Defaults to <audio-dir>/word_timings.json when present.")
+    ap.add_argument("--require-word-timings", action="store_true",
+                    help="Fail unless every narrated cue aligns exactly to Edge word boundaries. "
+                         "Required for final pptx2video renders.")
+    ap.add_argument("--timing-report-out", default=None,
+                    help="Write subtitle word-alignment evidence as JSON.")
     ap.add_argument("--out", default=None,
                     help="Output MP4 path (default: <project>/exports/<mp4_stem>_subbed.mp4)")
     ap.add_argument("--srt-out", default=None,
@@ -992,8 +1186,9 @@ def main() -> int:
                     help="Lead-in silence used by render_video.py (default: 0.5s — MUST match)")
     ap.add_argument("--pad-tail", type=float, default=0.3,
                     help="Per-slide trailing silence used by render_video.py (default: 0.3s — MUST match)")
-    ap.add_argument("--max-chars-per-cue", type=int, default=85,
-                    help="Soft cap on cue length before clause-level chunking (default: 85)")
+    ap.add_argument("--max-chars-per-cue", type=int, default=72,
+                    help="Hard cap on cue length before clause/word chunking (default: 72, "
+                         "keeps the default short subtitle bar to one line at 1080p)")
     ap.add_argument("--min-cue-duration", type=float, default=1.2,
                     help="Floor on per-cue screen time (default: 1.2s)")
     ap.add_argument("--min-cue-gap", type=float, default=0.08,
@@ -1015,23 +1210,28 @@ def main() -> int:
     ap.add_argument("--font", default="DejaVu Sans",
                     help="Font for burned-in subtitles (default: DejaVu Sans — present "
                          "on most Linux installs; pick a system font you actually have).")
-    ap.add_argument("--font-size", type=int, default=44,
-                    help="Burn-in font size in ASS units (default: 44 — readable at 1080p).")
+    ap.add_argument("--font-size", type=int, default=None,
+                    help="Burn-in font size in ASS units. By default it scales to 4.4%% "
+                         "of the source-slide height (about 32 at 720p and 48 at 1080p).")
     ap.add_argument("--outline-width", type=float, default=2.0,
                     help="Stroke width around burn-in text (default: 2.0).")
     ap.add_argument("--shadow-depth", type=float, default=0.5,
                     help="Drop-shadow depth for burn-in text (default: 0.5).")
     ap.add_argument("--subtitle-box", dest="subtitle_box", action="store_true", default=True,
-                    help="Burn subtitles with a translucent dark background box (default).")
+                    help="In --subtitle-overlay mode, use a translucent dark background box.")
     ap.add_argument("--no-subtitle-box", dest="subtitle_box", action="store_false",
-                    help="Legacy mode: burn plain text with outline/shadow and no background box.")
-    ap.add_argument("--subtitle-bar", action="store_true",
-                    help="Burn white captions into a solid black bottom band. The complete "
-                         "slide is scaled proportionally above the band so PPT content is "
-                         "never covered or cropped.")
-    ap.add_argument("--subtitle-bar-height", type=float, default=0.16,
-                    help="Bottom band height as a fraction of the output frame, 0.10..0.30 "
-                         "(default: 0.16). Used only with --subtitle-bar.")
+                    help="With --subtitle-overlay, burn plain text with outline/shadow and no box.")
+    layout = ap.add_mutually_exclusive_group()
+    layout.add_argument("--subtitle-bar", dest="subtitle_bar", action="store_true", default=True,
+                        help="Burn white captions into a solid black bottom band (default). "
+                             "The band is appended below the unchanged slide, so PPT content "
+                             "is never scaled, covered, or cropped and no side bars are added.")
+    layout.add_argument("--subtitle-overlay", dest="subtitle_bar", action="store_false",
+                        help="Legacy layout: burn captions over the bottom of the slide. Use "
+                             "--subtitle-box or --no-subtitle-box to control its background.")
+    ap.add_argument("--subtitle-bar-height", type=float, default=0.08,
+                    help="Appended bottom-band height as a fraction of the source slide "
+                         "height, 0.05..0.20 (default: 0.08). Used only in subtitle-bar mode.")
     ap.add_argument("--subtitle-box-opacity", type=float, default=0.62,
                     help="Opacity for the subtitle background box, 0..1 (default: 0.62).")
     ap.add_argument("--subtitle-box-padding", type=float, default=10.0,
@@ -1043,14 +1243,19 @@ def main() -> int:
                     help="x264 preset for the burn-in re-encode (default: medium).")
     ap.add_argument("--srt-only", action="store_true",
                     help="Write the .srt and exit (skip muxing/burning).")
+    return ap
+
+
+def main() -> int:
+    ap = build_argument_parser()
     args = ap.parse_args()
     delivery_modes = sum(bool(value) for value in (
-        args.soft, args.subtitle_bar, args.no_subtitles,
+        args.soft, args.no_subtitles,
     ))
     if delivery_modes > 1:
-        ap.error("--soft, --subtitle-bar, and --no-subtitles are mutually exclusive")
-    if not 0.10 <= args.subtitle_bar_height <= 0.30:
-        ap.error("--subtitle-bar-height must be between 0.10 and 0.30")
+        ap.error("--soft and --no-subtitles are mutually exclusive")
+    if not 0.05 <= args.subtitle_bar_height <= 0.20:
+        ap.error("--subtitle-bar-height must be between 0.05 and 0.20")
 
     project_path = Path(args.project_path).resolve()
     if not project_path.is_dir():
@@ -1064,6 +1269,20 @@ def main() -> int:
     audio_dir = Path(args.audio_dir).resolve() if args.audio_dir else project_path / "audio"
     script_json = Path(args.script_json).resolve() if args.script_json else None
     timed_inputs = collect_timed_inputs(project_path, audio_dir, script_json)
+    word_timings_path = (
+        Path(args.word_timings).resolve()
+        if args.word_timings
+        else audio_dir / "word_timings.json"
+    )
+    word_timings = (
+        load_word_timings(word_timings_path)
+        if word_timings_path.is_file()
+        else {}
+    )
+    if args.require_word_timings and not word_timings_path.is_file():
+        sys.exit(
+            f"[add_subtitles] required Edge word timings not found: {word_timings_path}"
+        )
 
     ffmpeg, ffprobe = find_ffmpeg_pair()
 
@@ -1076,6 +1295,7 @@ def main() -> int:
     t = max(args.start_pad, 0.0)
     next_index = 1
     pending: list[tuple[int, list[Cue], float]] = []  # (slide_idx, cues, midpoint)
+    timing_sections: list[dict] = []
 
     for slide_idx, (sid, text, mp3) in enumerate(timed_inputs, start=1):
         duration = probe_duration(mp3, ffprobe, ffmpeg)
@@ -1083,14 +1303,53 @@ def main() -> int:
 
         if not cues:
             # Skip silent / empty notes but still advance the clock.
+            timing_sections.append(
+                {
+                    "id": sid,
+                    "slide_index": slide_idx,
+                    "slide_start": round(t, 3),
+                    "audio_duration": round(duration, 3),
+                    "timing_source": "silent",
+                    "word_count": len(word_timings.get(sid) or []),
+                    "cue_count": 0,
+                    "cues": [],
+                }
+            )
             t += duration + args.pad_tail
             continue
 
-        timed = allocate_slide_cues(
-            cues, duration, slide_start=t,
-            min_cue_dur=args.min_cue_duration,
-            min_gap=args.min_cue_gap,
-        )
+        section_words = word_timings.get(sid)
+        if section_words is not None:
+            try:
+                timed, cue_mappings = allocate_word_boundary_cues(
+                    cues,
+                    section_words,
+                    slide_start=t,
+                )
+            except SubtitleTimingError as exc:
+                sys.exit(f"[add_subtitles] section {sid!r} word alignment failed: {exc}")
+            timing_source = "edge_word_boundary"
+        else:
+            if args.require_word_timings:
+                sys.exit(
+                    f"[add_subtitles] narrated section {sid!r} has no Edge word boundaries"
+                )
+            timed = allocate_slide_cues(
+                cues, duration, slide_start=t,
+                min_cue_dur=args.min_cue_duration,
+                min_gap=args.min_cue_gap,
+            )
+            cue_mappings = [
+                {
+                    "cue_index": index,
+                    "text": cue_text,
+                    "timing_source": "duration_proportional",
+                    "absolute_start": round(start, 3),
+                    "absolute_end": round(end, 3),
+                }
+                for index, (start, end, cue_text) in enumerate(timed, start=1)
+            ]
+            timing_source = "duration_proportional"
         slide_cues: list[Cue] = []
         for start, end, txt in timed:
             slide_cues.append(Cue(index=next_index, start=start, end=end, text=txt))
@@ -1098,12 +1357,70 @@ def main() -> int:
 
         midpoint = t + duration / 2.0
         pending.append((slide_idx, slide_cues, midpoint))
+        timing_sections.append(
+            {
+                "id": sid,
+                "slide_index": slide_idx,
+                "slide_start": round(t, 3),
+                "audio_duration": round(duration, 3),
+                "timing_source": timing_source,
+                "word_count": len(section_words or []),
+                "cue_count": len(cue_mappings),
+                "cues": cue_mappings,
+            }
+        )
 
         # Advance past this slide's audio + the trailing silence pad.
         t += duration + args.pad_tail
 
     if not pending:
-        sys.exit("[add_subtitles] no cues generated — every note file was empty.")
+        srt_path = (
+            Path(args.srt_out).resolve()
+            if args.srt_out
+            else exports_dir / f"{mp4_path.stem}.srt"
+        )
+        vtt_path = (
+            Path(args.vtt_out).resolve()
+            if args.vtt_out
+            else exports_dir / f"{mp4_path.stem}.vtt"
+        )
+        srt_path.parent.mkdir(parents=True, exist_ok=True)
+        vtt_path.parent.mkdir(parents=True, exist_ok=True)
+        write_srt([], srt_path)
+        write_vtt([], vtt_path)
+        if args.timing_report_out:
+            timing_report_path = Path(args.timing_report_out).resolve()
+            timing_report_path.parent.mkdir(parents=True, exist_ok=True)
+            timing_report_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "paper2video_subtitle_word_alignment.v1",
+                        "word_timings": (
+                            str(word_timings_path) if word_timings_path.is_file() else None
+                        ),
+                        "required": bool(args.require_word_timings),
+                        "status": "silent",
+                        "section_count": len(timing_sections),
+                        "cue_count": 0,
+                        "sections": timing_sections,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        print("[add_subtitles] no narration cues; wrote empty SRT/VTT sidecars")
+        if args.srt_only:
+            return 0
+        out_path = (
+            Path(args.out).resolve()
+            if args.out
+            else exports_dir / f"{mp4_path.stem}_subbed.mp4"
+        )
+        copy_without_subtitles(mp4_path, out_path, ffmpeg)
+        print(f"[add_subtitles] copied silent video/audio to {out_path}")
+        return 0
 
     # Per-slide color decision. `--color white|black` forces a single color
     # across the whole deck and skips the probe pass entirely.
@@ -1120,6 +1437,32 @@ def main() -> int:
         for c in slide_cues:
             c.color = color
             all_cues.append(c)
+
+    timing_report = {
+        "schema_version": "paper2video_subtitle_word_alignment.v1",
+        "word_timings": str(word_timings_path) if word_timings_path.is_file() else None,
+        "required": bool(args.require_word_timings),
+        "status": (
+            "word_aligned"
+            if any(int(section["cue_count"]) > 0 for section in timing_sections)
+            and all(
+                section["timing_source"] in {"edge_word_boundary", "silent"}
+                for section in timing_sections
+            )
+            else "estimated"
+        ),
+        "section_count": len(timing_sections),
+        "cue_count": sum(int(section["cue_count"]) for section in timing_sections),
+        "sections": timing_sections,
+    }
+    if args.timing_report_out:
+        timing_report_path = Path(args.timing_report_out).resolve()
+        timing_report_path.parent.mkdir(parents=True, exist_ok=True)
+        timing_report_path.write_text(
+            json.dumps(timing_report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"[add_subtitles] wrote timing evidence to {timing_report_path}")
 
     if not all_cues:
         sys.exit("[add_subtitles] no cues generated — every note file was empty.")
@@ -1159,16 +1502,23 @@ def main() -> int:
     # user means by "part of the video file" — there is no toggle, every
     # player on every device shows the captions because they are pixels now.
     video_w, video_h = probe_video_dimensions(mp4_path, ffmpeg)
+    font_size = resolve_subtitle_font_size(args.font_size, video_h)
     subtitle_bar_height = (
         max(2, int(round(video_h * args.subtitle_bar_height)))
         if args.subtitle_bar
         else 0
     )
+    output_h = video_h
+    if subtitle_bar_height:
+        _, _, _, subtitle_bar_height = subtitle_bar_geometry(
+            video_w, video_h, subtitle_bar_height,
+        )
+        output_h += subtitle_bar_height
     ass_path = exports_dir / f"{mp4_path.stem}.ass"
     write_ass(
         all_cues, ass_path,
-        video_w=video_w, video_h=video_h,
-        font_name=args.font, font_size=args.font_size,
+        video_w=video_w, video_h=output_h,
+        font_name=args.font, font_size=font_size,
         outline_width=args.outline_width, shadow_depth=args.shadow_depth,
         subtitle_box=args.subtitle_box and not args.subtitle_bar,
         subtitle_bar=args.subtitle_bar,
@@ -1176,7 +1526,7 @@ def main() -> int:
         box_opacity=args.subtitle_box_opacity,
         box_padding=args.subtitle_box_padding,
     )
-    print(f"[add_subtitles] wrote ASS at {video_w}×{video_h} → {ass_path}")
+    print(f"[add_subtitles] wrote ASS at {video_w}×{output_h} with font size {font_size} → {ass_path}")
     print(f"[add_subtitles] burning subtitles into pixels (libx264 crf={args.crf} preset={args.preset})…")
     burn_subtitles(
         mp4_path, ass_path, out_path, ffmpeg,

@@ -49,6 +49,20 @@ NS = {
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
 }
 SCHEMA_VERSION = "paper2video_qa.v1"
+ANIMATION_MANIFEST_SCHEMA_VERSION = "paper2video_animation_manifest.v1"
+ANIMATION_RENDER_REPORT_SCHEMA_VERSION = "paper2video_animation_render.v1"
+ANIMATION_MIN_MEAN_ABS_DELTA = 0.12
+ANIMATION_MIN_CHANGED_FRACTION = 0.002
+ANIMATION_RENDER_STRATEGIES = {
+    "Appear": "appear",
+    "Fade In": "alpha_fade",
+    "Dissolve In": "alpha_fade",
+    "Fly In": "fly_from_left",
+    "Wipe In": "wipe_from_left",
+    "Zoom In": "zoom_in",
+    "Circle In": "circle_reveal",
+    "Diamond In": "diamond_reveal",
+}
 NON_BLOCKING_WARNING_CODES = frozenset({"audio_extra_files"})
 
 
@@ -917,8 +931,8 @@ def check_visual_cues(
             continue
         if not cues:
             empty_slides += 1
-            severity = "error" if required else "warning"
-            add(findings, severity, "visual_cues_empty_slide", "A slide has no visual attention cues.", location=str(path), section_id=sid)
+            if required or strict_attention:
+                add(findings, "error", "visual_cues_empty_slide", "A slide has no visual attention cues.", location=str(path), section_id=sid)
         elif sid:
             slides_with_cues.add(sid)
         max_duration = duration_by_id.get(sid, 0) + pad_tail
@@ -1385,8 +1399,8 @@ def check_timeline(
                 add(findings, "error", "timeline_visual_target_missing", "Timeline visual cue is missing a semantic target id.", location=str(path), chunk_id=cid)
         else:
             missing_visuals += 1
-            severity = "error" if strict_attention else "warning"
-            add(findings, severity, "timeline_chunk_no_visual_cue", "Timeline chunk has no accepted visual cue.", location=str(path), chunk_id=cid)
+            if strict_attention:
+                add(findings, "error", "timeline_chunk_no_visual_cue", "Timeline chunk has no accepted visual cue.", location=str(path), chunk_id=cid)
 
     slide_indices: set[int] = set()
     for slide in slides:
@@ -1602,6 +1616,640 @@ def check_subtitle_delivery(
     return report
 
 
+def check_subtitle_word_alignment(
+    path: Path | None,
+    *,
+    required: bool,
+    pad_tail: float,
+    findings: list[Finding],
+) -> dict[str, Any]:
+    """Validate fail-closed subtitle evidence from actual Edge word boundaries."""
+    if path is None:
+        if required:
+            add(
+                findings,
+                "error",
+                "subtitle_word_alignment_required",
+                "Strict subtitle delivery requires a word-alignment timing report.",
+            )
+        return {"checked": False}
+    if not path.is_file():
+        add(
+            findings,
+            "error",
+            "subtitle_word_alignment_missing",
+            "Subtitle word-alignment timing report is missing.",
+            location=str(path),
+        )
+        return {"checked": False}
+    payload = read_json(path)
+    if not isinstance(payload, dict):
+        add(
+            findings,
+            "error",
+            "subtitle_word_alignment_schema",
+            "Subtitle timing report must be a JSON object.",
+            location=str(path),
+        )
+        return {"checked": False}
+    if payload.get("schema_version") != "paper2video_subtitle_word_alignment.v1":
+        add(
+            findings,
+            "error",
+            "subtitle_word_alignment_schema_version",
+            "Subtitle timing report has an unsupported schema version.",
+            location=str(path),
+        )
+    status = str(payload.get("status") or "")
+    if required and status != "word_aligned":
+        add(
+            findings,
+            "error",
+            "subtitle_timing_estimated",
+            "Final subtitles are not fully aligned to actual Edge word boundaries.",
+            location=str(path),
+            status=status,
+        )
+    sections = payload.get("sections") or []
+    if not isinstance(sections, list):
+        add(
+            findings,
+            "error",
+            "subtitle_word_alignment_sections_schema",
+            "Subtitle timing report sections must be an array.",
+            location=str(path),
+        )
+        sections = []
+    cue_count = 0
+    previous_slide_end: float | None = None
+    for section_index, section in enumerate(sections, start=1):
+        if not isinstance(section, dict):
+            add(
+                findings,
+                "error",
+                "subtitle_word_alignment_section_schema",
+                "Subtitle timing section must be an object.",
+                location=str(path),
+                section_index=section_index,
+            )
+            continue
+        source = str(section.get("timing_source") or "")
+        cues = section.get("cues") or []
+        try:
+            slide_start = float(section.get("slide_start"))
+            audio_duration = float(section.get("audio_duration"))
+        except (TypeError, ValueError):
+            add(
+                findings,
+                "error",
+                "subtitle_word_alignment_section_time",
+                "Subtitle timing section has invalid slide/audio times.",
+                location=str(path),
+                section_index=section_index,
+            )
+            continue
+        if previous_slide_end is not None and abs(slide_start - previous_slide_end) > 0.003:
+            add(
+                findings,
+                "error",
+                "subtitle_slide_offset_mismatch",
+                "Subtitle page offset does not match prior audio duration plus pad tail.",
+                location=str(path),
+                section_index=section_index,
+                expected=round(previous_slide_end, 3),
+                actual=round(slide_start, 3),
+            )
+        previous_slide_end = slide_start + audio_duration + max(0.0, pad_tail)
+        if source == "silent":
+            if cues:
+                add(
+                    findings,
+                    "error",
+                    "subtitle_silent_section_has_cues",
+                    "A silent subtitle section unexpectedly contains cues.",
+                    location=str(path),
+                    section_index=section_index,
+                )
+            continue
+        if source != "edge_word_boundary":
+            add(
+                findings,
+                "error" if required else "warning",
+                "subtitle_section_estimated_timing",
+                "Subtitle section uses estimated timing instead of Edge word boundaries.",
+                location=str(path),
+                section_index=section_index,
+                timing_source=source,
+            )
+        if not isinstance(cues, list) or not cues:
+            add(
+                findings,
+                "error",
+                "subtitle_word_alignment_cues_missing",
+                "Narrated subtitle section has no alignment cues.",
+                location=str(path),
+                section_index=section_index,
+            )
+            continue
+        previous_cue_end = -1.0
+        for cue_index, cue in enumerate(cues, start=1):
+            cue_count += 1
+            if not isinstance(cue, dict):
+                add(
+                    findings,
+                    "error",
+                    "subtitle_word_alignment_cue_schema",
+                    "Subtitle timing cue must be an object.",
+                    location=str(path),
+                    section_index=section_index,
+                    cue_index=cue_index,
+                )
+                continue
+            try:
+                relative_start = float(cue.get("relative_start"))
+                relative_end = float(cue.get("relative_end"))
+                absolute_start = float(cue.get("absolute_start"))
+                absolute_end = float(cue.get("absolute_end"))
+                word_start = int(cue.get("word_start"))
+                word_end = int(cue.get("word_end"))
+            except (TypeError, ValueError):
+                add(
+                    findings,
+                    "error",
+                    "subtitle_word_alignment_cue_time",
+                    "Subtitle timing cue lacks valid word/time boundaries.",
+                    location=str(path),
+                    section_index=section_index,
+                    cue_index=cue_index,
+                )
+                continue
+            if (
+                cue.get("timing_source") != "edge_word_boundary"
+                or relative_start < 0.0
+                or relative_end < relative_start
+                or word_end < word_start
+                or relative_start + 1e-6 < previous_cue_end
+                or abs(absolute_start - (slide_start + relative_start)) > 0.003
+                or abs(absolute_end - (slide_start + relative_end)) > 0.003
+                or relative_end > audio_duration + 0.05
+            ):
+                add(
+                    findings,
+                    "error",
+                    "subtitle_word_alignment_cue_mismatch",
+                    "Subtitle cue is not an exact monotonic Edge word interval.",
+                    location=str(path),
+                    section_index=section_index,
+                    cue_index=cue_index,
+                )
+            previous_cue_end = relative_end
+    try:
+        declared_cues = int(payload.get("cue_count") or 0)
+    except (TypeError, ValueError):
+        declared_cues = -1
+    if cue_count != declared_cues:
+        add(
+            findings,
+            "error",
+            "subtitle_word_alignment_cue_count",
+            "Subtitle timing report cue count does not match its sections.",
+            location=str(path),
+            expected=declared_cues,
+            actual=cue_count,
+        )
+    return {
+        "checked": True,
+        "status": status,
+        "section_count": len(sections),
+        "cue_count": cue_count,
+    }
+
+
+def _animation_effects(
+    payload: dict[str, Any],
+    *,
+    findings: list[Finding],
+    path: Path,
+    label: str,
+) -> dict[tuple[int, int], dict[str, Any]]:
+    out: dict[tuple[int, int], dict[str, Any]] = {}
+    slides = payload.get("slides") or []
+    if not isinstance(slides, list):
+        add(findings, "error", f"{label}_slides_schema", f"{label} slides must be an array.", location=str(path))
+        return out
+    for slide in slides:
+        if not isinstance(slide, dict):
+            add(findings, "error", f"{label}_slide_schema", f"{label} slide entries must be objects.", location=str(path))
+            continue
+        try:
+            slide_index = int(slide.get("index"))
+        except (TypeError, ValueError):
+            add(findings, "error", f"{label}_slide_index_bad", f"{label} slide index must be an integer.", location=str(path))
+            continue
+        effects = slide.get("effects") or []
+        if not isinstance(effects, list):
+            add(findings, "error", f"{label}_effects_schema", f"{label} effects must be an array.", location=str(path), slide_index=slide_index)
+            continue
+        for effect in effects:
+            if not isinstance(effect, dict):
+                add(findings, "error", f"{label}_effect_schema", f"{label} effect entries must be objects.", location=str(path), slide_index=slide_index)
+                continue
+            try:
+                order = int(effect.get("order"))
+            except (TypeError, ValueError):
+                add(findings, "error", f"{label}_effect_order_bad", f"{label} effect order must be an integer.", location=str(path), slide_index=slide_index)
+                continue
+            key = (slide_index, order)
+            if key in out:
+                add(findings, "error", f"{label}_effect_duplicate", f"{label} contains a duplicate slide/order effect key.", location=str(path), slide_index=slide_index, order=order)
+                continue
+            out[key] = effect
+    return out
+
+
+def _extract_animation_sample_frames(
+    raw_mp4: Path,
+    frame_numbers: list[int],
+    ffmpeg: str,
+    output_dir: Path,
+) -> dict[int, Path]:
+    unique = sorted(set(frame_numbers))
+    if not unique:
+        return {}
+    select_expr = "+".join(f"eq(n\\,{number})" for number in unique)
+    pattern = output_dir / "sample-%04d.png"
+    cmd = [
+        ffmpeg,
+        "-v", "error",
+        "-i", str(raw_mp4),
+        "-vf", f"select={select_expr}",
+        "-vsync", "0",
+        str(pattern),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr[-2000:] or "ffmpeg sample extraction failed")
+    paths = sorted(output_dir.glob("sample-*.png"))
+    if len(paths) != len(unique):
+        raise RuntimeError(
+            f"ffmpeg extracted {len(paths)} animation samples, expected {len(unique)}"
+        )
+    return dict(zip(unique, paths))
+
+
+def _animation_pixel_delta(
+    early_path: Path,
+    late_path: Path,
+    bbox: list[int],
+) -> tuple[float, float]:
+    if Image is None:
+        raise RuntimeError("Pillow is required for animation pixel QA")
+    with Image.open(early_path) as early_source, Image.open(late_path) as late_source:
+        early = early_source.convert("RGB")
+        late = late_source.convert("RGB")
+        if early.size != late.size:
+            raise RuntimeError("animation sample frames have mismatched dimensions")
+        x, y, width, height = bbox
+        x0 = max(0, min(early.width - 1, x))
+        y0 = max(0, min(early.height - 1, y))
+        x1 = max(x0 + 1, min(early.width, x + width))
+        y1 = max(y0 + 1, min(early.height, y + height))
+        early_crop = early.crop((x0, y0, x1, y1))
+        late_crop = late.crop((x0, y0, x1, y1))
+        if np is not None:
+            early_array = np.asarray(early_crop, dtype=np.int16)
+            late_array = np.asarray(late_crop, dtype=np.int16)
+            delta = np.abs(late_array - early_array)
+            mean_abs = float(delta.mean())
+            changed_fraction = float((delta.max(axis=2) >= 8).mean())
+            return mean_abs, changed_fraction
+
+        from PIL import ImageChops  # type: ignore
+
+        diff = ImageChops.difference(early_crop, late_crop)
+        mean_abs = float(sum(ImageStat.Stat(diff).mean) / 3.0)
+        gray = diff.convert("L")
+        histogram = gray.histogram()
+        pixels = max(1, gray.width * gray.height)
+        changed_fraction = float(sum(histogram[8:]) / pixels)
+        return mean_abs, changed_fraction
+
+
+def _check_pptx_sequence_schedule(
+    manifest: dict[str, Any],
+    *,
+    path: Path,
+    findings: list[Finding],
+) -> dict[str, Any]:
+    """Reject the mixed absolute clocks that previously allowed early overlap."""
+    checked_blocks = 0
+    checked_effects = 0
+    gate_violations = 0
+    for slide in manifest.get("slides") or []:
+        slide_index = int(slide.get("index") or 0)
+        if slide.get("schedule_policy") != "author_notes_block_sequence_v1":
+            add(findings, "error", "animation_sequence_policy_missing", "Editable PPTX animation manifest is missing the unified Notes/Pane sequence policy.", location=str(path), slide_index=slide_index)
+            continue
+        blocks = slide.get("sequence_blocks") or []
+        prior_release = 0.0
+        for expected_index, block in enumerate(blocks, start=1):
+            checked_blocks += 1
+            try:
+                block_index = int(block.get("index"))
+                release_before = float(block.get("release_before"))
+                spoken_end = float(block.get("spoken_end"))
+                release = float(block.get("release"))
+            except (TypeError, ValueError):
+                add(findings, "error", "animation_sequence_block_bad", "Animation sequence block has invalid timing fields.", location=str(path), slide_index=slide_index, block=block)
+                continue
+            if block_index != expected_index:
+                add(findings, "error", "animation_sequence_block_order", "Animation sequence block indices are not contiguous.", location=str(path), slide_index=slide_index, expected=expected_index, actual=block_index)
+            if abs(release_before - prior_release) > 0.002:
+                add(findings, "error", "animation_sequence_release_chain", "Animation sequence block does not start from the prior block release.", location=str(path), slide_index=slide_index, block_index=block_index, expected=prior_release, actual=release_before)
+            required_release = max(release_before, spoken_end)
+            for effect in block.get("effects") or []:
+                checked_effects += 1
+                try:
+                    start = float(effect.get("start"))
+                    end = float(effect.get("end"))
+                    gate = float(effect.get("sequence_gate"))
+                except (TypeError, ValueError):
+                    add(findings, "error", "animation_sequence_effect_bad", "Animation sequence effect has invalid timing fields.", location=str(path), slide_index=slide_index, block_index=block_index, effect=effect)
+                    continue
+                if end <= start:
+                    add(findings, "error", "animation_sequence_effect_window", "Animation sequence effect has a non-positive window.", location=str(path), slide_index=slide_index, block_index=block_index, effect=effect)
+                if abs(gate - release_before) > 0.002:
+                    add(findings, "error", "animation_sequence_gate_mismatch", "Animation effect sequence gate differs from its block release gate.", location=str(path), slide_index=slide_index, block_index=block_index, expected=release_before, actual=gate)
+                trigger = str(effect.get("pane_trigger") or "").lower()
+                timing_source = str(effect.get("timing_source") or "")
+                overlap_allowed = timing_source == "animation_pane" and trigger == "witheffect"
+                if not overlap_allowed and start + 0.002 < release_before:
+                    gate_violations += 1
+                    add(findings, "error", "animation_sequence_gate_violated", "A sequential animation starts before the prior Notes block narration/effects release.", location=str(path), slide_index=slide_index, block_index=block_index, handle=block.get("handle"), start=start, required_start=release_before)
+                required_release = max(required_release, end)
+            if release + 0.002 < required_release:
+                add(findings, "error", "animation_sequence_release_early", "Animation block releases the following block before its narration/effects finish.", location=str(path), slide_index=slide_index, block_index=block_index, release=release, required_release=required_release)
+            prior_release = release
+        try:
+            schedule_end = float(slide.get("schedule_end"))
+        except (TypeError, ValueError):
+            add(findings, "error", "animation_sequence_end_bad", "Animation sequence has no valid schedule_end.", location=str(path), slide_index=slide_index)
+        else:
+            if abs(schedule_end - prior_release) > 0.002:
+                add(findings, "error", "animation_sequence_end_mismatch", "Animation sequence end differs from the final block release.", location=str(path), slide_index=slide_index, expected=prior_release, actual=schedule_end)
+    return {
+        "schedule_policy": "author_notes_block_sequence_v1",
+        "checked_blocks": checked_blocks,
+        "checked_effects": checked_effects,
+        "gate_violations": gate_violations,
+    }
+
+
+def check_animation_delivery(
+    *,
+    manifest_path: Path | None,
+    render_report_path: Path | None,
+    raw_mp4: Path | None,
+    pptx_path: Path | None = None,
+    required: bool,
+    ffmpeg: str | None,
+    findings: list[Finding],
+) -> dict[str, Any]:
+    """Cross-check animation mappings and prove each transition changes MP4 pixels."""
+    if manifest_path is None and render_report_path is None:
+        if required:
+            add(findings, "error", "animations_required", "Strict animation QA requires --animation-manifest and --animation-report.")
+        return {"checked": False}
+    if manifest_path is None:
+        add(findings, "error", "animation_manifest_required", "--animation-manifest is required when checking animations.")
+        return {"checked": False}
+    if render_report_path is None:
+        add(findings, "error", "animation_report_required", "--animation-report is required when checking animations.")
+        return {"checked": False}
+    if not manifest_path.is_file():
+        add(findings, "error", "animation_manifest_missing", "Animation manifest is missing.", location=str(manifest_path))
+        return {"checked": False}
+    if not render_report_path.is_file():
+        add(findings, "error", "animation_report_missing", "Animation render report is missing.", location=str(render_report_path))
+        return {"checked": False}
+
+    manifest = read_json(manifest_path)
+    render_report = read_json(render_report_path)
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != ANIMATION_MANIFEST_SCHEMA_VERSION:
+        add(findings, "error", "animation_manifest_schema", "Animation manifest has an unsupported schema.", location=str(manifest_path), schema_version=manifest.get("schema_version") if isinstance(manifest, dict) else None)
+        return {"checked": True}
+    if not isinstance(render_report, dict) or render_report.get("schema_version") != ANIMATION_RENDER_REPORT_SCHEMA_VERSION:
+        add(findings, "error", "animation_report_schema", "Animation render report has an unsupported schema.", location=str(render_report_path), schema_version=render_report.get("schema_version") if isinstance(render_report, dict) else None)
+        return {"checked": True}
+
+    source_kind = str(manifest.get("source_kind") or "svg")
+    report_source_kind = str(render_report.get("source_kind") or "svg")
+    if source_kind not in {"svg", "pptx"}:
+        add(findings, "error", "animation_source_kind_bad", "Animation manifest has an unsupported source_kind.", location=str(manifest_path), source_kind=source_kind)
+    if report_source_kind != source_kind:
+        add(findings, "error", "animation_source_kind_mismatch", "Animation render source_kind does not match the manifest.", location=str(render_report_path), manifest_source_kind=source_kind, report_source_kind=report_source_kind)
+    if source_kind == "pptx":
+        sequence_schedule = _check_pptx_sequence_schedule(
+            manifest,
+            path=manifest_path,
+            findings=findings,
+        )
+        manifest_sha = str(manifest.get("source_sha256") or "")
+        report_sha = str(render_report.get("source_sha256") or "")
+        if not manifest_sha or report_sha != manifest_sha:
+            add(findings, "error", "animation_pptx_hash_mismatch", "Editable PPTX manifest and render report do not name the same source hash.", location=str(render_report_path), manifest_sha256=manifest_sha, report_sha256=report_sha)
+        if pptx_path is None or not pptx_path.is_file():
+            add(findings, "error", "animation_pptx_required", "Editable PPTX animation QA requires the delivered --pptx source.", location=str(pptx_path) if pptx_path else None)
+        elif manifest_sha and sha256_file(pptx_path) != manifest_sha:
+            add(findings, "error", "animation_pptx_delivery_stale", "Delivered PPTX bytes differ from the deck used to build and render animations.", location=str(pptx_path), expected_sha256=manifest_sha, actual_sha256=sha256_file(pptx_path))
+
+    else:
+        sequence_schedule = {"checked_blocks": 0, "checked_effects": 0, "gate_violations": 0}
+
+    manifest_effects = _animation_effects(manifest, findings=findings, path=manifest_path, label="animation_manifest")
+    rendered_effects = _animation_effects(render_report, findings=findings, path=render_report_path, label="animation_report")
+    manifest_slides = manifest.get("slides") or []
+    rendered_slides = render_report.get("slides") or []
+    manifest_declared = int(manifest.get("effect_count") or 0)
+    rendered_declared = int(render_report.get("effect_count") or 0)
+    if int(manifest.get("slide_count") or 0) != len(manifest_slides):
+        add(findings, "error", "animation_manifest_slide_count", "Animation manifest slide_count does not match its slides array.", location=str(manifest_path))
+    if int(render_report.get("slide_count") or 0) != len(rendered_slides):
+        add(findings, "error", "animation_report_slide_count", "Animation render slide_count does not match its slides array.", location=str(render_report_path))
+    if manifest_declared != len(manifest_effects):
+        add(findings, "error", "animation_manifest_effect_count", "Animation manifest effect_count does not match its effects.", location=str(manifest_path), declared=manifest_declared, actual=len(manifest_effects))
+    if rendered_declared != len(rendered_effects):
+        add(findings, "error", "animation_report_effect_count", "Animation render effect_count does not match its effects.", location=str(render_report_path), declared=rendered_declared, actual=len(rendered_effects))
+    if set(manifest_effects) != set(rendered_effects):
+        missing = sorted(set(manifest_effects) - set(rendered_effects))
+        extra = sorted(set(rendered_effects) - set(manifest_effects))
+        add(findings, "error", "animation_effect_coverage", "Rendered animation effect keys do not exactly cover the manifest.", location=str(render_report_path), missing=missing, extra=extra)
+
+    resolution = render_report.get("resolution") or {}
+    try:
+        render_width = int(resolution.get("width"))
+        render_height = int(resolution.get("height"))
+        fps = float(render_report.get("fps"))
+    except (TypeError, ValueError):
+        render_width = render_height = 0
+        fps = 0.0
+    if render_width <= 0 or render_height <= 0 or fps <= 0:
+        add(findings, "error", "animation_report_video_geometry", "Animation render report has invalid resolution or fps.", location=str(render_report_path))
+
+    valid_effects: list[tuple[tuple[int, int], dict[str, Any]]] = []
+    for key, expected in manifest_effects.items():
+        actual = rendered_effects.get(key)
+        if actual is None:
+            continue
+        locator = str(expected.get("locator") or "").strip()
+        name = str(expected.get("name") or "").strip()
+        if str(actual.get("locator") or "").strip() != locator or str(actual.get("name") or "").strip() != name:
+            add(findings, "error", "animation_effect_mapping_mismatch", "Rendered animation locator/name does not match the manifest.", location=str(render_report_path), slide_index=key[0], order=key[1], expected_locator=locator, actual_locator=actual.get("locator"), expected_name=name, actual_name=actual.get("name"))
+            continue
+        if source_kind == "pptx":
+            expected_shape_id = str(expected.get("shape_id") or "").strip()
+            actual_shape_id = str(actual.get("shape_id") or "").strip()
+            if not expected_shape_id or actual_shape_id != expected_shape_id:
+                add(findings, "error", "animation_shape_mapping_mismatch", "Rendered editable PPTX shape_id does not match the manifest.", location=str(render_report_path), slide_index=key[0], order=key[1], locator=locator, expected_shape_id=expected_shape_id, actual_shape_id=actual_shape_id)
+                continue
+        expected_strategy = ANIMATION_RENDER_STRATEGIES.get(name)
+        if expected_strategy is None:
+            add(findings, "error", "animation_effect_unsupported", "Animation manifest names an effect unsupported by the video renderer.", location=str(manifest_path), slide_index=key[0], order=key[1], locator=locator, name=name)
+            continue
+        if str(actual.get("strategy") or "") != expected_strategy:
+            add(findings, "error", "animation_strategy_mismatch", "Animation render strategy does not match the named Author Notes effect.", location=str(render_report_path), slide_index=key[0], order=key[1], locator=locator, name=name, expected_strategy=expected_strategy, actual_strategy=actual.get("strategy"))
+            continue
+        expected_timing_source = str(expected.get("timing_source") or "")
+        actual_timing_source = str(actual.get("timing_source") or "")
+        if expected_timing_source not in {"edge_word_alignment", "animation_pane"}:
+            add(findings, "error", "animation_timing_source_unsupported", "Animation effect has an unsupported timing source.", location=str(render_report_path), slide_index=key[0], order=key[1], locator=locator, timing_source=expected_timing_source)
+        elif actual_timing_source != expected_timing_source:
+            add(findings, "error", "animation_timing_source_mismatch", "Rendered animation timing source does not match the manifest.", location=str(render_report_path), slide_index=key[0], order=key[1], locator=locator, expected=expected_timing_source, actual=actual_timing_source)
+        try:
+            expected_start = float(expected.get("start"))
+            expected_duration = float(expected.get("duration"))
+            actual_start = float(actual.get("start"))
+            actual_duration = float(actual.get("duration"))
+        except (TypeError, ValueError):
+            add(findings, "error", "animation_effect_timing_bad", "Animation effect timing fields must be numeric.", location=str(render_report_path), slide_index=key[0], order=key[1], locator=locator)
+            continue
+        if abs(expected_start - actual_start) > 0.002 or abs(expected_duration - actual_duration) > 0.002:
+            add(findings, "error", "animation_effect_timing_mismatch", "Rendered animation timing does not match the manifest.", location=str(render_report_path), slide_index=key[0], order=key[1], locator=locator, expected=[expected_start, expected_duration], actual=[actual_start, actual_duration])
+        bbox = actual.get("bbox")
+        bbox_valid = isinstance(bbox, list) and len(bbox) == 4
+        if bbox_valid:
+            try:
+                bbox = [int(round(float(value))) for value in bbox]
+            except (TypeError, ValueError):
+                bbox_valid = False
+        if not bbox_valid or bbox[2] <= 0 or bbox[3] <= 0 or bbox[0] < 0 or bbox[1] < 0 or bbox[0] + bbox[2] > render_width or bbox[1] + bbox[3] > render_height:
+            add(findings, "error", "animation_effect_bbox_bad", "Rendered animation bbox is invalid or outside the video canvas.", location=str(render_report_path), slide_index=key[0], order=key[1], locator=locator, bbox=actual.get("bbox"))
+            continue
+        if not actual.get("rendered"):
+            add(findings, "error", "animation_effect_not_rendered", "Animation report does not mark the effect as rendered.", location=str(render_report_path), slide_index=key[0], order=key[1], locator=locator)
+            continue
+        try:
+            global_start = float(actual.get("global_start"))
+            global_end = float(actual.get("global_end"))
+            sample_early = float(actual.get("sample_early"))
+            sample_late = float(actual.get("sample_late"))
+        except (TypeError, ValueError):
+            add(findings, "error", "animation_sample_time_bad", "Animation render report sample and global times must be numeric.", location=str(render_report_path), slide_index=key[0], order=key[1], locator=locator)
+            continue
+        if expected_strategy == "appear":
+            sample_window_valid = sample_early < global_start < sample_late
+        else:
+            sample_window_valid = (
+                global_start <= sample_early < sample_late <= global_end
+            )
+        if not sample_window_valid:
+            add(findings, "error", "animation_sample_window_bad", "Animation pixel-QA samples do not cover the named effect transition.", location=str(render_report_path), slide_index=key[0], order=key[1], locator=locator, strategy=expected_strategy, global_window=[global_start, global_end], sample_window=[sample_early, sample_late])
+            continue
+        valid_effects.append((key, actual))
+
+    pixel_checked = 0
+    pixel_changed = 0
+    pixel_metrics: list[dict[str, Any]] = []
+    if valid_effects:
+        if raw_mp4 is None or not raw_mp4.is_file():
+            add(findings, "error", "animation_raw_video_required", "Raw no-subtitle MP4 is required for animation pixel QA.", location=str(raw_mp4) if raw_mp4 else None)
+        elif not ffmpeg:
+            add(findings, "error", "animation_ffmpeg_required", "ffmpeg is required for animation pixel QA.")
+        elif Image is None:
+            add(findings, "error", "animation_pillow_required", "Pillow is required for animation pixel QA.")
+        elif fps > 0:
+            frame_pairs: dict[tuple[int, int], tuple[int, int]] = {}
+            frame_numbers: list[int] = []
+            for key, effect in valid_effects:
+                try:
+                    early_number = max(0, int(round(float(effect.get("sample_early")) * fps)))
+                    late_number = max(0, int(round(float(effect.get("sample_late")) * fps)))
+                except (TypeError, ValueError):
+                    add(findings, "error", "animation_sample_time_bad", "Animation sample times must be numeric.", location=str(render_report_path), slide_index=key[0], order=key[1])
+                    continue
+                if late_number <= early_number:
+                    late_number = early_number + 1
+                frame_pairs[key] = (early_number, late_number)
+                frame_numbers.extend((early_number, late_number))
+            try:
+                with tempfile.TemporaryDirectory(prefix="paper2video_animation_qa_") as temp_dir:
+                    frame_paths = _extract_animation_sample_frames(raw_mp4, frame_numbers, ffmpeg, Path(temp_dir))
+                    for key, effect in valid_effects:
+                        if key not in frame_pairs:
+                            continue
+                        early_number, late_number = frame_pairs[key]
+                        bbox = [int(round(float(value))) for value in effect["bbox"]]
+                        mean_abs, changed_fraction = _animation_pixel_delta(
+                            frame_paths[early_number], frame_paths[late_number], bbox
+                        )
+                        pixel_checked += 1
+                        # Sparse full-width groups such as a one-pixel grid can
+                        # be visibly animated while changing well under 1% of
+                        # their bbox. Keep both an intensity and coverage gate.
+                        changed = (
+                            mean_abs >= ANIMATION_MIN_MEAN_ABS_DELTA
+                            or changed_fraction >= ANIMATION_MIN_CHANGED_FRACTION
+                        )
+                        if changed:
+                            pixel_changed += 1
+                        else:
+                            add(findings, "error", "animation_pixel_motion_missing", "Animation transition frames do not show enough pixel change inside the mapped SVG layer.", location=str(raw_mp4), slide_index=key[0], order=key[1], locator=effect.get("locator"), name=effect.get("name"), mean_abs_delta=round(mean_abs, 4), changed_fraction=round(changed_fraction, 6))
+                        pixel_metrics.append(
+                            {
+                                "slide_index": key[0],
+                                "order": key[1],
+                                "locator": effect.get("locator"),
+                                "name": effect.get("name"),
+                                "early_frame": early_number,
+                                "late_frame": late_number,
+                                "mean_abs_delta": round(mean_abs, 4),
+                                "changed_fraction": round(changed_fraction, 6),
+                                "changed": changed,
+                            }
+                        )
+            except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+                add(findings, "error", "animation_pixel_check_failed", f"Could not extract or compare animation transition frames: {exc}", location=str(raw_mp4))
+
+    if required and (not manifest_effects or len(manifest_effects) != len(rendered_effects)):
+        add(findings, "error", "animation_delivery_incomplete", "Required animation delivery has no effects or incomplete effect coverage.", location=str(render_report_path))
+    if required and pixel_checked != len(manifest_effects):
+        add(findings, "error", "animation_pixel_coverage_incomplete", "Pixel QA did not check every required animation effect.", location=str(raw_mp4) if raw_mp4 else None, expected=len(manifest_effects), checked=pixel_checked)
+
+    return {
+        "checked": True,
+        "source_kind": source_kind,
+        "manifest_slide_count": len(manifest_slides),
+        "rendered_slide_count": len(rendered_slides),
+        "manifest_effect_count": len(manifest_effects),
+        "rendered_effect_count": len(rendered_effects),
+        "pixel_checked_effects": pixel_checked,
+        "pixel_changed_effects": pixel_changed,
+        "timing_source": render_report.get("timing_source"),
+        "sequence_schedule": sequence_schedule,
+        "pixel_metrics": pixel_metrics,
+    }
+
+
 def write_report(path: Path, report: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1640,6 +2288,10 @@ def maybe_write_manifest(project_dir: Path, args: argparse.Namespace, report_pat
         files["visual_cues"] = rel_to(args.visual_cues.resolve(), project_dir)
     if args.cue_plan:
         files["visual_cue_plan"] = rel_to(args.cue_plan.resolve(), project_dir)
+    if args.animation_manifest:
+        files["animation_manifest"] = rel_to(args.animation_manifest.resolve(), project_dir)
+    if args.animation_report:
+        files["animation_render_report"] = rel_to(args.animation_report.resolve(), project_dir)
 
     manifest = {
         "schema_version": "paper2video.v1",
@@ -1674,6 +2326,9 @@ def main() -> None:
     parser.add_argument("--mp4", type=Path)
     parser.add_argument("--raw-mp4", type=Path, help="Raw MP4 before add_subtitles.py; used to verify final subtitle delivery.")
     parser.add_argument("--subtitle-file", type=Path, help="SRT/VTT sidecar written by add_subtitles.py.")
+    parser.add_argument("--subtitle-timing-report", type=Path, help="Exact Edge word-alignment evidence written by add_subtitles.py.")
+    parser.add_argument("--animation-manifest", type=Path, help="Author Notes animation manifest used by render_video.py.")
+    parser.add_argument("--animation-report", type=Path, help="Persistent animation render report written by render_video.py.")
     parser.add_argument("--target-minutes", type=float)
     parser.add_argument("--duration-tolerance-seconds", type=float, default=30.0)
     parser.add_argument("--pad-tail", type=float, default=0.3)
@@ -1686,7 +2341,9 @@ def main() -> None:
     parser.add_argument("--require-timeline", action="store_true", help="Fail when timeline.json is omitted or invalid.")
     parser.add_argument("--require-rate-plan", action="store_true", help="Fail when tts_rate_plan.json is omitted for duration-controlled video.")
     parser.add_argument("--require-subtitles", action="store_true", help="Fail unless subtitle sidecar exists and final MP4 differs from the raw pre-subtitle render.")
+    parser.add_argument("--require-subtitle-word-alignment", action="store_true", help="Fail unless every narrated subtitle cue uses exact Edge word-boundary timing.")
     parser.add_argument("--require-word-timings", action="store_true", help="Fail if cue timings are proportional estimates rather than word-boundary timings.")
+    parser.add_argument("--require-animations", action="store_true", help="Fail unless every mapped Author Notes effect was rendered and passes pixel-motion QA.")
     parser.add_argument("--strict-attention", action="store_true", help="Promote cue-plan semantic-alignment risks to hard failures.")
     parser.add_argument("--allow-missing-attention", action="store_true", help="Degraded/debug only: allow --strict without visual cues/cue plan/timeline gates.")
     parser.add_argument("--require-pptx-anchors", action="store_true", help="Require strict visual anchors to resolve to PPTX geometry.")
@@ -1778,6 +2435,21 @@ def main() -> None:
         ffmpeg=ffmpeg,
         findings=findings,
     )
+    subtitle_timing_report = check_subtitle_word_alignment(
+        args.subtitle_timing_report.resolve() if args.subtitle_timing_report else None,
+        required=args.require_subtitle_word_alignment,
+        pad_tail=args.pad_tail,
+        findings=findings,
+    )
+    animation_report = check_animation_delivery(
+        manifest_path=args.animation_manifest.resolve() if args.animation_manifest else None,
+        render_report_path=args.animation_report.resolve() if args.animation_report else None,
+        raw_mp4=args.raw_mp4.resolve() if args.raw_mp4 else None,
+        pptx_path=args.pptx.resolve() if args.pptx else None,
+        required=args.require_animations,
+        ffmpeg=ffmpeg,
+        findings=findings,
+    )
 
     counts = {
         "error": sum(1 for f in findings if f.severity == "error"),
@@ -1803,6 +2475,9 @@ def main() -> None:
             "mp4": str(args.mp4.resolve()) if args.mp4 else None,
             "raw_mp4": str(args.raw_mp4.resolve()) if args.raw_mp4 else None,
             "subtitle_file": str(args.subtitle_file.resolve()) if args.subtitle_file else None,
+            "subtitle_timing_report": str(args.subtitle_timing_report.resolve()) if args.subtitle_timing_report else None,
+            "animation_manifest": str(args.animation_manifest.resolve()) if args.animation_manifest else None,
+            "animation_report": str(args.animation_report.resolve()) if args.animation_report else None,
         },
         "options": {
             "strict": args.strict,
@@ -1811,11 +2486,13 @@ def main() -> None:
             "require_mp4": require_mp4,
             "require_visual_cues": args.require_visual_cues,
             "require_cue_plan": args.require_cue_plan,
+            "require_subtitle_word_alignment": args.require_subtitle_word_alignment,
             "require_anchor_contract": args.require_anchor_contract,
             "require_timeline": args.require_timeline,
             "require_rate_plan": args.require_rate_plan,
             "require_subtitles": args.require_subtitles,
             "require_word_timings": args.require_word_timings,
+            "require_animations": args.require_animations,
             "strict_attention": strict_attention_required,
             "allow_missing_attention": args.allow_missing_attention,
             "require_pptx_anchors": args.require_pptx_anchors,
@@ -1836,6 +2513,8 @@ def main() -> None:
         "tts_rate_plan": rate_plan_report,
         "video": video_report,
         "subtitles": subtitle_report,
+        "subtitle_timing": subtitle_timing_report,
+        "animations": animation_report,
         "findings": [f.__dict__ for f in findings],
     }
     out_path = args.out or default_report_path(project_dir)

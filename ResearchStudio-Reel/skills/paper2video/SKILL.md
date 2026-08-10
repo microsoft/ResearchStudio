@@ -5,8 +5,8 @@ description: >
   narrated MP4 video. Prefer the shared paper2assets package when present so
   paper2poster, paper2blog, paper2slides, and paper2video use the same section
   order and narration. Preserve the advanced deck route by delegating slide
-  authoring to the external `hugohe3/ppt-master` project, then synthesize audio
-  with `skills/paper2poster/scripts/generate_audio.py`, render with
+  authoring to the external `hugohe3/ppt-master` project, then synthesize final
+  captioned audio and word boundaries with `generate_edge_audio.py`, render with
   `skills/paper2video/scripts/render_video.py`, and burn final subtitles with
   `skills/paper2video/scripts/add_subtitles.py`.
 ---
@@ -22,7 +22,7 @@ paper.pdf
   -> skills/paper2assets/scripts/build_package.py
   -> assets/meta/sections.json + assets/meta/narration.json
   -> deck source (ppt-master / paper2slides / existing PPTX)
-  -> assets/audio/*.mp3 from skills/paper2poster/scripts/generate_audio.py
+  -> fresh MP3 + word timings from generate_edge_audio.py
   -> raw MP4 from skills/paper2video/scripts/render_video.py
   -> timeline.json from skills/paper2video/scripts/build_timeline.py
   -> video.mp4 with burned-in subtitles from add_subtitles.py
@@ -61,7 +61,7 @@ clips, rendered frames, reports, and timeline/cue metadata live under `assets/`:
 
 ```text
 <video_outdir>/
-  video.mp4                  # required, burned-in subtitles with translucent caption box
+  video.mp4                  # required, burned-in subtitles in a short appended bottom band
   video_no_subtitles.mp4     # required, raw/pre-subtitle playback copy for paper2reel
   video.pptx                 # required, for follow-up editing
   manifest.json
@@ -70,7 +70,7 @@ clips, rendered frames, reports, and timeline/cue metadata live under `assets/`:
     captions/                      # video.srt, video.vtt
     slides/                        # slides.pptx, rendered slide frames, ppt-master export copy
     clips/                         # raw render and optional segment clips
-    meta/                          # duration reports, timeline, visual cues, QA reports
+    meta/                          # duration/timeline/cue/animation manifests and QA reports
 ```
 
 Initialize it before running the route:
@@ -109,7 +109,7 @@ Keep an audit copy under `$VIDEO_CLIPS/video_raw.mp4`, and also copy it to
 `$VIDEO_OUT/video_no_subtitles.mp4` as a required deliverable. The default
 playback deliverable with burned-in subtitles is `$VIDEO_OUT/video.mp4`.
 
-## Two Supported Routes
+## Three Supported Routes
 
 ### Route A - paper2assets-aligned paper video
 
@@ -247,6 +247,25 @@ not invent logos. `make_qr.py` is best-effort and only uses `paper_url`,
 `code_url`, or the documented `arxiv_id` paper fallback from
 `assets/meta/metadata.json`.
 
+After ppt-master exports the native animated deck, seed the editable protocol
+with the bundled deterministic bootstrap. Work on an output copy so the source
+export remains available for audit:
+
+```bash
+python skills/paper2video/scripts/bootstrap_editable_pptx.py \
+  <ppt-master-export.pptx> \
+  --script-json "$VIDEO_AUDIO/script.json" \
+  --out "$VIDEO_SLIDES/slides.pptx" \
+  --report-out "$VIDEO_META/reports/editable_pptx_bootstrap_report.json"
+```
+
+This writes concise canonical `## [handle]` Author Notes plus matching compact
+shape Alt Text containing only `[handle]` and `Script:`. Script hash and order
+provenance stay in shape OOXML; effects and triggers stay in the native
+PowerPoint timing tree. Legacy `[ID] handle` and verbose `[Paper2Video]` Alt Text
+remain readable but are no longer written. This replaces package-local or
+session-specific post-processing scripts.
+
 Add this requirement block to the prompt given to `ppt-master`:
 
 ```text
@@ -298,13 +317,32 @@ Anchor contract for ppt-master:
   video raster frames are rendered from `svg_final` when available, while the
   PPTX remains the editable deliverable and geometry audit source.
 
-4. Generate audio:
+4. Generate fresh caption-ready audio and word timings:
 
 ```bash
-python skills/paper2poster/scripts/generate_audio.py \
+python skills/paper2video/scripts/generate_edge_audio.py \
   "$VIDEO_AUDIO/script.json" \
-  --outdir "$VIDEO_AUDIO"
+  --outdir "$VIDEO_AUDIO" \
+  --timings-out "$VIDEO_AUDIO/word_timings.json"
 ```
+
+When the processed deck carries the named-animation Author Notes protocol,
+build the strict video mapping directly from that PPTX and fresh Edge word
+timings:
+
+```bash
+python skills/paper2video/scripts/build_animation_manifest.py \
+  --pptx "$VIDEO_SLIDES/slides.pptx" \
+  --word-timings "$VIDEO_AUDIO/word_timings.json" \
+  --protocol-report-out "$VIDEO_META/reports/editable_pptx_protocol.json" \
+  --out "$VIDEO_META/animation_manifest.json"
+```
+
+This mapping reads the native row kind, pane order, shape id, authoritative
+Author Notes marker, and normalized compact Alt Text from the current deck. It
+derives MP4 start times from Edge word boundaries and records the exact PPTX
+SHA-256. See
+`references/editable_pptx.md` and `references/animations.md`.
 
 5. For highlighted video, generate PPTX-backed visual cues before rendering.
 
@@ -357,6 +395,11 @@ python skills/paper2video/scripts/render_video.py "$VIDEO_OUT" \
   --attention-mode highlight \
   --highlight-style spotlight_laser \
   --visual-cues "$VIDEO_META/visual_cues.json" \
+  --frame-source pptx \
+  --animation-source pptx \
+  --animation-manifest "$VIDEO_META/animation_manifest.json" \
+  --animation-report-out "$VIDEO_META/reports/animation_render_report.json" \
+  --require-animations \
   --target-minutes 3 \
   --duration-report-out "$VIDEO_META/video_duration_report.json" \
   --out "$VIDEO_CLIPS/video_raw.mp4" \
@@ -373,15 +416,18 @@ python skills/paper2video/scripts/add_subtitles.py "$VIDEO_OUT" \
   --srt-out "$VIDEO_CAPTIONS/video.srt" \
   --vtt-out "$VIDEO_CAPTIONS/video.vtt" \
   --out "$VIDEO_OUT/video.mp4"
+```
 
-The default burned-in subtitle render uses a translucent dark caption box so
-narration text stays separate from dense PPT content. Use `--no-subtitle-box`
-only for an explicitly approved legacy/plain-caption render. Use
-`--subtitle-bar` to scale the complete slide above a solid black caption band
-when captions must not overlap any PPT content.
+The default burned-in subtitle render leaves the slide at its original size,
+appends a short solid black band only below it, and places white captions
+entirely inside that reserved space. It does not add side bars or cover PPT
+content. Use `--subtitle-overlay` only for an explicitly approved legacy
+overlay render; combine it with
+`--no-subtitle-box` only when plain outlined captions are required.
 Use `--no-subtitles` when the user disables captions. It still writes SRT/VTT
 for timeline and QA, but stream-copies only video/audio into `video.mp4`.
 
+```bash
 cp "$VIDEO_CLIPS/video_raw.mp4" "$VIDEO_OUT/video_no_subtitles.mp4"
 cp <deck.pptx> "$VIDEO_SLIDES/slides.pptx"
 cp <deck.pptx> "$VIDEO_OUT/video.pptx"
@@ -455,12 +501,14 @@ python skills/paper2video/scripts/notes_to_script.py <project_path> \
   --out <project_path>/audio/script.json
 ```
 
-Generate audio:
+Generate fresh audio plus the word boundaries required by the default captioned
+delivery:
 
 ```bash
-python skills/paper2poster/scripts/generate_audio.py \
+python skills/paper2video/scripts/generate_edge_audio.py \
   <project_path>/audio/script.json \
-  --outdir <project_path>/audio
+  --outdir <project_path>/audio \
+  --timings-out <project_path>/audio/word_timings.json
 ```
 
 Render:
@@ -486,21 +534,45 @@ python skills/paper2video/scripts/add_subtitles.py <project_path> \
   --mp4 "$VIDEO_CLIPS/video_raw.mp4" \
   --audio-dir <project_path>/audio \
   --script-json <project_path>/audio/script.json \
+  --word-timings <project_path>/audio/word_timings.json \
+  --require-word-timings \
+  --timing-report-out "$VIDEO_META/reports/subtitle_timing_alignment.json" \
   --srt-out "$VIDEO_CAPTIONS/video.srt" \
   --vtt-out "$VIDEO_CAPTIONS/video.vtt" \
   --out "$VIDEO_OUT/video.mp4"
+```
 
-The default burned-in subtitle render uses a translucent dark caption box so
-narration text stays separate from dense PPT content. Use `--no-subtitle-box`
-only for an explicitly approved legacy/plain-caption render. Use
-`--subtitle-bar` to scale the complete slide above a solid black caption band
-when captions must not overlap any PPT content.
+The default burned-in subtitle render leaves the slide at its original size,
+appends a short solid black band only below it, and places white captions
+entirely inside that reserved space. It does not add side bars or cover PPT
+content. Use `--subtitle-overlay` only for an explicitly approved legacy
+overlay render; combine it with
+`--no-subtitle-box` only when plain outlined captions are required.
 Use `--no-subtitles` when the user disables captions. It still writes SRT/VTT
 for timeline and QA, but stream-copies only video/audio into `video.mp4`.
 
+```bash
 cp "$VIDEO_CLIPS/video_raw.mp4" "$VIDEO_OUT/video_no_subtitles.mp4"
 cp <project_path>/exports/<name>.pptx "$VIDEO_SLIDES/slides.pptx"
 ```
+
+### Route C - local editable PPTX rerender, no LLM
+
+Use the embedded [`ppt2video`](ppt2video/SKILL.md) sub-skill after a user edits
+the delivered `video.pptx`. Read that sub-skill before rendering or changing
+the editable-PPTX protocol. It owns the Author Notes and Alt Text authority
+rules, animation mapping, and strict completion gate.
+
+```bash
+python skills/paper2video/scripts/render_edited_pptx.py \
+  <edited-video.pptx> <new-video-outdir>
+```
+
+The command delegates to `scripts/render_edited_pptx.py`, regenerates audio and
+timings, renders the current PPTX, burns bottom-band subtitles, writes the
+timeline and mapping reports, then runs strict QA. It refuses an existing
+output bundle, so an old audio/video/cache package cannot be reused silently.
+Do not claim success unless it exits 0 and its QA report is clean.
 
 ## Final QA Gate
 
@@ -520,6 +592,7 @@ python skills/paper2video/scripts/check_video_package.py "$VIDEO_OUT" \
   --mp4 "$VIDEO_OUT/video.mp4" \
   --raw-mp4 "$VIDEO_OUT/video_no_subtitles.mp4" \
   --subtitle-file "$VIDEO_CAPTIONS/video.vtt" \
+  --subtitle-timing-report "$VIDEO_META/reports/subtitle_timing_alignment.json" \
   --visual-cues "$VIDEO_META/visual_cues.json" \
   --cue-plan "$VIDEO_META/visual_cue_plan.json" \
   --timeline "$VIDEO_META/timeline.json" \
@@ -527,6 +600,7 @@ python skills/paper2video/scripts/check_video_package.py "$VIDEO_OUT" \
   --target-minutes 3 \
   --require-rate-plan \
   --require-subtitles \
+  --require-subtitle-word-alignment \
   --require-visual-cues \
   --require-cue-plan \
   --require-timeline \
@@ -547,11 +621,14 @@ python skills/paper2video/scripts/check_video_package.py "$VIDEO_OUT" \
   --mp4 "$VIDEO_OUT/video.mp4" \
   --raw-mp4 "$VIDEO_OUT/video_no_subtitles.mp4" \
   --subtitle-file "$VIDEO_CAPTIONS/video.vtt" \
+  --subtitle-timing-report "$VIDEO_META/reports/subtitle_timing_alignment.json" \
   --visual-cues "$VIDEO_META/visual_cues.json" \
   --cue-plan "$VIDEO_META/visual_cue_plan.json" \
   --anchor-contract "$VIDEO_META/visual_anchor_contract.json" \
   --timeline "$VIDEO_META/timeline.json" \
   --rate-plan "$VIDEO_AUDIO/tts_rate_plan.json" \
+  --animation-manifest "$VIDEO_META/animation_manifest.json" \
+  --animation-report "$VIDEO_META/reports/animation_render_report.json" \
   --target-minutes 3 \
   --strict \
   --strict-attention \
@@ -562,7 +639,9 @@ python skills/paper2video/scripts/check_video_package.py "$VIDEO_OUT" \
   --require-timeline \
   --require-rate-plan \
   --require-subtitles \
+  --require-subtitle-word-alignment \
   --require-word-timings \
+  --require-animations \
   --out "$VIDEO_META/reports/video_qa_report.json"
 ```
 
@@ -585,7 +664,8 @@ named degraded path.
 
 ## Audio Providers
 
-The current shared synthesizer is:
+The shared paper2poster synthesizer remains available for caption-free or
+non-video consumers:
 
 ```bash
 python skills/paper2poster/scripts/generate_audio.py <script.json> --outdir <audio_dir>
@@ -613,12 +693,13 @@ It consumes JSON with the same section contract used by
   paper2poster's script; Azure voices are `alloy`, `echo`, `fable`, `onyx`,
   `nova`, `shimmer`.
 
-The compositor does not care which provider produced the MP3s. Future provider
-support (edge-tts, OpenAI TTS, ElevenLabs, etc.) should only guarantee the same
-contract: one `<id>.mp3` per script section under the chosen `audio/` directory.
+The compositor accepts MP3s from any provider. A final captioned render also
+requires trustworthy per-word start/end boundaries in the documented timing
+schema; an MP3-only provider is valid only for explicitly caption-free output.
 
-When strict visual-attention alignment is required and Edge TTS is acceptable,
-use the bundled Edge helper because it can write word-boundary timings:
+For every final captioned render, use the bundled Edge helper because it writes
+the word boundaries required for exact subtitle timing. The same timings also
+support strict visual-attention alignment:
 
 ```bash
 python skills/paper2video/scripts/generate_edge_audio.py \
@@ -627,9 +708,9 @@ python skills/paper2video/scripts/generate_edge_audio.py \
   --timings-out <project_path>/audio/word_timings.json
 ```
 
-Those timings let `generate_visual_cues.py --require-timestamps` and
-`check_video_package.py --require-word-timings` reject highlight plans that only
-use proportional/estimated timing.
+Those timings let `add_subtitles.py --require-word-timings`,
+`generate_visual_cues.py --require-timestamps`, and strict QA reject any
+subtitle or highlight plan that uses proportional timing.
 
 ## Rendering Details
 
@@ -640,9 +721,14 @@ use proportional/estimated timing.
    PDF -> PNG path via LibreOffice and `pdftoppm`.
 2. Copy the exact MP4 frames to `--frames-out` when provided; final QA should
    point `--frames-dir` at that same directory.
-3. MP3 duration probing via `ffprobe` or the ffmpeg fallback.
-4. One MP4 segment per slide.
-5. ffmpeg concat into a final H.264/AAC MP4.
+3. When an editable PPTX animation manifest is present, render cumulative
+   PowerPoint reveal states and derive each layer from adjacent PPTX pixel
+   states. The optional SVG authoring route remains available for legacy
+   packages.
+4. MP3 duration probing via `ffprobe` or the ffmpeg fallback.
+5. One MP4 segment per slide.
+6. ffmpeg concat into a final H.264/AAC MP4 and write the persistent animation
+   render report when animations are enabled.
 
 Audio ordering:
 
@@ -680,6 +766,10 @@ Useful flags:
 | `--highlight-style box|spotlight|cursor|box_cursor|spotlight_cursor|laser|box_laser|spotlight_laser` | Presentation style for highlight cues; default `spotlight_laser` |
 | `--visual-cues path.json` | Normalized per-slide highlight/cursor cue file |
 | `--allow-missing-visual-cues` | Degraded/debug only; final output should not use it |
+| `--animation-manifest path.json` | Edge-aligned Author Notes effect/group mapping |
+| `--animation-source auto|svg|pptx` | Pixel source for animation layers; editable manifests select `pptx` |
+| `--animation-report-out path.json` | Persist rendered effect timing, strategy, and bbox evidence |
+| `--require-animations` | Fail unless a non-empty supported animation mapping is rendered |
 | `--frames-only` | Stop after slide-frame export |
 | `--audio-only-check` | Verify frame/audio count and order |
 
@@ -933,15 +1023,27 @@ the viewer can show duplicate subtitles when CC is enabled.
 `add_subtitles.py` can use either notes files or script JSON:
 
 - With `--script-json`, subtitle order and fallback text come from the JSON.
+- With `--word-timings`, every cue is matched against the complete Edge word
+  sequence. It appears at its first spoken word and remains through its last
+  spoken word, including irregular pauses. Punctuation attaches to neighboring
+  words and receives no estimated interval.
+- Pass `--require-word-timings` for every final captioned render. Missing,
+  mismatched, or partially aligned words fail closed. Character-proportional
+  cue allocation remains available only for explicit legacy/debug use.
 - Without it, the script preserves legacy ppt-master behavior: sorted
   `notes/*.md` paired with sorted `audio/*.mp3`.
 
-Default mode burns subtitles into the video pixels with a translucent dark
-caption box. Pass `--soft` to mux a toggleable `mov_text` track instead. Pass
-`--srt-only` to produce just the SRT. Pass `--no-subtitle-box` only for a
-user-approved legacy/plain-caption render. Pass `--subtitle-bar` to preserve
-the complete slide above a solid black bottom band and burn white captions
-inside that reserved band; this avoids covering dense PPT content.
+Default mode leaves the slide at its original size, appends a short solid
+black band only below it, and burns white captions entirely inside that band.
+The default bar height is `0.08` of the source slide height. Pass `--soft` to
+mux a toggleable `mov_text` track instead. Default cue chunking uses a hard
+72-character cap so 1080p delivery stays on one subtitle line. Burned subtitle
+text scales with the source-slide height by default, about 32 ASS units at 720p
+and 48 at 1080p, and remains vertically centered with padding inside the band.
+Pass `--font-size` only when an explicit fixed size is required. Pass
+`--srt-only` to produce just the SRT. Pass `--subtitle-overlay` for the legacy
+over-slide layout, and combine it with `--no-subtitle-box` only for a
+user-approved plain-caption render.
 Pass `--no-subtitles` to keep the public MP4 caption-free while still writing
 the SRT/VTT timing sidecars required by the internal timeline and QA.
 
@@ -957,13 +1059,26 @@ Before calling the video done:
 - If visual attention is enabled, `check_video_package.py --strict-attention`
   passes with `--require-visual-cues --require-cue-plan --require-timeline
   --require-word-timings`.
+- If named Author Notes animations are enabled, strict QA passes with
+  `--animation-manifest --animation-report --require-animations` and reports
+  complete mapping plus pixel-motion coverage for every effect.
+- For editable `source_kind: pptx`, strict QA also proves the delivered deck,
+  manifest, and render report share one SHA-256 and exact shape-id mapping.
 - `timeline.json` exists and every chunk has the expected audio window,
   subtitle cues, and accepted visual cue before paper2reel consumes it.
 - If subtitles are requested, `add_subtitles.py` uses the same `--start-pad`,
-  `--pad-tail`, and `--script-json` as `render_video.py`.
+  `--pad-tail`, and `--script-json` as `render_video.py`, writes
+  `subtitle_timing_alignment.json`, and strict QA passes with
+  `--require-subtitle-word-alignment`.
 
 ## References
 
 - `references/script_json_schema.md` - narration JSON shape and TTS gotchas.
 - `references/render_video.md` - compositor internals and ffmpeg debugging.
 - `references/visual_cues.md` - visual cue JSON schema and examples.
+- `references/animations.md` - PPT Master/native/MP4 animation ownership,
+  supported-effect matrix, timing alignment, and strict QA contract.
+- `references/editable_pptx.md` - no-LLM local rerender protocol and verified
+  add/delete/modify behavior.
+- `ppt2video/SKILL.md` - embedded general PPTX-to-video sub-skill and editable
+  rerender workflow.
