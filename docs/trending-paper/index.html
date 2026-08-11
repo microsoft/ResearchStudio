@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-theme-preference="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Weekly and daily Hugging Face research papers transformed into ResearchStudio Reels.">
+  <title>Trending Paper · ResearchStudio</title>
+  <link rel="canonical" href="https://microsoft.github.io/ResearchStudio/trending-paper/">
+  <script src="theme.js?v=20260812"></script>
+  <link rel="stylesheet" href="daily.css?v=20260812">
+  <link rel="icon" href="logo.svg?v=20260812" type="image/svg+xml">
+</head>
+<body id="top">
+  <div class="page-controls" aria-label="Page controls">
+    <details class="theme-menu" data-theme-menu>
+      <summary aria-label="Choose theme"><span data-theme-label>Theme</span><span class="theme-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="theme-menu-panel">
+        <button type="button" data-theme-option="system">System</button>
+        <button type="button" data-theme-option="dark">Dark</button>
+        <button type="button" data-theme-option="light">Light</button>
+      </div>
+    </details>
+  </div>
+  <header class="topbar-wrap">
+    <nav class="topbar" aria-label="Primary navigation">
+      <a class="brand" href="https://microsoft.github.io/ResearchStudio/" rel="home">
+        <img class="brand-logo" src="logo.svg?v=20260812" alt="" width="28" height="28">
+        <span>ResearchStudio</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="https://microsoft.github.io/ResearchStudio/idea-page/">Explore Idea</a></li>
+        <li><a href="https://microsoft.github.io/ResearchStudio/reel-page/">Explore Reel</a></li>
+        <li><a class="active" href="./" aria-current="page">Trending Paper</a></li>
+      </ul>
+      <div class="nav__cta">
+        <a class="github-link" href="https://github.com/microsoft/ResearchStudio" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1.01-.02-1.99-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.97.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.06 0 0 .97-.31 3.19 1.18a11.1 11.1 0 0 1 5.81 0c2.22-1.49 3.19-1.18 3.19-1.18.63 1.59.23 2.77.11 3.06.74.81 1.19 1.84 1.19 3.1 0 4.43-2.69 5.4-5.26 5.69.41.36.78 1.07.78 2.16 0 1.56-.01 2.81-.01 3.19 0 .31.21.68.8.56 4.56-1.52 7.85-5.83 7.85-10.91C23.5 5.65 18.35.5 12 .5z"/></svg>
+          <span>View on GitHub</span>
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="page-title">
+      <div class="title-row">
+        <div>
+          <h1 id="page-title">Trending Paper</h1>
+          <div class="intro">
+            <p class="intro-lead">Meet the standout research through <strong><a class="reels-accent" href="https://microsoft.github.io/ResearchStudio/reel-page/" target="_blank" rel="noopener noreferrer">ResearchStudio Reels</a></strong></p>
+            <p class="intro-detail"><span>Each paper transformed into a visual <strong>poster</strong>, a narrated <strong>video</strong>, and an accessible <strong>blog</strong>,</span><span>so you can scan, watch, or read it your way.</span></p>
+          </div>
+        </div>
+      </div>
+      <div class="edition-toolbar">
+        <div class="mode-switch" role="group" aria-label="Paper edition frequency">
+          <button type="button" data-mode="weekly" aria-pressed="true">Weekly</button>
+          <button type="button" data-mode="daily" aria-pressed="false">Daily</button>
+        </div>
+        <div class="edition-control" aria-label="Edition date">
+          <label id="edition-label" class="sr-only" for="edition-select">Date</label>
+          <button id="edition-older" class="edition-step" type="button" aria-label="Previous date" disabled>‹</button>
+          <select id="edition-select" aria-labelledby="edition-label" disabled>
+            <option>Loading…</option>
+          </select>
+          <button id="edition-newer" class="edition-step" type="button" aria-label="Next date" disabled>›</button>
+        </div>
+        <span id="paper-count" class="count-pill" role="status" aria-live="polite" hidden></span>
+      </div>
+      <div class="catalog-toolbar" role="search" aria-label="Search and sort papers">
+        <label class="search-control" for="paper-search">
+          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m21 21-4.35-4.35m2.35-5.4A7.75 7.75 0 1 1 3.5 11.25a7.75 7.75 0 0 1 15.5 0Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span class="sr-only">Search papers in this edition</span>
+          <input id="paper-search" type="search" placeholder="Search title or arXiv ID" aria-controls="paper-grid" autocomplete="off">
+        </label>
+        <div class="sort-control">
+          <span class="sort-label">Sort by</span>
+          <button id="paper-sort" class="sort-toggle" type="button" data-sort="votes-desc"
+                  aria-controls="paper-grid"
+                  aria-label="Sorted by Hugging Face votes, most voted first. Activate for least voted first."
+                  title="Most voted first">
+            <span class="brand-inline-icon hf-mark sort-hf-mark" aria-hidden="true"></span>
+            <span class="sort-toggle-label">Voted</span>
+            <span class="sort-arrows" aria-hidden="true">
+              <span class="sort-arrow sort-arrow-up"></span>
+              <span class="sort-arrow sort-arrow-down"></span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section aria-live="polite" aria-busy="true" id="paper-region">
+      <div id="loading" class="message-card">Loading the latest weekly edition…</div>
+      <div id="paper-grid" class="paper-grid" hidden></div>
+      <div id="empty" class="message-card" hidden>No published papers are available for this selection yet.</div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span>ResearchStudio</span>
+        <p>Open-source AI workspace for the full research journey.</p>
+      </div>
+      <nav class="footer-links" aria-label="Project links">
+        <a href="https://microsoft.github.io/ResearchStudio/" target="_blank" rel="noopener noreferrer">Project Site ↗</a>
+        <a href="https://github.com/microsoft/ResearchStudio" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+        <a href="https://www.alphaxiv.org/abs/2607.04439" target="_blank" rel="noopener noreferrer">Idea Paper ↗</a>
+        <a href="https://www.alphaxiv.org/abs/2607.04438" target="_blank" rel="noopener noreferrer">Reel Paper ↗</a>
+      </nav>
+      <p class="footer-notice"><span aria-hidden="true">◇</span> For research purposes only. Please do not abuse, scan, or attack this service.</p>
+      <div class="footer-meta">
+        <span>© 2026 ResearchStudio Contributors.</span>
+        <span class="footer-support">Demo hosting supported by NTU.</span>
+        <a href="mailto:researchstudio@163.com">Contact: researchstudio@163.com</a>
+      </div>
+      <p class="footer-source">Paper information sourced from <a id="source-link" href="https://huggingface.co/papers" target="_blank" rel="noopener noreferrer">Hugging Face Daily Papers</a>.</p>
+    </div>
+  </footer>
+
+  <template id="paper-template">
+    <article class="paper-card">
+      <div class="poster-shell">
+        <a class="poster-link" target="_blank" rel="noopener noreferrer" data-open-view="reel">
+          <img class="poster" alt="" loading="lazy" width="2016" height="1210">
+          <span class="rank"></span>
+        </a>
+      </div>
+      <div class="paper-body">
+        <div class="metadata-row">
+          <a class="hf-score metadata-chip" target="_blank" rel="noopener noreferrer">
+            <span class="brand-inline-icon hf-mark" aria-hidden="true"></span>
+            <span class="hf-vote-count"></span>
+          </a>
+          <a class="arxiv-chip metadata-chip" target="_blank" rel="noopener noreferrer">
+            <span class="brand-inline-icon arxiv-mark" aria-hidden="true"></span>
+            <span class="paper-id"></span>
+          </a>
+          <a class="github-chip metadata-chip" target="_blank" rel="noopener noreferrer" hidden>
+            <svg class="github-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .7a11.5 11.5 0 0 0-3.64 22.4c.58.1.79-.25.79-.56v-2.24c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.28-1.7-1.28-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.57-.29-5.27-1.28-5.27-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.47.11-3.05 0 0 .97-.31 3.16 1.18a10.9 10.9 0 0 1 5.76 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.58.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.71 5.39-5.29 5.68.42.36.79 1.06.79 2.14v3.18c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z"/></svg>
+            <span class="github-star-count"></span>
+          </a>
+        </div>
+        <h2 class="paper-title"></h2>
+      </div>
+    </article>
+  </template>
+
+  <dialog id="paper-viewer" class="paper-viewer" aria-labelledby="viewer-title">
+    <div class="viewer-shell">
+      <header class="viewer-header">
+        <button id="viewer-back" class="viewer-back" type="button"><span aria-hidden="true">←</span> Back</button>
+        <div class="viewer-heading">
+          <span id="viewer-category">Hugging Face Paper</span>
+          <h2 id="viewer-title"></h2>
+        </div>
+        <div class="viewer-tabs" role="tablist" aria-label="Paper viewing mode">
+          <button id="reel-tab" role="tab" aria-selected="true" aria-controls="reel-panel" type="button">Reel</button>
+          <button id="paper-tab" role="tab" aria-selected="false" aria-controls="paper-panel" type="button">Paper</button>
+        </div>
+        <div class="viewer-actions">
+          <a id="viewer-qa" class="button" target="_blank" rel="noopener noreferrer">Ask a question</a>
+          <a id="viewer-external" class="viewer-external" target="_blank" rel="noopener noreferrer">Open in New Tab <span aria-hidden="true">↗</span></a>
+        </div>
+      </header>
+      <div class="viewer-stage">
+        <div id="viewer-loading" class="viewer-loading" role="status">Loading Reel…</div>
+        <section id="reel-panel" role="tabpanel" aria-labelledby="reel-tab">
+          <iframe id="reel-frame" title="ResearchStudio Reel" src="about:blank" allow="fullscreen" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"></iframe>
+        </section>
+        <section id="paper-panel" role="tabpanel" aria-labelledby="paper-tab" hidden>
+          <div class="pdf-fallback">If the embedded reader is unavailable, <a id="pdf-fallback-link" target="_blank" rel="noopener noreferrer">open the PDF in a new tab</a>.</div>
+          <iframe id="paper-frame" title="Original research paper PDF" src="about:blank"></iframe>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="daily.js?v=20260812" defer></script>
+</body>
+</html>
