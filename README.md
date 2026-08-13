@@ -47,8 +47,9 @@ The skills run on [Claude Code](https://docs.claude.com/en/docs/claude-code/over
 
 ## News 🔥🔥🔥
 
-- [**2026-07-08**] **[ResearchStudio-Reel](ResearchStudio-Reel/) is released** — the *post-paper* half: turn a finished paper PDF into the artifacts a publication needs — a print-ready poster, a narrated walkthrough video, a bilingual blog post, and an interactive reel viewer.
-- [**2026-07-03**] **[ResearchStudio-Idea](ResearchStudio-Idea/) is released** — the *pre-paper* half: turn an under-specified research direction into a reviewer-defensible, implementable idea, grounded in an empirical taxonomy induced from a large-scale corpus of ICLR / ICML / NeurIPS submissions.
+- [**2026-08-13**] `feature` **[IdeaSpark](ResearchStudio-Idea/) keeps the whole user query** — the user query is persisted verbatim and read by every phase that reasons about intent; papers named in it without a link are resolved and deep-read; and a stated solution direction reaches idea selection, which must record whether it followed or departed from that direction, and why.
+- [**2026-07-08**] `release` **[ResearchStudio-Reel](ResearchStudio-Reel/) is released** — the *post-paper* half: turn a finished paper PDF into the artifacts a publication needs — a print-ready poster, a narrated walkthrough video, a bilingual blog post, and an interactive reel viewer.
+- [**2026-07-03**] `release` **[ResearchStudio-Idea](ResearchStudio-Idea/) is released** — the *pre-paper* half: turn an under-specified research direction into a reviewer-defensible, implementable idea, grounded in an empirical taxonomy induced from a large-scale corpus of ICLR / ICML / NeurIPS submissions.
 
 ## Quick Start
 
