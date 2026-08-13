@@ -112,3 +112,60 @@ if __name__ == "__main__":
     ap.add_argument("query", help="The research-direction query string to scan")
     args = ap.parse_args()
     print(json.dumps(extract_refs_from_query(args.query), indent=2, ensure_ascii=False))
+
+
+def _tnorm(s: str) -> str:
+    return ' '.join(''.join(c.lower() if c.isalnum() else ' ' for c in (s or '')).split())
+
+
+def resolve_named_paper(name: str, ss_search=None, ax_search=None, max_results: int = 8):
+    """Turn a bare system name ('Genie', 'AdaWorld') into a real connector record.
+
+    A user who name-drops a system writes its NICKNAME, not its title, so the >=0.9
+    full-title similarity that `add_host_refs` uses is the wrong gate here: 'Genie'
+    against 'Genie: Generative Interactive Environments' scores nowhere near it, and
+    every named system fails. The gate that fits a nickname is CONTAINMENT — the name
+    has to appear in the returned title — ranked title-initial first, because a system
+    paper leads with its own name and a paper that merely mentions it does not.
+
+    Returns the chosen record, or None. None is an honest outcome: an unresolved name
+    stays a title ref, which still reserves its U slot and still shows up in the
+    fulltext index as a failed fetch, so the omission is visible rather than silent.
+    """
+    n = _tnorm(name)
+    if not n:
+        return None
+    cands = []
+    for fn, kw in ((ss_search, {'since_year': 2015, 'max_results': max_results}),
+                   (ax_search, {'max_results': max_results})):
+        if not fn:
+            continue
+        try:
+            cands += fn(name, **kw) or []
+        except Exception:
+            pass
+    lead = []
+    seen = set()
+    for c in cands:
+        tn = _tnorm(c.get('title'))
+        if not tn.startswith(n) or tn in seen:
+            continue          # merely MENTIONING the name is not being named by it
+        seen.add(tn)
+        lead.append(c)
+    if len(lead) != 1:
+        # 0 -> nothing named itself this. >1 -> the nickname is ambiguous: measured on
+        # 'Genie', preferring the newest picked 'Genie Envisioner' over 'Genie: Generative
+        # Interactive Environments'. A wrong U-tier entry is never capped, is always
+        # deep-read and becomes an anchor, so a silent wrong pick costs more than an
+        # honest miss. Refuse and let the caller report the candidates.
+        return None if not lead else {'_ambiguous': [c.get('title') for c in lead][:4]}
+    return lead[0]
+
+
+def _year_of(rec: dict) -> int:
+    for k in ('year', 'published', 'date', 'year_month'):
+        v = str(rec.get(k) or '')
+        m = re.search(r'(19|20)\d{2}', v)
+        if m:
+            return int(m.group(0))
+    return 0

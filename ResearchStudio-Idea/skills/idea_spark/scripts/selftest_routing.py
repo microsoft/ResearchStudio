@@ -17,6 +17,9 @@ real runs rarely (or never) exercise, so a skill edit cannot silently break them
   T17 2nd abandon carrying NEW upheld obstacle findings -> directed 3rd attempt
   T18 abandon at candidate-cycle cap (3 cycles used) -> terminal
   T19 obstacle death then NEW subsumption threat -> retry (new negative anchor)
+  T20 audit bounce archives the rejected report (bounce is counted, not silent)
+  T21 two rejected audits -> bounce budget spent, routes to abandon (no livelock)
+  T22 two rejected coherence outputs -> gate declared unable to complete (no livelock)
   T9  post-archive state -> Phase 1 emit carries BOTTLENECK-RETRY MODE anchors
   T10 sibling run exists -> Phase 2 emit carries the CROSS-RUN DEDUP soft anchors
   T11 merger: authorized rewrite_falsification is applied (strengthen-only route)
@@ -362,6 +365,32 @@ def main() -> int:
               'NEW binding directive' in out and 'bottleneck-level retry' not in out
               and 'phase_3_failed' not in out, out[:400])
 
+        # T20/T21 — the advance-over-upheld bounce is bounded and archives
+        disp_up = [{'finding_ref': f[:40], 'status': 'upheld', 'basis': 'stands'}
+                   for f in (FINDING, FINDING2, FINDING3)]
+        d = tmp / 'T20' / 'run'; base_run(d, with_critique=crit('advance', disp_up))
+        out = run_next(d)
+        check('T20 bounce archives the rejected report',
+              'Re-run Phase 3.2' in out and 'rejected_1' in out, out[:400])
+
+        d = tmp / 'T21' / 'run'; base_run(d, with_critique=crit('advance', disp_up))
+        for k in (1, 2):
+            (d / 'phase3_critique' / f'rejected_{k}').mkdir(parents=True, exist_ok=True)
+        out = run_next(d)
+        check('T21 spent bounce budget routes to abandon',
+              'Archive attempt 1' in out and 'Re-run Phase 3.2' not in out, out[:400])
+
+        # T22 — the 2.3 malformed redo is bounded
+        d = tmp / 'T22' / 'run'; base_run(d, blocking=False)
+        wj(d / 'phase2_coherence' / 'phase2_coherence_output.json', {'verdict': 'GARBAGE'})
+        shutil.rmtree(d / 'phase3_collision', ignore_errors=True)
+        shutil.rmtree(d / 'phase3_critique', ignore_errors=True)
+        for k in (1, 2):
+            (d / 'phase2_coherence' / f'rejected_{k}').mkdir(parents=True, exist_ok=True)
+        out = run_next(d)
+        check('T22 coherence redo budget spent -> gate declared unable',
+              'could not complete' in out and 'Redo Phase 2.3' not in out, out[:400])
+
         # T11 — merger applies an AUTHORIZED rewrite_falsification
         d = tmp / 'T11'; d.mkdir(parents=True)
         cand_p = d / 'cand.json'; wj(cand_p, candidate())
@@ -467,6 +496,36 @@ def main() -> int:
                               capture_output=True, text=True, timeout=120, env=env_off_p).stdout)
         check('P4 env=off skips partition -> tagging',
               'lit_table.md' in out and 'relevance partition' not in out, out[:400])
+
+        # Q1-Q2 — the user's question is an ARTIFACT, not a string the host retypes.
+        # Every phase that reasons about intent (0.4 partition, 0.5 recall, 1, 2.1) must be
+        # pointed at phase0/user_query.txt. Before this, Phase 2.1 could not see the user's
+        # words at all: it received only phase1_output.json's 10-slot intake summary, so a
+        # stated direction ("I want fusion, not search") was unreachable by the generator.
+        d = tmp / 'Q1' / 'run'; phase0_preTag(d)
+        (d / 'phase0' / 'user_query.txt').write_text('fuse the modalities, do not search\n')
+        out = run_next(d)
+        check('Q1 partition emit cites user_query.txt, not a retyped string',
+              'user_query.txt' in out and 'relevance partition' in out, out[:400])
+
+        d = tmp / 'Q2' / 'run'; phase0_stage(d)
+        (d / 'phase0' / 'user_query.txt').write_text('fuse the modalities, do not search\n')
+        for m in ('.partition_applied', '.coverage_check_done'):
+            (d / 'phase0' / m).touch()
+        wj(d / 'phase0' / 'fulltext_cache.json', {})
+        wj(d / 'phase1' / 'phase1_output.json', {'state': 'proceed', 'intake': {}})
+        out = run_next(d)
+        check('Q2 Phase 2.1 emit cites user_query.txt (was blind to the user)',
+              'user_query.txt' in out and '2.1' in out, out[:400])
+
+        # Q3 — a name-dropped paper must be reachable. The URL/ID regex only sees links,
+        # so "based on AdaWorld" produced no user_ref, no U-tier fetch, and no anchor — the
+        # emit has to ASK for the names, not bury add_user_ref in a notes line.
+        d = tmp / 'Q3' / 'never_created'
+        out = subprocess.run([sys.executable, str(RUN_PY), 'next', '--dir', str(d)],
+                             capture_output=True, text=True, timeout=120).stdout
+        check('Q3 fresh-run emit requests named_papers + offers --named-papers',
+              'named_papers' in out and '--named-papers' in out, out[:400])
 
         # C1 — lit_table done, no nominations -> coverage-check emit
         d = tmp / 'C1' / 'run'; phase0_stage(d)

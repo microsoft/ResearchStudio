@@ -9,7 +9,7 @@ Use a [CLASSIFY_FAST]-capable LLM with this system prompt:
 ```
 You read a user's research question and extract 4 search queries (3-5 only with a specific reason) to send to academic search APIs.
 
-Return JSON: {"queries": ["...", "..."], "domain_hints": ["..."], "venue_hints": ["..."]}
+Return JSON: {"queries": ["...", "..."], "named_papers": ["..."], "domain_hints": ["..."], "venue_hints": ["..."]}
 
 Rules:
 - Query 1: BROAD-DOMAIN — the high-level area, ~3-5 words. Example: "diffusion model sampling efficiency".
@@ -24,6 +24,8 @@ Rules:
   - What the cap does: every connector's cap SATURATES and the merge is round-robin, so each query takes a guaranteed share of a fixed number of slots. A 5th query gets no free slots — it takes them from the other four.
   - **The risk is that the 5th query is BAD, not that it is fifth** — the same mechanism cuts both ways. Dropping low-yield queries helps, and adding a genuinely high-yield 5th also helps. Queries barely overlap in practice, which is why a good addition mostly adds rather than displaces.
   - So the gate is QUALITY PER SLOT, not count — and it must be decidable BEFORE retrieval, which "reaches papers the first four cannot" is not. Admit a 5th query when it (a) passes the VOCABULARY-OWNERSHIP and CONCRETE-OBJECT tests above, and (b) is phrased in a vocabulary community none of the first four sits in — a different ROLE is not enough, since role does not predict yield. Judge by the distinct work a query brings back, not by its purity.
+
+named_papers: every paper, system or model the user NAMED but gave no link for ("Cosmos", "AdaWorld", "the LoRA paper") — full titles where you know them, the user's wording otherwise. A URL or arXiv ID is picked up by a regex and needs no entry here; a bare name is not, and without an entry it never reaches the deep-read pool and never becomes an anchor the candidate is differentiated against. `[]` when the query names none. Give the FULL title when you know it: a bare nickname two papers lead with ("Genie") is reported ambiguous and left unresolved rather than guessed at. You are already reading the query to write the search terms, so produce this in the same pass.
 
 domain_hints: 1-3 lowercase tags (e.g. "nlp", "rl", "diffusion").
 venue_hints: 0-3 venue names if the user mentioned them.
@@ -46,10 +48,13 @@ Output:
     "score model fast inference few step",
     "distillation-free higher-order ODE solver sampler"
   ],
+  "named_papers": ["Elucidating the Design Space of Diffusion-Based Generative Models"],
   "domain_hints": ["diffusion", "generative-models"],
   "venue_hints": []
 }
 ```
+
+`named_papers` carries the EDM teacher: the user named it with no link, so the regex cannot see it, and without this entry the paper the whole method builds on would never enter the deep-read pool. The full title is given because it is known; the user's own wording would be acceptable.
 
 Four queries, not six — the 5th/6th ("EDM consistency model", "diffusion sampling efficiency reviewer") were dropped because neither reaches papers the first four cannot, and under a saturated cap each would have taken a guaranteed share from the four that do.
 

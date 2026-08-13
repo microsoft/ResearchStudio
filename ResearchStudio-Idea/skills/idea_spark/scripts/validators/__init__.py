@@ -43,10 +43,11 @@ from .implementability_completeness import validate_implementability_completenes
 from .implementability_readability import validate_implementability_readability
 from .threat_grounding import validate_threat_grounding
 from .alias_collateral_coverage import validate_alias_collateral_coverage
+from .user_direction import validate_user_direction
 
 
 def run_all_validators(phase2_path=None, phase3_path=None, phase4_path=None, phase1_path=None,
-                       phase4_impl_path=None) -> list[dict]:
+                       phase4_impl_path=None, phase2_select_path=None) -> list[dict]:
     """Run all validators given which phase outputs are available."""
     findings = []
 
@@ -71,5 +72,9 @@ def run_all_validators(phase2_path=None, phase3_path=None, phase4_path=None, pha
         findings.extend(validate_implementability_readability(phase4_impl_path))
     if phase3_path:
         findings.extend(validate_threat_grounding(phase3_path))
+
+    # The direction lives in phase1's intake; the disposition lives in the 2.1 selection.
+    if phase1_path and phase2_select_path:
+        findings.extend(validate_user_direction(phase1_path, phase2_select_path))
 
     return findings

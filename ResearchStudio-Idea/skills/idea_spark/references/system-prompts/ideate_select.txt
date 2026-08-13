@@ -305,6 +305,18 @@ Output (strict JSON):
 
   "deliverable_coverage": "<one line from the Step 3b ANCHOR OBLIGATION: the declared intake.contribution_type, and where in the anchor LEG the load-bearing deliverable of that type lives — the anchor's chosen_pattern_id, or its companion_pattern when the chosen pattern is the load-bearing framing move (e.g. 'method — anchor gap → architectural_operator_substitution yields the runnable fix', or 'method — anchor gap → assumption_audit_and_pivot framing + companion controlled_diagnostic_design ships the empirical separation').>",
 
+  "user_direction_disposition": {
+    // Required whenever intake.user_direction != n_a. The user often names the SHAPE of the
+    // solution they came in expecting. Hard rule 10 in Phase 1 exists because a solution named
+    // before diagnosis gets built faithfully and yields an incremental idea, so their direction
+    // does NOT enter gap selection — you choose the anchor on the usual criteria and nothing here
+    // overrides that. What is forbidden is dropping it silently.
+    "verdict": "adopted | departed | n_a",
+    "user_wanted": "<VERBATIM from intake.user_direction; omit when n_a>",
+    "chosen": "<what the anchor gap + pattern composition actually targets; omit when n_a>",
+    "why_departed": "<REQUIRED when departed. Argue from the GAP: what the chosen path closes that theirs does not, or what theirs costs (a new architecture, paired data, a retrain) that the chosen path avoids. 'Cleaner' and 'more general' are not reasons. If you cannot write this, you have not actually justified departing and should re-examine the anchor.>"
+  },
+
   "composition_note": "<empty string when the selection carries ≥2 distinct patterns (chain and/or earned siblings). REQUIRED non-empty ONLY for a single-pattern selection: why this one move is deep and complete on its own, and why any second pattern would be decoration. This is the sanctioned exception to the ≥2-pattern default; the Phase 3.2 audit weighs this defense.>",
 
   "pattern_saturation": {

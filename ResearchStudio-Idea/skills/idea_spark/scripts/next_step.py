@@ -88,6 +88,20 @@ def _attempt_dirs(d: Path) -> list:
     return sorted(out, key=lambda p: int(p.name[8:]))
 
 
+def _rejected_count(phase_dir: Path) -> int:
+    """How many non-compliant reports this phase has already had archived.
+
+    `next` is read-only, so a bounce cannot increment a counter itself: each
+    bounce emit carries a RUN command that ARCHIVES the offending report into
+    `rejected_<n>/`, and the count is read back off disk here. Archiving also
+    keeps the rejected reports for forensics instead of overwriting them.
+    """
+    if not phase_dir.exists():
+        return 0
+    return len([x for x in phase_dir.iterdir()
+                if x.is_dir() and x.name.startswith('rejected_')])
+
+
 def _lessons(doc: dict) -> set:
     """Extract the LESSON SET of one audit report: every binding piece of
     information a failed attempt produced, as (kind, normalized-id) pairs.
@@ -172,20 +186,23 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                      'Phase 0: produce queries FIRST, then run retrieval', 'llm_subagent',
                      prompt=str(ref / 'intent-recognition.md') + ' (Map mode — read it yourself, no sub-agent needed for query writing)',
                      inputs=['the user query'],
-                     output='4 search queries (3-5 only with a stated reason) — incl. one ESCAPE-MECHANISM query in '
-                            'the vocabulary THIS FIELD itself uses for that solution; caps saturate and the '
-                            'merge is round-robin, so an extra low-yield query spends slots instead of '
-                            'adding coverage',
+                     output='(a) 4 search queries (3-5 only with a stated reason) — incl. one ESCAPE-MECHANISM '
+                            'query in the vocabulary THIS FIELD itself uses for that solution; caps saturate and '
+                            'the merge is round-robin, so an extra low-yield query spends slots instead of adding '
+                            'coverage. (b) named_papers: every paper/system the user NAMED but gave no link for '
+                            '— you are already reading the query, so list them in the same pass',
                      run=[skill_cd + f'phase0 --query "{q}" '
-                          f'--queries "q1|q2|q3|q4" --out "{d}/phase0/"'],
+                          f'--queries "q1|q2|q3|q4" '
+                          f'--named-papers "Title A|Title B" --out "{d}/phase0/"'],
                      notes='Passing --queries up front skips a full sentinel round-trip (rc=10). '
                            'Retrieval takes 3-10 min (openreview alone budgets 600s) — set your '
-                           'Bash timeout >= 600s or run in background. If the user query names '
-                           'papers by TITLE (e.g. "based on the LoRA paper"), register each via: '
-                           + skill_cd + f'add_user_ref --out "{p0}/" --title "<full title>" '
-                           '--raw-match "<user phrasing>"  (deterministic merge; do NOT hand-edit '
-                           'user_refs.json — some harnesses refuse to overwrite files never '
-                           'read). OOD short-circuit: if the query matches intake-routing.md '
+                           'Bash timeout >= 600s or run in background. `--named-papers` is how a '
+                           'name-dropped system reaches the U fetch tier: the URL/ID regex only sees '
+                           'links, so a paper the user named in prose is otherwise invisible to every '
+                           'later phase and never becomes an anchor. Drop the flag when the query names '
+                           'none. To add one AFTER this step, use add_user_ref (entry-point table) — do '
+                           'NOT hand-edit user_refs.json, some harnesses refuse to overwrite files never '
+                           'read. OOD short-circuit: if the query matches intake-routing.md '
                            'trigger #1/#2, skip retrieval and go straight to Phase 1 with a '
                            'do_not_generate routing.',
                      run_dir=d)
@@ -204,7 +221,8 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                          'Phase 0.4 — relevance partition (core / adjacent / off_topic)',
                          'llm_subagent',
                          prompt=str(ref / 'relevance-partition-rubric.md'),
-                         inputs=["the USER'S ORIGINAL research question", str(p0 / 'lit_results.json')],
+                         inputs=[str(p0 / 'user_query.txt') + " (the USER'S ORIGINAL research question, verbatim)",
+                                 str(p0 / 'lit_results.json')],
                          output=str(part_file),
                          notes='Use YOUR OWN model (open-ended relevance judgment — do NOT '
                                'downgrade). Read every record\'s title+abstract and label each '
@@ -256,7 +274,7 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
             return _emit('lit_table.md written; running the coverage check before fulltext.',
                          'Phase 0.5 — coverage check (name load-bearing work the pool missed)',
                          'llm_subagent',
-                         inputs=['the USER\'S ORIGINAL research question',
+                         inputs=[str(p0 / 'user_query.txt') + " (the USER'S ORIGINAL research question, verbatim)",
                                  str(p0 / 'lit_table.md')],
                          output=str(noms),
                          notes='Use YOUR OWN model (open-ended judgment, do NOT downgrade). Read the '
@@ -336,7 +354,7 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
             ft_cache_line += (' — cheaper access: read ' + str(p0 / 'fulltext' / 'index.json') +
                               ' first (per-paper split view with tier/source_used/warning), then open '
                               'only the candidate-pool papers\' .md files; the .json blob stays canonical')
-        p1_inputs = ['the user query + intake context',
+        p1_inputs = [str(p0 / 'user_query.txt') + ' (the user question, verbatim) + intake context',
                      str(p0 / 'lit_table.md'),
                      ft_cache_line,
                      str(p0 / 'lit_results.json')]
@@ -486,7 +504,9 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                      'Phase 2.1 + 2.2 — ONE sub-agent, TWO output files', 'llm_subagent',
                      prompt=str(prompts / 'ideate_select.txt') + ' THEN ' + str(prompts / 'ideate_generate.txt'),
                      run=[prep_cmd],
-                     inputs=[str(p1),
+                     inputs=[str(p0 / 'user_query.txt') + ' (the user question, verbatim — '
+                             'phase1_output.json.intake is a summary of it, not a substitute)',
+                             str(p1),
                              str(ref / 'ideation-patterns' / 'overview.md'),
                              str(ref / 'ideation-patterns' / 'companion-combos.md'),
                              str(p0 / 'lit_table.md'),
@@ -584,14 +604,38 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
     p2c_doc = _read_json(p2c) or {}
     p2c_verdict = p2c_doc.get('verdict')
     if p2c.exists() and p2c_verdict not in ('pass', 'patched'):
-        # Malformed / truncated 2.3 output must not silently bypass the gate.
+        # Malformed / truncated 2.3 output must not silently bypass the gate —
+        # but the redo is BOUNDED: a gate that cannot emit a valid verdict in
+        # three tries is an environment failure, not a candidate to keep
+        # rerolling, and an unbounded redo would spend the run in a livelock.
+        _rej2 = _rejected_count(p2c_dir)
+        if _rej2 >= 2:
+            return _emit(f'Coherence gate produced an invalid verdict {_rej2 + 1} times '
+                         f'(latest: {p2c_verdict!r}) — the gate cannot complete, and it is '
+                         'MANDATORY, so the run cannot proceed past it.',
+                         'Write phase_3_failed.md (coherence gate could not complete)',
+                         'llm_subagent',
+                         inputs=[str(p2c) + ' (the latest malformed output)',
+                                 str(p2c_dir) + '/rejected_* (the earlier ones)'],
+                         output=str(d / 'phase_3_failed.md'),
+                         notes='Record that the blocker is the GATE, not the candidate: state '
+                               'the invalid verdict values seen, that Phase 2.3 is mandatory and '
+                               'cannot be bypassed, and the user-side options (re-run the gate '
+                               'manually against coherence_trace.txt, check the sub-agent/context '
+                               'setup, or restart the direction). Do NOT present the candidate as '
+                               'having failed on its merits.',
+                         run_dir=d)
+        _arch2 = p2c_dir / f'rejected_{_rej2 + 1}'
         return _emit('Coherence output exists but its verdict is invalid '
                      f'({p2c_verdict!r}) — the gate did not complete.',
                      'Redo Phase 2.3 — coherence gate (dry-run trace)', 'llm_subagent',
                      prompt=str(prompts / 'coherence_trace.txt'),
                      inputs=[str(p2g), str(p2s)],
-                     output=str(p2c) + ' (overwrite the malformed file)',
-                     notes='MUST be a FRESH context. Valid verdicts: pass | patched.',
+                     output=str(p2c),
+                     run=[f'mkdir -p "{_arch2}" && mv "{p2c}" "{_arch2}/"'],
+                     notes='Run the RUN command FIRST — it archives the malformed file (which is '
+                           f'also how the redo stays bounded; this is redo {_rej2 + 1} of 3). '
+                           'Then run the gate in a FRESH context. Valid verdicts: pass | patched.',
                      run_dir=d)
     if p2c_verdict == 'patched' and not refined.exists():
         return _emit('Coherence gate emitted repairs; merger not yet run.',
@@ -691,6 +735,19 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
     # run (host truncated the emit; audit judged without the evidence and said
     # advance against an executed refutation). The guard is deterministic: it
     # checks presence/coverage of blocking_findings_disposition[], not quality.
+    audit_noncompliant = False
+    _p3q_dir = d / 'phase3_critique'
+    _rej3 = _rejected_count(_p3q_dir)
+    if blocking and verdict in ('advance', 'revise') and _rej3 >= 2:
+        # BOUNDED GUARD. The three checks below each demand the audit REWRITE its
+        # report; an audit that keeps re-asserting the same non-compliant verdict
+        # would otherwise livelock: the same emit forever, one full audit call
+        # burned per turn, with nothing to stop it. After two archived rejections the executed
+        # blocking findings stand un-cleared by any compliant audit, which is
+        # exactly what `abandon` means here — so routing falls through to the
+        # information-gain retry, whose own budget bounds what follows.
+        audit_noncompliant = True
+        verdict = 'abandon'
     if blocking and verdict in ('advance', 'revise'):
         dispositions = [dd for dd in (p3q_doc.get('blocking_findings_disposition') or [])
                         if isinstance(dd, dict)]
@@ -748,8 +805,12 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                                  str(p3c_dir / 'collision_hits.json'),
                                  str(ref / 'anti-patterns.md'),
                                  str(ref / 'ideation-sub-patterns') + '/<each cited C##>.md'],
+                         run=[f'mkdir -p "{_p3q_dir}/rejected_{_rej3 + 1}" && mv "{p3q}" "{_p3q_dir}/rejected_{_rej3 + 1}/" && {{ mv "{recheck_p}" "{_p3q_dir}/rejected_{_rej3 + 1}/" 2>/dev/null || true; }}'],
                          output=str(p3q),
-                         notes='Regenerate the FULL audit. The re-checked findings count as '
+                         notes='Run the RUN command FIRST — it archives the rejected report, which is how '
+                               f'this bounce stays bounded (rejection {_rej3 + 1} of 2; after that the '
+                               'un-cleared findings route to abandon). Regenerate the FULL audit. '
+                               'The re-checked findings count as '
                                'UPHELD: verdict is capped at revise (targets confronting each) '
                                'or abandon (redesign → internal retry). Delete/overwrite the '
                                'stale refutation_recheck.json only if new dispositions differ.',
@@ -769,8 +830,12 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                                  str(p3c_dir / 'collision_hits.json'),
                                  str(ref / 'anti-patterns.md'),
                                  str(ref / 'ideation-sub-patterns') + '/<each cited C##>.md'],
+                         run=[f'mkdir -p "{_p3q_dir}/rejected_{_rej3 + 1}" && mv "{p3q}" "{_p3q_dir}/rejected_{_rej3 + 1}/" && {{ mv "{recheck_p}" "{_p3q_dir}/rejected_{_rej3 + 1}/" 2>/dev/null || true; }}'],
                          output=str(p3q),
-                         notes='Regenerate the FULL audit including blocking_findings_disposition[] '
+                         notes='Run the RUN command FIRST — it archives the rejected report, which is how '
+                               f'this bounce stays bounded (rejection {_rej3 + 1} of 2; after that the '
+                               'un-cleared findings route to abandon). Regenerate the FULL audit '
+                               'including blocking_findings_disposition[] '
                                '(one entry per finding; refute only via a concrete modeling/'
                                'arithmetic flaw — executed evidence outranks unexecuted reasoning). '
                                'While any finding is upheld, advance is forbidden: route revise '
@@ -790,8 +855,12 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                                  str(p3c_dir / 'collision_hits.json'),
                                  str(ref / 'anti-patterns.md'),
                                  str(ref / 'ideation-sub-patterns') + '/<each cited C##>.md'],
+                         run=[f'mkdir -p "{_p3q_dir}/rejected_{_rej3 + 1}" && mv "{p3q}" "{_p3q_dir}/rejected_{_rej3 + 1}/" && {{ mv "{recheck_p}" "{_p3q_dir}/rejected_{_rej3 + 1}/" 2>/dev/null || true; }}'],
                          output=str(p3q),
-                         notes='Keep the five checks; fix the verdict layer: upheld blocking '
+                         notes='Run the RUN command FIRST — it archives the rejected report, which is how '
+                               f'this bounce stays bounded (rejection {_rej3 + 1} of 2; after that the '
+                               'un-cleared findings route to abandon). Keep the five checks; '
+                               'fix the verdict layer: upheld blocking '
                                'findings cap the verdict at revise (fix_direction confronts the '
                                'obstacle) or abandon (redesign → internal retry).',
                          run_dir=d)
@@ -820,6 +889,11 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                             'phase3_collision', 'phase3_critique', 'phase3_revise')
                            if (d / n).exists())
         L_new = _lessons(p3q_doc)
+        if audit_noncompliant:
+            # No compliant audit ever dispositioned these, so they stand as
+            # lessons on their own executed evidence — otherwise a bounced-out
+            # audit would hand the retry an empty lesson set and terminate it.
+            L_new |= {('finding', str(u.get('finding', ''))[:40]) for u in blocking}
         seen_sets = [_lessons(_read_json(a / 'phase3_critique' /
                                          'phase3_critique_output.json') or {})
                      for a in attempts]
@@ -842,8 +916,10 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
                                'user-side options (drop direction / change framing / re-run with a '
                                'different direction). That file is the run\'s final output.',
                          run_dir=d)
+        _nc = (' (routed here because the audit could not produce a compliant report in 3 '
+               'tries — the executed blocking findings stand un-cleared)' if audit_noncompliant else '')
         if not attempts:
-            return _emit('Phase 3.2 verdict = abandon — internal retry available '
+            return _emit(f'Phase 3.2 verdict = abandon{_nc} — internal retry available '
                          '(no user re-invocation; the one-shot guarantee constrains asking the '
                          'user, not internal regeneration).',
                          'Archive attempt 1 and regenerate Phase 2.1+2.2 under negative constraints',
@@ -1077,7 +1153,8 @@ def next_step(run_dir: Path, root: Path, query: str | None = None) -> int:
     return _emit('All Phase 4 JSONs present; cards not yet rendered.',
                  'Validate, then render the idea cards', 'bash',
                  run=[skill_cd + 'validate '
-                      f'--phase2 "{canonical}" --phase3 "{phase3_for_validate}" '
+                      f'--phase1 "{p1}" --phase2 "{canonical}" '
+                      f'--phase2-select "{p2s}" --phase3 "{phase3_for_validate}" '
                       f'--phase4 "{p4_dir / "phase4_expansion.json"}" '
                       f'--phase4-impl "{p4_dir / "phase4_implementability.json"}"',
                       skill_cd + 'phase4_render '

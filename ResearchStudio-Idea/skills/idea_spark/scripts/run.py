@@ -563,6 +563,13 @@ def cmd_phase0(args) -> int:
     out_dir = Path(args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Persist the user's question verbatim. Every later phase that needs it — the 0.4
+    # partition, the 0.5 coverage check, Phase 1's intake, Phase 2.1 — currently receives
+    # it as a string the host retypes from the conversation, so a paraphrase there is
+    # inherited by everything downstream and no artifact can detect it. `next` is built to
+    # resume from disk after a compact, and this is the one input that was not on disk.
+    (out_dir / 'user_query.txt').write_text((args.query or '').strip() + '\n')
+
     # Extract user-provided paper references from the query string (URL / arxiv ID / DOI / OpenReview ID).
     # Title-based references must be filled by the host LLM during intent-extraction (the
     # sentinel schema includes a `user_refs[]` slot). We persist the regex hits here so the
@@ -579,6 +586,44 @@ def cmd_phase0(args) -> int:
             existing = json.loads(user_refs_path.read_text())
         except Exception:
             existing = []
+    _named = [s.strip() for s in (args.named_papers or '').split('|') if s.strip()]
+    if _named:
+        try:
+            from scripts.extract_user_refs import resolve_named_paper
+            from scripts.search_semanticscholar import search as _ss
+        except Exception:
+            resolve_named_paper, _ss = None, None
+        try:
+            from scripts.search_arxiv import search as _ax
+        except Exception:
+            _ax = None
+        for _t in _named:
+            # Resolve the nickname to a real record NOW. A bare title reserves its U slot
+            # and then fetches nothing (no id to fetch from), which reads like the paper was
+            # considered when it was not; and the paper is usually absent from the corpus
+            # precisely because the user had to name it.
+            _rec = resolve_named_paper(_t, _ss, _ax) if resolve_named_paper else None
+            _amb = (_rec or {}).get('_ambiguous')
+            if _amb:
+                print(f"  [named-paper] {_t}: AMBIGUOUS, not resolved — {len(_amb)} papers lead "
+                      f"with this name: {'; '.join(a[:56] for a in _amb)}. Pass the URL to pin one.",
+                      file=sys.stderr)
+                _rec = None
+            _ax_id = (_rec or {}).get('arxiv_id')
+            _doi = (_rec or {}).get('doi')
+            if _ax_id:
+                user_refs.append({'type': 'arxiv_id', 'value': str(_ax_id),
+                                  'raw_match': f'{_t} (resolved: {(_rec.get("title") or "")[:70]})'})
+            elif _doi:
+                user_refs.append({'type': 'doi', 'value': str(_doi),
+                                  'raw_match': f'{_t} (resolved: {(_rec.get("title") or "")[:70]})'})
+            else:
+                _title = (_rec or {}).get('title') or _t
+                user_refs.append({'type': 'title', 'value': _title,
+                                  'raw_match': f'{_t} (named in the user query)'})
+            print(f"  [named-paper] {_t} -> "
+                  + (f"{(_rec.get('title') or '')[:66]}" if _rec else 'UNRESOLVED (stays a title ref)'),
+                  file=sys.stderr)
     seen_keys = {f"{r['type']}:{r['value']}" for r in user_refs}
     merged = list(user_refs) + [r for r in existing if f"{r.get('type','')}:{r.get('value','')}" not in seen_keys]
     user_refs_path.write_text(json.dumps(merged, indent=2, ensure_ascii=False))
@@ -1194,6 +1239,7 @@ def cmd_validate(args) -> int:
         phase1_path=args.phase1, phase2_path=args.phase2,
         phase3_path=args.phase3, phase4_path=args.phase4,
         phase4_impl_path=args.phase4_impl,
+        phase2_select_path=getattr(args, 'phase2_select', None),
     )
     if not findings:
         print('No validators ran — provide --phase1/2/3/4 paths to enable checks.', file=sys.stderr)
@@ -1220,6 +1266,10 @@ def main():
     p0 = sub.add_parser('phase0', help='Run Phase 0 literature grounding via in-skill connectors')
     p0.add_argument('--query', required=True, help='User research question (free text)')
     p0.add_argument('--queries', default='', help='Pipe-separated query strings (skip intent extraction if provided)')
+    p0.add_argument('--named-papers', default='',
+                    help='Pipe-separated TITLES of papers the user named without a URL/ID. The '
+                         'regex only catches links, so a name-dropped system is otherwise invisible '
+                         'to the U fetch tier and never becomes an anchor. Merged into user_refs.json.')
     p0.add_argument('--out', default='outputs/phase0', help='Output dir (default outputs/phase0/)')
     p0.add_argument('--allow-webfallback', action='store_true',
                     help='If no connector works, emit webfallback sentinel (output is flagged as model-recall-grounded rather than connector-grounded). DEFAULT: hard-fail.')
@@ -2210,6 +2260,8 @@ def main():
     pv.add_argument('--phase3', help='phase3_critique_output.json path (required for V1)')
     pv.add_argument('--phase4', help='phase4_expansion_output.json path (required for V1)')
     pv.add_argument('--phase4-impl', dest='phase4_impl', help='phase4_implementability.json path (enables implementability_completeness)')
+    pv.add_argument('--phase2-select', dest='phase2_select',
+                    help='phase2_select_output.json path (enables user_direction)')
     pv.set_defaults(func=cmd_validate)
 
     args = ap.parse_args()

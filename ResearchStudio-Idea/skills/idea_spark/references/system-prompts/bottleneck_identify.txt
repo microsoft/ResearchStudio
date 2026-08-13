@@ -83,6 +83,8 @@ Output (JSON):
   "intake": {
     "domain": "...", "venue": "...", "time": "...", "data": [...], "compute": "...",
     "expertise": "...", "preference": "theory|empirical|both", "baseline": "...",
+    "user_direction": "<VERBATIM span from the user's question naming the SOLUTION SHAPE they want ('unify the four modalities into one space'), or n_a. Copy their words — do not paraphrase, do not repair, do not generalize. This field is not a research judgment and you do not act on it: Phase 2.1 must state whether it followed or departed from it, and it can only do that against what the user actually wrote.>",
+    "excluded_direction": "<VERBATIM span naming a solution shape the user ruled OUT ('not retrieval-based'), or n_a. Same copying rule.>",
     "limitation": "...", "contribution_type": "theory|method|benchmark|system|application|scaling|empirical_reveal",
     "_inferred_fields": ["<field names that were inferred from context, not stated by user>"]
   },

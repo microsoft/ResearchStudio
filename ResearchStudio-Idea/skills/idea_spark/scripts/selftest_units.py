@@ -246,6 +246,93 @@ check('B6 a GPU-count multiplier makes the fallback abstain',
       _gd('budget: 12 days on 8x a40') is None)
 check('B7 bare number adjacent to a unit still works', _gd('roughly 20 days of compute') == 20.0)
 
+# ---- user_direction: a stated direction may be departed from, never silently -------
+from scripts.validators.user_direction import validate_user_direction   # noqa: E402
+
+QUERY = 'I want to unify the four action modalities into one space, not retrieval tricks.'
+
+
+def _ud(intake_dir, disp, query=QUERY):
+    d = Path(_tf.mkdtemp())
+    (d / 'phase0').mkdir(); (d / 'phase1').mkdir(); (d / 'phase2_select').mkdir()
+    if query is not None:
+        (d / 'phase0' / 'user_query.txt').write_text(query)
+    p1 = d / 'phase1' / 'phase1_output.json'
+    p1.write_text(_json.dumps({'intake': {'user_direction': intake_dir}}))
+    ps = d / 'phase2_select' / 'phase2_select_output.json'
+    ps.write_text(_json.dumps({} if disp is None else {'user_direction_disposition': disp}))
+    return str(p1), str(ps)
+
+
+WANT = 'unify the four action modalities into one space'
+OK = {'verdict': 'departed', 'user_wanted': WANT, 'chosen': 'inference-time search',
+      'why_departed': 'fusion needs a new architecture, paired data and a retrain'}
+
+f = validate_user_direction(*_ud('n_a', None))
+check('U1 no stated direction -> validator silent', f == [], str(f))
+
+f = validate_user_direction(*_ud(WANT, None))
+check('U2 direction stated but no disposition fails', len(f) == 1 and f[0]['severity'] == 'fail', str(f))
+
+f = validate_user_direction(*_ud(WANT, OK))
+check('U3 departed with a reason passes', [x for x in f if x['severity'] != 'pass'] == [], str(f))
+
+f = validate_user_direction(*_ud(WANT, dict(OK, why_departed='   ')))
+check('U4 departed with empty why_departed fails',
+      any('why_departed' in x['message'] for x in f), str(f))
+
+f = validate_user_direction(*_ud(WANT, dict(OK, verdict='n_a')))
+check('U5 n_a verdict while a direction is stated fails', len(f) == 1, str(f))
+
+f = validate_user_direction(*_ud(WANT, dict(OK, verdict='ignored')))
+check('U6 unknown verdict fails', len(f) == 1 and 'verdict' in f[0]['message'], str(f))
+
+# The reason phase0/user_query.txt exists: without it "verbatim" is unfalsifiable.
+f = validate_user_direction(*_ud('merge every modality into a shared latent', OK))
+check('U7 paraphrased intake.user_direction is caught against the query',
+      any('not a span' in x['message'] for x in f), str(f))
+
+f = validate_user_direction(*_ud(WANT, dict(OK, user_wanted='the user wanted fusion')))
+check('U8 paraphrased user_wanted is caught', any('user_wanted' in x['message'] for x in f), str(f))
+
+f = validate_user_direction(*_ud(WANT, dict(OK, user_wanted='unify the four ... into one space')))
+check('U9 elided middle is tolerated', [x for x in f if x['severity'] != 'pass'] == [], str(f))
+
+f = validate_user_direction(*_ud(WANT, OK, query=None))
+check('U10 no query on disk -> skip the span check, do not cry wolf', [x for x in f if x['severity'] != 'pass'] == [], str(f))
+
+# ---- resolve_named_paper: a nickname is not a title ---------------------------
+from scripts.extract_user_refs import resolve_named_paper                # noqa: E402
+
+
+def _fake(*titles):
+    recs = [{'title': x, 'arxiv_id': f'0000.{i}', 'year': 2020 + i} for i, x in enumerate(titles)]
+    return lambda q, **kw: recs
+
+
+f = resolve_named_paper('villa-X', _fake('villa-X: Enhancing Latent Action Modeling'), None)
+check('N1 nickname resolves through containment, not 0.9 title similarity',
+      (f or {}).get('arxiv_id') == '0000.0', str(f))
+
+f = resolve_named_paper('AdaWorld', _fake('A survey that mentions AdaWorld in passing'), None)
+check('N2 merely being MENTIONED does not count as being named by it', f is None, str(f))
+
+# The measured miss: preferring the newest picked Genie Envisioner over the canonical Genie.
+f = resolve_named_paper('Genie', _fake('Genie Envisioner: A Unified World Foundation Platform',
+                                       'Genie: Generative Interactive Environments'), None)
+check('N3 two papers leading with the name -> refuse, do not guess',
+      isinstance(f, dict) and len(f.get('_ambiguous') or []) == 2, str(f))
+
+f = resolve_named_paper('Nonesuch', _fake('Something else entirely'), None)
+check('N4 no candidate -> None', f is None, str(f))
+
+f = resolve_named_paper('', _fake('anything'), None)
+check('N5 empty name -> None, no search', f is None, str(f))
+
+f = resolve_named_paper('Cosmos', _fake('Cosmos World Foundation Model Platform for Physical AI'), None)
+check('N6 no-colon system title still resolves (containment, not punctuation)',
+      (f or {}).get('arxiv_id') == '0000.0', str(f))
+
 n_fail = sum(1 for _n, ok in RESULTS if not ok)
 print(f'\n[{"RED" if n_fail else "GREEN"}] selftest_units: '
       f'{len(RESULTS) - n_fail}/{len(RESULTS)} passed', file=sys.stderr)
