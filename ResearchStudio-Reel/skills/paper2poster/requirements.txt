@@ -1,2 +1,7 @@
 # Free, no-API-key TTS backend for narration audio (generate_audio.py default)
 edge-tts>=7.0
+
+# Build compact, hinted subsets of the renderer's exact fallback face so a
+# reopened poster keeps its original glyph metrics without shipping a 16 MB
+# CJK collection.
+fonttools>=4.59
