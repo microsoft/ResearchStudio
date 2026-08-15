@@ -48,7 +48,9 @@ SLIDES_DIR = "assets/slides"
 BLOG_FIGURES_DIR = "assets/blog/figures"
 DOWNLOADS_DIR = "assets/downloads"
 UI_DIR = "assets/ui"
-REEL_WORDMARK_SRC = REEL_ROOT / "docs" / "figures" / "reel-wordmark.png"
+REEL_WORDMARK_SRC = (
+    Path(__file__).resolve().parents[1] / "assets" / "reel-wordmark.png"
+)
 MATHJAX_CDN_RE = re.compile(
     r"""(?P<prefix>\bsrc\s*=\s*)(?P<quote>["'])"""
     r"""(?P<url>https?://(?:cdn\.jsdelivr\.net/npm|unpkg\.com)/mathjax@[^"']*/es5/tex-svg\.js)"""
@@ -549,16 +551,39 @@ function syncActiveThumb() {
 }
 function posterDoc() { try { return posterFrame.contentDocument; } catch(e) { return null; } }
 function shouldUseLocalOpenRuntime() { return window.location.protocol === 'file:' && typeof POSTER_HTML === 'string' && POSTER_HTML.length > 0; }
+const POSTER_HOOK_PENDING_RETRY_MS = 50;
+const POSTER_HOOK_STEADY_RETRY_MS = 500;
+let posterHookRetryTimer = null;
+let posterHookState = null;
+function posterHookIdentityMatches(state, doc) {
+  return Boolean(
+    state && doc && state.doc === doc && state.root === doc.documentElement &&
+    state.head === doc.head && state.body === doc.body
+  );
+}
+function disposePosterHookState() {
+  if (posterHookState && posterHookState.observer) {
+    try { posterHookState.observer.disconnect(); } catch(e) {}
+  }
+  posterHookState = null;
+}
+function schedulePosterToolsRetry(delayMs) {
+  if (posterHookRetryTimer !== null) clearTimeout(posterHookRetryTimer);
+  posterHookRetryTimer = setTimeout(() => {
+    posterHookRetryTimer = null;
+    injectPosterTools();
+  }, Math.max(0, Number(delayMs) || 0));
+}
 function initPosterFrame() {
   posterFrame.addEventListener('load', injectPosterTools);
   if (shouldUseLocalOpenRuntime()) {
     posterFrame.removeAttribute('src');
     posterFrame.srcdoc = POSTER_HTML;
-    setTimeout(injectPosterTools, 100);
-    setTimeout(injectPosterTools, 400);
+    schedulePosterToolsRetry(0);
     return;
   }
   if (posterFrame.getAttribute('src') !== POSTER_SRC) posterFrame.setAttribute('src', POSTER_SRC);
+  schedulePosterToolsRetry(0);
 }
 function showTooltip(doc, text, x, y) {
   let tip = doc.getElementById('paperReelTip');
@@ -575,12 +600,67 @@ function showTooltip(doc, text, x, y) {
   clearTimeout(tip._timer);
   tip._timer = setTimeout(() => { tip.style.opacity = '0'; }, 2000);
 }
-function injectPosterTools() {
-  const doc = posterDoc();
-  if (!doc || doc.__paperReelHooked) return;
-  doc.__paperReelHooked = true;
-  const style = doc.createElement('style');
-  style.textContent = `
+function posterTargetId(el) {
+  if (el.matches('.titlebar')) return 'title';
+  if (!el.hasAttribute('data-section')) return '';
+  if (el.matches('button, a, .listen-btn, .listen-title, .listen-all')) return '';
+  if (el.closest('.titlebar')) return '';
+  const id = el.getAttribute('data-section') || '';
+  return sections.has(id) ? id : '';
+}
+function bindPosterTarget(state, el) {
+  const view = state.doc.defaultView;
+  if (!view || !(el instanceof view.Element)) return;
+  const id = posterTargetId(el);
+  if (!id) return;
+  if (!el.classList.contains('paper-reel-clickable')) {
+    el.classList.add('paper-reel-clickable');
+  }
+  el.removeAttribute('title');
+  if (state.bound.has(el)) return;
+  state.bound.add(el);
+  el.addEventListener('mouseenter', e => {
+    state.body.classList.add('paper-reel-has-hover');
+    el.classList.add('paper-reel-hover');
+    showTooltip(state.doc, 'Double Click to Open', e.clientX, e.clientY);
+  });
+  el.addEventListener('mousemove', e => showTooltip(state.doc, 'Double Click to Open', e.clientX, e.clientY));
+  el.addEventListener('mouseleave', () => {
+    el.classList.remove('paper-reel-hover');
+    if (!state.doc.querySelector('.paper-reel-hover')) state.body.classList.remove('paper-reel-has-hover');
+  });
+  el.addEventListener('dblclick', ev => {
+    if (ev.target.closest('button, a')) return;
+    const currentId = posterTargetId(el);
+    if (!currentId) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    openSection(currentId);
+  });
+}
+function bindPosterTargetTree(state, node) {
+  const view = state.doc.defaultView;
+  if (!view || !(node instanceof view.Element)) return;
+  bindPosterTarget(state, node);
+  node.querySelectorAll('[data-section], .titlebar').forEach(el => bindPosterTarget(state, el));
+}
+function bindPosterTargets(state) {
+  state.doc.querySelectorAll('[data-section], .titlebar').forEach(el => bindPosterTarget(state, el));
+}
+function installPosterTools(doc) {
+  const state = {
+    doc,
+    root: doc.documentElement,
+    head: doc.head,
+    body: doc.body,
+    bound: new WeakSet(),
+    observer: null,
+  };
+  let style = doc.getElementById('paperReelToolsStyle');
+  if (!style) {
+    style = doc.createElement('style');
+    style.id = 'paperReelToolsStyle';
+    style.textContent = `
     [data-section].paper-reel-clickable, .titlebar.paper-reel-clickable { cursor:pointer !important; transition:opacity .16s ease, border-color .16s ease, box-shadow .16s ease, filter .16s ease; }
     body.paper-reel-has-hover [data-section].paper-reel-clickable:not(.paper-reel-hover) { opacity:var(--paper-reel-dim-opacity,.48); }
     [data-section].paper-reel-hover { border-color:rgba(14,106,110,.9) !important; box-shadow:inset 0 0 0 5px rgba(14,106,110,.72), 0 0 18px rgba(14,106,110,.16) !important; filter:brightness(1.015); }
@@ -590,17 +670,29 @@ function injectPosterTools() {
     #paperReelDebug { position:fixed; right:14px; bottom:14px; z-index:2147483646; display:none; background:rgba(255,255,255,.96); border:1px solid #cbd5dc; border-radius:8px; padding:10px; font:12px Arial; box-shadow:0 12px 30px rgba(0,0,0,.2); }
     body.paper-reel-debug #paperReelDebug { display:block; }
   `;
-  doc.head.appendChild(style);
-  const debug = doc.createElement('div');
-  debug.id = 'paperReelDebug';
-  debug.innerHTML = '<b>Reel Hover</b><br><label>Other section opacity <input id="paperReelOpacity" type="range" min="0.2" max="1" step="0.05" value="0.48"></label>';
-  doc.body.appendChild(debug);
-  debug.querySelector('#paperReelOpacity').addEventListener('input', e => doc.documentElement.style.setProperty('--paper-reel-dim-opacity', e.target.value));
+    doc.head.appendChild(style);
+  }
+  let debug = doc.getElementById('paperReelDebug');
+  if (!debug) {
+    debug = doc.createElement('div');
+    debug.id = 'paperReelDebug';
+    debug.innerHTML = '<b>Reel Hover</b><br><label>Other section opacity <input id="paperReelOpacity" type="range" min="0.2" max="1" step="0.05" value="0.48"></label>';
+    doc.body.appendChild(debug);
+  }
+  const opacity = debug.querySelector('#paperReelOpacity');
+  if (opacity && !opacity.__paperReelBound) {
+    opacity.__paperReelBound = true;
+    opacity.addEventListener('input', e => doc.documentElement.style.setProperty('--paper-reel-dim-opacity', e.target.value));
+  }
   doc.defaultView.__paperReelToggleOpacityDebug = () => doc.body.classList.toggle('paper-reel-debug');
-  const bridge = doc.createElement('script');
-  bridge.textContent = `
+  if (!doc.getElementById('paperReelShortcutBridge')) {
+    const bridge = doc.createElement('script');
+    bridge.id = 'paperReelShortcutBridge';
+    bridge.textContent = `
     (() => {
-      if (window.__paperReelShortcutBridge) return;
+      const bridgeRoot = document.documentElement;
+      if (window.__paperReelShortcutBridgeRoot === bridgeRoot) return;
+      window.__paperReelShortcutBridgeRoot = bridgeRoot;
       window.__paperReelShortcutBridge = true;
       function forwardPaperReelShortcut(key) {
         try {
@@ -623,11 +715,12 @@ function injectPosterTools() {
       }, true);
     })();
   `;
-  doc.body.appendChild(bridge);
+    doc.body.appendChild(bridge);
+  }
   const iframeReelKeydown = e => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const key = e.key ? e.key.toLowerCase() : '';
-    if (key === 'h' || key === 'v' || key === 'd') {
+    if (['a','s','d','v','h'].includes(key)) {
       e.preventDefault();
       e.stopImmediatePropagation();
       try { doc.defaultView.parent.handleShortcut(key); }
@@ -637,35 +730,46 @@ function injectPosterTools() {
   doc.defaultView.onkeydown = iframeReelKeydown;
   doc.onkeydown = iframeReelKeydown;
   if (doc.body) doc.body.onkeydown = iframeReelKeydown;
-  function bind(el, id) {
-    el.classList.add('paper-reel-clickable');
-    el.removeAttribute('title');
-    el.addEventListener('mouseenter', e => {
-      doc.body.classList.add('paper-reel-has-hover');
-      el.classList.add('paper-reel-hover');
-      showTooltip(doc, 'Double Click to Open', e.clientX, e.clientY);
+  bindPosterTargets(state);
+  state.observer = new doc.defaultView.MutationObserver(records => {
+    if (!posterHookIdentityMatches(state, posterDoc())) {
+      injectPosterTools();
+      return;
+    }
+    records.forEach(record => {
+      if (record.type === 'attributes') bindPosterTargetTree(state, record.target);
+      record.addedNodes.forEach(node => bindPosterTargetTree(state, node));
     });
-    el.addEventListener('mousemove', e => showTooltip(doc, 'Double Click to Open', e.clientX, e.clientY));
-    el.addEventListener('mouseleave', () => {
-      el.classList.remove('paper-reel-hover');
-      if (!doc.querySelector('.paper-reel-hover')) doc.body.classList.remove('paper-reel-has-hover');
-    });
-    el.addEventListener('dblclick', ev => {
-      if (ev.target.closest('button, a')) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      openSection(id);
-    });
+  });
+  state.observer.observe(doc, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['data-section', 'class'],
+  });
+  return state;
+}
+function injectPosterTools() {
+  const doc = posterDoc();
+  if (!doc || !doc.documentElement || !doc.head || !doc.body || !doc.defaultView) {
+    if (posterHookState && posterHookState.doc !== doc) disposePosterHookState();
+    schedulePosterToolsRetry(POSTER_HOOK_PENDING_RETRY_MS);
+    return false;
   }
-  doc.querySelectorAll('[data-section]').forEach(el => {
-    if (el.matches('button, a, .listen-btn, .listen-title, .listen-all')) return;
-    if (el.matches('.titlebar') || el.closest('.titlebar')) return;
-    const id = el.getAttribute('data-section');
-    if (sections.has(id)) bind(el, id);
-  });
-  doc.querySelectorAll('.titlebar').forEach(el => {
-    bind(el, 'title');
-  });
+  if (!posterHookIdentityMatches(posterHookState, doc)) {
+    disposePosterHookState();
+    try { posterHookState = installPosterTools(doc); }
+    catch(e) {
+      disposePosterHookState();
+      schedulePosterToolsRetry(POSTER_HOOK_PENDING_RETRY_MS);
+      return false;
+    }
+  } else {
+    bindPosterTargets(posterHookState);
+  }
+  const ready = Boolean(doc.querySelector('[data-section].paper-reel-clickable, .titlebar.paper-reel-clickable'));
+  schedulePosterToolsRetry(ready ? POSTER_HOOK_STEADY_RETRY_MS : POSTER_HOOK_PENDING_RETRY_MS);
+  return ready;
 }
 function flashPosterSection(id) {
   const doc = posterDoc();
@@ -836,7 +940,14 @@ def ignore_backup_artifacts(_dir: str, names: list[str]) -> set[str]:
 def copy_poster_assets(src: Path, dst: Path) -> None:
     if not src.is_dir():
         return
-    generated_reel_dirs = {"poster", "media", "blog", "downloads", "slides"}
+    generated_reel_dirs = {
+        "poster",
+        "media",
+        "blog",
+        "downloads",
+        "slides",
+        "ui",
+    }
 
     def ignore(dir_name: str, names: list[str]) -> set[str]:
         ignored = ignore_backup_artifacts(dir_name, names)
@@ -855,8 +966,62 @@ def copy_poster_assets(src: Path, dst: Path) -> None:
 
 def js_string_for_html(text: str) -> str:
     """Encode HTML as a JS string without closing the surrounding script tag."""
-    encoded = json.dumps(text, ensure_ascii=True)
-    return encoded.replace("</", "<\\/")
+    return js_json_for_script(text)
+
+
+def js_json_for_script(value: Any) -> str:
+    """Encode one JSON value without allowing it to close an inline script."""
+    return json.dumps(value, ensure_ascii=True).replace("</", "<\\/")
+
+
+def render_reel_html(
+    alignment: dict[str, Any],
+    poster_srcdoc_html: str,
+    caption_text: dict[str, str] | None = None,
+) -> str:
+    """Render the locked Reel wrapper with all inline runtime values.
+
+    Substitute every marker against the pristine template in one pass. A
+    value can legitimately contain another marker, so chained replacements on
+    partially rendered HTML are unsafe.
+    """
+    if not isinstance(alignment, dict):
+        raise TypeError("alignment must be an object")
+    if not isinstance(poster_srcdoc_html, str):
+        raise TypeError("poster_srcdoc_html must be a string")
+    captions = {} if caption_text is None else caption_text
+    if not isinstance(captions, dict) or any(
+        not isinstance(key, str) or not isinstance(value, str)
+        for key, value in captions.items()
+    ):
+        raise TypeError("caption_text must map strings to strings")
+
+    replacements = {
+        "const ALIGNMENT = {};": (
+            "const ALIGNMENT = " + js_json_for_script(alignment) + ";"
+        ),
+        "const POSTER_HTML = null;": (
+            "const POSTER_HTML = " + js_string_for_html(poster_srcdoc_html) + ";"
+        ),
+        "const CAPTION_TEXT = {};": (
+            "const CAPTION_TEXT = " + js_json_for_script(captions) + ";"
+        ),
+    }
+    for marker in replacements:
+        count = SECTION_MODAL_HTML.count(marker)
+        if count != 1:
+            raise RuntimeError(
+                f"Reel template marker must occur exactly once: {marker!r} ({count})"
+            )
+    marker_pattern = re.compile(
+        "|".join(re.escape(marker) for marker in replacements)
+    )
+    rendered, count = marker_pattern.subn(
+        lambda match: replacements[match.group(0)], SECTION_MODAL_HTML
+    )
+    if count != len(replacements):
+        raise RuntimeError(f"Reel template substitution count mismatch: {count}")
+    return rendered
 
 
 def default_mathjax_cache_dir() -> Path:
@@ -1064,9 +1229,16 @@ def copy_poster_bundle(poster_dir: Path, outdir: Path) -> None:
 def copy_ui_assets(outdir: Path) -> None:
     ui_out = outdir / UI_DIR
     ui_out.mkdir(parents=True, exist_ok=True)
-    if not REEL_WORDMARK_SRC.is_file():
-        raise SystemExit(f"reel wordmark asset not found: {REEL_WORDMARK_SRC}")
-    shutil.copy2(REEL_WORDMARK_SRC, ui_out / "reel-wordmark.png")
+    wordmark_out = ui_out / "reel-wordmark.png"
+    if REEL_WORDMARK_SRC.is_file():
+        shutil.copy2(REEL_WORDMARK_SRC, wordmark_out)
+        return
+    # A historical self-contained Reel already owns this exact runtime asset.
+    # Preserve it when refreshing that bundle even if the source checkout does
+    # not carry the optional docs tree used by a from-scratch build.
+    if wordmark_out.is_file() and not wordmark_out.is_symlink():
+        return
+    raise SystemExit(f"reel wordmark asset not found: {REEL_WORDMARK_SRC}")
 
 
 def copy_slides(slide_files: list[Path], outdir: Path) -> list[dict[str, Any]]:
@@ -1672,15 +1844,7 @@ def main() -> int:
     )
     write_json(outdir / "content_alignment.json", alignment)
     write_json(outdir / "manifest.json", build_manifest(alignment))
-    html = SECTION_MODAL_HTML.replace(
-        "const ALIGNMENT = {};",
-        "const ALIGNMENT = " + json.dumps(alignment, ensure_ascii=True) + ";",
-        1,
-    ).replace(
-        "const POSTER_HTML = null;",
-        "const POSTER_HTML = " + js_string_for_html(poster_srcdoc_html) + ";",
-        1,
-    )
+    html = render_reel_html(alignment, poster_srcdoc_html)
     (outdir / "reel.html").write_text(html, encoding="utf-8")
 
     # Rebuild after the two Reel root files exist. The bootstrap publisher

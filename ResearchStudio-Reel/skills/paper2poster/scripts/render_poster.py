@@ -18,10 +18,13 @@ Outputs:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
+import struct
 import sys
 import tempfile
+import zlib
 from pathlib import Path
 
 # Make `utils` importable when run directly.
@@ -47,6 +50,16 @@ _EXPAND_MEDIA_REL_TOLERANCE = 0.005
 _EXPAND_FIG_MIN_RATIO = 0.90
 _EXPAND_FIG_MAX_RATIO = 1.01
 _LAYOUT_TIMER_GUARD_ID = "poster-layout-timer-guard"
+_LEGACY_FIGURE_FLOOR_ENV = "POSTER_LEGACY_FIGURE_FLOOR_POLICY"
+_LEGACY_FIGURE_FLOOR_TOKEN = "preserve-immutable-source-v1"
+_GEOMETRY_SNAPSHOT_ID = "poster-geometry-snapshot"
+_GEOMETRY_FROZEN_ATTR = "data-poster-geometry-frozen"
+_GEOMETRY_FIT_GUARD = """
+    /* paper2poster:frozen-geometry-fit-guard */
+    if (document.documentElement.getAttribute('data-poster-geometry-frozen') === '1') return;"""
+_GEOMETRY_FIT_ALL_GUARD = """
+    /* paper2poster:frozen-geometry-fit-all-guard */
+    if (document.documentElement.getAttribute('data-poster-geometry-frozen') === '1') return;"""
 
 
 def _pdf_content_scale(
@@ -124,7 +137,9 @@ def _copy_asset_atomic(
         temporary.unlink(missing_ok=True)
 
 
-def _renderer_font_asset_names() -> frozenset[str]:
+def _renderer_font_asset_names(
+    fonts_dir: Path | None = None,
+) -> frozenset[str]:
     """Return the closed set of font files a render may add or replace."""
     skill_fonts = Path(__file__).resolve().parent.parent / "assets" / "fonts"
     bundled = (
@@ -132,7 +147,7 @@ def _renderer_font_asset_names() -> frozenset[str]:
         if skill_fonts.is_dir()
         else set()
     )
-    return frozenset(bundled | set(managed_font_asset_names()))
+    return frozenset(bundled | set(managed_font_asset_names(fonts_dir)))
 
 
 class _FontAssetJournal:
@@ -164,7 +179,7 @@ class _FontAssetJournal:
         self.originals: dict[str, Path | None] = {}
         self.closed = False
         try:
-            for name in sorted(_renderer_font_asset_names()):
+            for name in sorted(_renderer_font_asset_names(self.fonts_dir)):
                 target = self.fonts_dir / name
                 if target.is_symlink() or (
                     target.exists() and not target.is_file()
@@ -187,6 +202,12 @@ class _FontAssetJournal:
             return
         errors: list[str] = []
         try:
+            # Content-addressed poster subsets are named only after the source
+            # face and glyph repertoire have been resolved inside the render.
+            # Discover them again here so a failed transaction removes every
+            # identity asset that did not exist when this journal was opened.
+            for name in managed_font_asset_names(self.fonts_dir):
+                self.originals.setdefault(name, None)
             for name, saved in self.originals.items():
                 target = self.fonts_dir / name
                 try:
@@ -306,6 +327,542 @@ def _append_style_at_end(text: str, block: str) -> str:
     return text[:at].rstrip() + "\n" + block + "\n" + text[at:]
 
 
+def _strip_durable_geometry_snapshot(html_path: Path) -> bool:
+    """Remove the previous renderer-owned geometry freeze before rerendering.
+
+    A completed render is intentionally frozen for cold opens.  A later,
+    explicit rerender must first recover the authored/natural document so its
+    fitters can recompute against current content and assets.  The snapshot is
+    one script, one root marker, and two sentinel-guard snippets, which makes
+    this removal idempotent and narrowly scoped.
+    """
+    import re
+
+    original = html_path.read_text(encoding="utf-8")
+    text = original
+    snapshot_pattern = re.compile(
+        rf'\s*<script\b(?=[^>]*\bid\s*=\s*["\']'
+        rf'{re.escape(_GEOMETRY_SNAPSHOT_ID)}["\'])[^>]*>.*?</script>\s*',
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    text = snapshot_pattern.sub("\n", text)
+    text = text.replace(_GEOMETRY_FIT_GUARD, "")
+    text = text.replace(_GEOMETRY_FIT_ALL_GUARD, "")
+
+    root_pattern = re.compile(r"<html\b[^>]*>", flags=re.IGNORECASE)
+    marker_pattern = re.compile(
+        rf"\s+{re.escape(_GEOMETRY_FROZEN_ATTR)}"
+        r"(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+))?",
+        flags=re.IGNORECASE,
+    )
+    match = root_pattern.search(text)
+    if match:
+        cleaned = marker_pattern.sub("", match.group(0))
+        text = text[:match.start()] + cleaned + text[match.end():]
+
+    if text == original:
+        return False
+    html_path.write_text(text, encoding="utf-8")
+    return True
+
+
+_GEOMETRY_SNAPSHOT_JS = r"""
+() => {
+  const specs = [
+    {
+      name:'figures',
+      selector:'.section[data-section] figure, .section[data-section] .figure',
+      attributes:['style', 'class'],
+    },
+    {
+      name:'images',
+      selector:'.section[data-section] img',
+      attributes:['style', 'class'],
+    },
+    {
+      name:'methodBodies',
+      selector:'.method-body',
+      attributes:['style', 'class'],
+    },
+    {
+      name:'sections',
+      selector:'.section[data-section]',
+      attributes:['style'],
+    },
+  ];
+  return {
+    version:1,
+    viewport:{width:window.innerWidth, height:window.innerHeight},
+    groups:specs.map(spec => ({
+      name:spec.name,
+      selector:spec.selector,
+      attributes:spec.attributes,
+      nodes:Array.from(document.querySelectorAll(spec.selector)).map(node => {
+        const attributes = {};
+        spec.attributes.forEach(name => {
+          attributes[name] = node.hasAttribute(name)
+            ? node.getAttribute(name) : null;
+        });
+        return attributes;
+      }),
+    })),
+  };
+}
+"""
+
+
+def _capture_durable_geometry_snapshot(page) -> dict:
+    """Serialize the final live geometry mutations that affect poster media."""
+    snapshot = page.evaluate(_GEOMETRY_SNAPSHOT_JS)
+    if not isinstance(snapshot, dict) or snapshot.get("version") != 1:
+        raise RuntimeError("geometry snapshot returned malformed data")
+    groups = snapshot.get("groups")
+    if not isinstance(groups, list):
+        raise RuntimeError("geometry snapshot omitted its node groups")
+    for group in groups:
+        if (not isinstance(group, dict)
+                or not isinstance(group.get("selector"), str)
+                or not isinstance(group.get("attributes"), list)
+                or not isinstance(group.get("nodes"), list)):
+            raise RuntimeError("geometry snapshot contains a malformed group")
+    return snapshot
+
+
+def _persist_durable_geometry_snapshot(
+    html_path: Path,
+    snapshot: dict,
+    *,
+    timeout_ms: int = 15_000,
+) -> dict[str, int]:
+    """Bake the warm DOM's figure geometry and freeze its fitters on reload.
+
+    The saved attributes are installed by a one-shot script at the end of
+    ``body``.  It temporarily disarms the static frozen marker so the authored
+    load fitter reproduces the same warm-render glyph/paint sequence once,
+    reasserts the accepted attributes two animation frames later, and only then
+    re-arms the ``fit``/``fitAll`` guards and publishes its readiness marker.
+    """
+    import re
+
+    # Defensive idempotence for direct helper use; the normal render path also
+    # strips the prior snapshot before its first natural measurement.
+    _strip_durable_geometry_snapshot(html_path)
+    original = html_path.read_text(encoding="utf-8")
+    text = original
+
+    fit_pattern = re.compile(
+        r"(function\s+fit\s*\(\s*img\s*\)\s*\{)",
+        flags=re.IGNORECASE,
+    )
+    fit_all_pattern = re.compile(
+        r"(function\s+fitAll\s*\(\s*\)\s*\{)",
+        flags=re.IGNORECASE,
+    )
+    text, fit_count = fit_pattern.subn(
+        lambda match: match.group(1) + _GEOMETRY_FIT_GUARD,
+        text,
+    )
+    text, fit_all_count = fit_all_pattern.subn(
+        lambda match: match.group(1) + _GEOMETRY_FIT_ALL_GUARD,
+        text,
+    )
+
+    root_pattern = re.compile(r"<html\b[^>]*>", flags=re.IGNORECASE)
+    root_match = root_pattern.search(text)
+    if not root_match:
+        raise RuntimeError("cannot freeze geometry without an <html> root")
+    root_tag = root_match.group(0)
+    frozen_root = (
+        root_tag[:-1].rstrip()
+        + f' {_GEOMETRY_FROZEN_ATTR}="1">'
+    )
+    text = text[:root_match.start()] + frozen_root + text[root_match.end():]
+
+    timeout_ms = max(1_000, int(timeout_ms))
+    # Keep the DOMContentLoaded and FontFaceSet fallbacks comfortably inside
+    # the renderer's outer readiness wait.  Normal pages still take the
+    # window.load path; these bounds matter only when a subresource never
+    # finishes and load therefore never fires.
+    phase_wait_ms = max(100, min(2_000, timeout_ms // 4))
+    compatibility_wait_ms = min(500, phase_wait_ms)
+
+    payload = json.dumps(
+        snapshot,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    # A style/class attribute can legally contain ``</script>``.  Keep the
+    # embedded JSON from ever terminating its owner script early.
+    payload = payload.replace("<", "\\u003c").replace(">", "\\u003e")
+    install_script = (
+        f'<script id="{_GEOMETRY_SNAPSHOT_ID}">\n'
+        "(() => {\n"
+        "  const root = document.documentElement;\n"
+        f"  const snapshot = {payload};\n"
+        "  let finished = false;\n"
+        "  let started = false;\n"
+        "  let observer = null;\n"
+        "  let restoringAttributes = false;\n"
+        "  const protectedNodes = new Map();\n"
+        f"  const phaseWaitMs = {phase_wait_ms};\n"
+        f"  const compatibilityWaitMs = {compatibility_wait_ms};\n"
+        "  const restore = () => {\n"
+        "    if (finished) return;\n"
+        "    finished = true;\n"
+        "    try {\n"
+        "      for (const group of snapshot.groups) {\n"
+        "        const nodes = Array.from(document.querySelectorAll(group.selector));\n"
+        "        if (nodes.length !== group.nodes.length)\n"
+        "          throw new Error(group.name + ': expected ' + group.nodes.length\n"
+        "            + ' nodes, found ' + nodes.length);\n"
+        "        nodes.forEach((node, index) => {\n"
+        "          const attributes = group.nodes[index];\n"
+        "          const protectedAttributes = protectedNodes.get(node) || {};\n"
+        "          group.attributes.forEach(name => {\n"
+        "            const value = attributes[name];\n"
+        "            protectedAttributes[name] = value;\n"
+        "            if (value === null) node.removeAttribute(name);\n"
+        "            else node.setAttribute(name, value);\n"
+        "          });\n"
+        "          protectedNodes.set(node, protectedAttributes);\n"
+        "        });\n"
+        "      }\n"
+        f"      root.setAttribute('{_GEOMETRY_FROZEN_ATTR}', '1');\n"
+        "      if (observer) observer.disconnect();\n"
+        "      observer = new MutationObserver(records => {\n"
+        f"        if (root.getAttribute('{_GEOMETRY_FROZEN_ATTR}') !== '1'\n"
+        "            || restoringAttributes) return;\n"
+        "        restoringAttributes = true;\n"
+        "        try {\n"
+        "          records.forEach(record => {\n"
+        "            const expected = protectedNodes.get(record.target);\n"
+        "            const name = record.attributeName;\n"
+        "            if (!expected || !Object.prototype.hasOwnProperty.call(\n"
+        "                expected, name)) return;\n"
+        "            const value = expected[name];\n"
+        "            const actual = record.target.hasAttribute(name)\n"
+        "              ? record.target.getAttribute(name) : null;\n"
+        "            if (actual === value) return;\n"
+        "            if (value === null) record.target.removeAttribute(name);\n"
+        "            else record.target.setAttribute(name, value);\n"
+        "          });\n"
+        "        } finally { restoringAttributes = false; }\n"
+        "      });\n"
+        "      observer.observe(root, {subtree:true, attributes:true,\n"
+        "        attributeFilter:['style', 'class']});\n"
+        "      root.dataset.posterGeometrySnapshotApplied = '1';\n"
+        "      delete root.dataset.posterGeometrySnapshotError;\n"
+        "    } catch (error) {\n"
+        f"      root.setAttribute('{_GEOMETRY_FROZEN_ATTR}', '1');\n"
+        "      delete root.dataset.posterGeometrySnapshotApplied;\n"
+        "      root.dataset.posterGeometrySnapshotError = String(error);\n"
+        "    }\n"
+        "  };\n"
+        "  const afterWarmFit = async () => {\n"
+        "    if (started) return;\n"
+        "    started = true;\n"
+        "    // FontFaceSet.ready can resolve after window.load.  Give the\n"
+        "    // authored fitter the same post-font settle window as the warm\n"
+        "    // renderer before reasserting its accepted inline geometry. A\n"
+        "    // broken font resource must not hold the durable marker forever.\n"
+        "    try {\n"
+        "      if (document.fonts && document.fonts.ready)\n"
+        "        await Promise.race([\n"
+        "          Promise.resolve(document.fonts.ready).catch(() => {}),\n"
+        "          new Promise(resolve => setTimeout(resolve, phaseWaitMs)),\n"
+        "        ]);\n"
+        "    } catch (_) {}\n"
+        "    await new Promise(resolve =>\n"
+        "      setTimeout(resolve, compatibilityWaitMs));\n"
+        "    requestAnimationFrame(() => requestAnimationFrame(restore));\n"
+        "  };\n"
+        "  const queueDomFallback = () => {\n"
+        "    // DOMContentLoaded proves the authored DOM exists even when one\n"
+        "    // subresource prevents window.load forever. Preserve the normal\n"
+        "    // load ordering for one bounded phase, then restore exactly once.\n"
+        "    setTimeout(afterWarmFit, phaseWaitMs);\n"
+        "  };\n"
+        "  // The static marker documents the delivered frozen state, but a\n"
+        "  // cold browser must reproduce the original warm sequence once.\n"
+        "  // Arm the authored fitter now; its earlier window.load listener\n"
+        "  // runs first. After fonts settle, a bounded compatibility window and\n"
+        "  // two animation frames later, reassert the exact accepted styles,\n"
+        "  // freeze future callbacks, and publish readiness.\n"
+        f"  root.removeAttribute('{_GEOMETRY_FROZEN_ATTR}');\n"
+        "  delete root.dataset.posterGeometrySnapshotApplied;\n"
+        "  delete root.dataset.posterGeometrySnapshotError;\n"
+        "  if (document.readyState === 'complete') afterWarmFit();\n"
+        "  else {\n"
+        "    window.addEventListener('load', afterWarmFit, {once:true});\n"
+        "    if (document.readyState === 'loading')\n"
+        "      document.addEventListener(\n"
+        "        'DOMContentLoaded', queueDomFallback, {once:true});\n"
+        "    else queueDomFallback();\n"
+        "  }\n"
+        "})();\n"
+        "</script>"
+    )
+    text = _append_style_at_end(text, install_script)
+    html_path.write_text(text, encoding="utf-8")
+    return {"fit": fit_count, "fitAll": fit_all_count}
+
+
+def _validate_installed_geometry_snapshot(page, snapshot: dict) -> list[str]:
+    """Verify the cold DOM applied every persisted attribute exactly."""
+    result = page.evaluate(
+        """snapshot => {
+          const root = document.documentElement;
+          const failures = [];
+          if (root.getAttribute('data-poster-geometry-frozen') !== '1')
+            failures.push('frozen root marker is absent');
+          if (root.dataset.posterGeometrySnapshotApplied !== '1')
+            failures.push('snapshot installer did not complete');
+          if (root.dataset.posterGeometrySnapshotError)
+            failures.push('snapshot installer: '
+              + root.dataset.posterGeometrySnapshotError);
+          for (const group of snapshot.groups || []) {
+            const nodes = Array.from(document.querySelectorAll(group.selector));
+            if (nodes.length !== group.nodes.length) {
+              failures.push(group.name + ' count changed ('
+                + group.nodes.length + ' -> ' + nodes.length + ')');
+              continue;
+            }
+            nodes.forEach((node, index) => {
+              for (const name of group.attributes) {
+                const expected = group.nodes[index][name];
+                const actual = node.hasAttribute(name)
+                  ? node.getAttribute(name) : null;
+                if (actual !== expected)
+                  failures.push(group.name + '[' + index + '] '
+                    + name + ' changed');
+              }
+            });
+          }
+          return failures.slice(0, 80);
+        }""",
+        snapshot,
+    )
+    if not isinstance(result, list):
+        return ["geometry snapshot validator returned malformed data"]
+    return [str(item) for item in result]
+
+
+def _wait_for_installed_geometry_snapshot(
+    page,
+    *,
+    timeout_ms: int,
+) -> bool:
+    """Wait for the cold page's warm-fit-then-restore one-shot to finish."""
+    try:
+        page.wait_for_function(
+            """() => {
+              const root = document.documentElement;
+              return root.dataset.posterGeometrySnapshotApplied === '1'
+                || !!root.dataset.posterGeometrySnapshotError;
+            }""",
+            timeout=timeout_ms,
+        )
+        state = page.evaluate(
+            """() => ({
+              applied:document.documentElement.dataset
+                .posterGeometrySnapshotApplied || '',
+              error:document.documentElement.dataset
+                .posterGeometrySnapshotError || '',
+              frozen:document.documentElement.getAttribute(
+                'data-poster-geometry-frozen') || '',
+            })"""
+        )
+    except Exception as exc:
+        _eprint(
+            "[render_preview] WARN: geometry snapshot readiness wait failed: "
+            f"{ascii_safe(exc)}"
+        )
+        return False
+    if (not isinstance(state, dict)
+            or state.get("applied") != "1"
+            or state.get("frozen") != "1"
+            or state.get("error")):
+        _eprint(
+            "[render_preview] WARN: geometry snapshot did not publish a clean "
+            f"ready state: {ascii_safe(state)}"
+        )
+        return False
+    return True
+
+
+def _decode_browser_png(payload: bytes) -> tuple[int, int, int, bytes]:
+    """Decode an 8-bit, non-interlaced browser screenshot without Pillow.
+
+    Chromium's PNG screenshots use the ordinary non-interlaced RGB/RGBA PNG
+    subset.  Keeping this tiny decoder in the renderer makes the mandatory
+    pixel gate self-contained instead of adding an optional image dependency.
+    The returned bytes are fully unfiltered native pixels; the comparison
+    helper below interprets them as RGBA.
+    """
+    signature = b"\x89PNG\r\n\x1a\n"
+    if not isinstance(payload, (bytes, bytearray)) or not payload.startswith(signature):
+        raise RuntimeError("screenshot is not a PNG")
+    offset = len(signature)
+    width = height = bit_depth = color_type = None
+    compression = png_filter = interlace = None
+    idat: list[bytes] = []
+    while offset + 12 <= len(payload):
+        length = struct.unpack(">I", payload[offset:offset + 4])[0]
+        chunk_type = bytes(payload[offset + 4:offset + 8])
+        data_start = offset + 8
+        data_end = data_start + length
+        crc_end = data_end + 4
+        if crc_end > len(payload):
+            raise RuntimeError("PNG chunk extends beyond screenshot bytes")
+        data = bytes(payload[data_start:data_end])
+        expected_crc = struct.unpack(">I", payload[data_end:crc_end])[0]
+        actual_crc = zlib.crc32(chunk_type)
+        actual_crc = zlib.crc32(data, actual_crc) & 0xFFFFFFFF
+        if actual_crc != expected_crc:
+            raise RuntimeError(f"PNG {chunk_type!r} checksum mismatch")
+        if chunk_type == b"IHDR":
+            if len(data) != 13:
+                raise RuntimeError("PNG IHDR has the wrong size")
+            (width, height, bit_depth, color_type, compression,
+             png_filter, interlace) = struct.unpack(">IIBBBBB", data)
+        elif chunk_type == b"IDAT":
+            idat.append(data)
+        elif chunk_type == b"IEND":
+            break
+        offset = crc_end
+
+    channels = {0: 1, 2: 3, 4: 2, 6: 4}.get(color_type)
+    if (not width or not height or bit_depth != 8 or channels is None
+            or compression != 0 or png_filter != 0 or interlace != 0):
+        raise RuntimeError(
+            "unsupported browser PNG encoding "
+            f"({width}x{height}, depth={bit_depth}, color={color_type}, "
+            f"compression={compression}, filter={png_filter}, "
+            f"interlace={interlace})"
+        )
+    compressed = b"".join(idat)
+    filtered = zlib.decompress(compressed)
+    stride = int(width) * channels
+    expected_size = int(height) * (stride + 1)
+    if len(filtered) != expected_size:
+        raise RuntimeError(
+            f"decoded PNG scanline size changed ({len(filtered)} != {expected_size})"
+        )
+
+    pixels = bytearray(int(height) * stride)
+    previous = bytearray(stride)
+
+    def paeth(left: int, above: int, upper_left: int) -> int:
+        estimate = left + above - upper_left
+        d_left = abs(estimate - left)
+        d_above = abs(estimate - above)
+        d_upper_left = abs(estimate - upper_left)
+        if d_left <= d_above and d_left <= d_upper_left:
+            return left
+        if d_above <= d_upper_left:
+            return above
+        return upper_left
+
+    for row_index in range(int(height)):
+        start = row_index * (stride + 1)
+        filter_type = filtered[start]
+        source = filtered[start + 1:start + 1 + stride]
+        current = bytearray(stride)
+        if filter_type == 0:
+            current[:] = source
+        elif filter_type in (1, 2, 3, 4):
+            for index, encoded in enumerate(source):
+                left = current[index - channels] if index >= channels else 0
+                above = previous[index]
+                upper_left = previous[index - channels] if index >= channels else 0
+                if filter_type == 1:
+                    predictor = left
+                elif filter_type == 2:
+                    predictor = above
+                elif filter_type == 3:
+                    predictor = (left + above) // 2
+                else:
+                    predictor = paeth(left, above, upper_left)
+                current[index] = (encoded + predictor) & 0xFF
+        else:
+            raise RuntimeError(f"unsupported PNG row filter {filter_type}")
+        pixel_start = row_index * stride
+        pixels[pixel_start:pixel_start + stride] = current
+        previous = current
+    return int(width), int(height), int(color_type), bytes(pixels)
+
+
+def _compare_decoded_rgba(
+    reference_png: bytes,
+    candidate_png: bytes,
+) -> tuple[bool, str]:
+    """Require two PNG screenshots to have zero differing decoded RGBA pixels."""
+    # Chromium's screenshot encoder is deterministic.  Byte-identical valid
+    # PNGs necessarily decode to identical RGBA and are a strictly stronger
+    # equality proof; avoid two expensive 20-megapixel unfilter passes in this
+    # overwhelmingly common success case.  Differently encoded PNGs still go
+    # through the complete decoder below (covered by the compression-level
+    # self-test used for this renderer).
+    if reference_png == candidate_png:
+        signature = b"\x89PNG\r\n\x1a\n"
+        if (len(reference_png) < 33
+                or not reference_png.startswith(signature)
+                or reference_png[12:16] != b"IHDR"):
+            raise RuntimeError("byte-identical screenshots are not valid PNGs")
+        ref_w, ref_h = struct.unpack(">II", reference_png[16:24])
+        return True, f"{ref_w}x{ref_h}, 0 differing decoded RGBA pixels"
+
+    ref_w, ref_h, ref_type, ref_pixels = _decode_browser_png(reference_png)
+    cur_w, cur_h, cur_type, cur_pixels = _decode_browser_png(candidate_png)
+    if (ref_w, ref_h) != (cur_w, cur_h):
+        return False, (
+            f"dimensions changed ({ref_w}x{ref_h} -> {cur_w}x{cur_h})"
+        )
+    # The common path avoids materialising two additional 80 MB RGBA buffers:
+    # equal decoded RGB (or RGBA) samples imply equal RGBA samples exactly.
+    if ref_type == cur_type and ref_pixels == cur_pixels:
+        return True, f"{ref_w}x{ref_h}, 0 differing decoded RGBA pixels"
+
+    channels = {0: 1, 2: 3, 4: 2, 6: 4}
+
+    def rgba_at(pixels: bytes, color_type: int, index: int):
+        channel_count = channels[color_type]
+        at = index * channel_count
+        if color_type == 0:
+            value = pixels[at]
+            return value, value, value, 255
+        if color_type == 2:
+            return pixels[at], pixels[at + 1], pixels[at + 2], 255
+        if color_type == 4:
+            value = pixels[at]
+            return value, value, value, pixels[at + 1]
+        return tuple(pixels[at:at + 4])
+
+    for pixel_index in range(ref_w * ref_h):
+        if rgba_at(ref_pixels, ref_type, pixel_index) != rgba_at(
+                cur_pixels, cur_type, pixel_index):
+            x = pixel_index % ref_w
+            y = pixel_index // ref_w
+            return False, (
+                f"at least 1 decoded RGBA pixel differs; first at ({x}, {y})"
+            )
+    return True, f"{ref_w}x{ref_h}, 0 differing decoded RGBA pixels"
+
+
+def _capture_full_viewport_png(page, viewport: tuple[int, int]) -> bytes:
+    """Capture the fixed 1x poster viewport used by the geometry pixel gate."""
+    width, height = viewport
+    payload = page.screenshot(
+        type="png",
+        full_page=False,
+        clip={"x": 0, "y": 0, "width": width, "height": height},
+    )
+    if not isinstance(payload, bytes) or not payload:
+        raise RuntimeError("Playwright returned an empty reference screenshot")
+    return payload
+
+
 def _ensure_unscaled_layout_timer_guard(html_path: Path) -> bool:
     """Run recurring geometry fitters against the unscaled poster canvas.
 
@@ -355,9 +912,16 @@ def _ensure_unscaled_layout_timer_guard(html_path: Path) -> bool:
 (() => {{
   const nativeSetInterval = window.setInterval.bind(window);
   window.setInterval = function(callback, delay, ...args) {{
-    if (typeof callback !== 'function')
-      return nativeSetInterval(callback, delay, ...args);
+    if (typeof callback !== 'function') {{
+      const guardedSource =
+        "if (document.documentElement.getAttribute("
+        + "'{_GEOMETRY_FROZEN_ATTR}') !== '1') {{\\n"
+        + String(callback) + "\\n}}";
+      return nativeSetInterval(guardedSource, delay, ...args);
+    }}
     const guarded = function(...tickArgs) {{
+      if (document.documentElement.getAttribute(
+            '{_GEOMETRY_FROZEN_ATTR}') === '1') return;
       const invoke = () => callback.apply(window, tickArgs);
       const poster = document.querySelector('[data-measure-role="poster"]')
         || document.querySelector('.poster')
@@ -480,15 +1044,23 @@ _EXPAND_SNAPSHOT_JS = r"""
     const eligibleImages = new Set();
     Array.from(sec.querySelectorAll('img')).forEach((img, imageIndex) => {
       if (img.closest('.section[data-section]') !== sec) return;
+      const source = img.getAttribute('src') || '';
+      const isResearchFigure = !!img.closest('figure, .figure')
+        || /(^|\/)figures?\//i.test(source);
       const r = img.getBoundingClientRect();
-      if (r.width < 50 || r.height < 1) return;
+      // The size cutoff excludes incidental utility icons only.  A collapsed
+      // research image is itself a figure-floor failure and must remain in the
+      // snapshot; otherwise its larger <figure> wrapper is misreported below as
+      // a fully painted fallback and the absolute >=90% gate is bypassed.
+      if (!isResearchFigure && (r.width < 50 || r.height < 1)) return;
       eligibleImages.add(img);
       const p = paintedDims(img, r);
       media.push({
         key:section.key + '|img:' + imageIndex,
         sectionKey:section.key, sid:section.sid,
         parentKey:section.parentKey, kind:'img',
-        src:img.getAttribute('src') || '',
+        isResearchFigure:isResearchFigure,
+        src:source,
         currentSrc:img.currentSrc || '',
         boxW:r.width, boxH:r.height,
         paintedW:p.w, paintedH:p.h,
@@ -505,17 +1077,94 @@ _EXPAND_SNAPSHOT_JS = r"""
             .some(img => eligibleImages.has(img))) return;
         const r = node.getBoundingClientRect();
         if (r.width < 1 || r.height < 1) return;
+        const visualRects = Array.from(node.querySelectorAll(
+          'svg, canvas, video, object, embed'
+        )).filter(visual => visual.closest('figure, .figure') === node)
+          .map(visual => visual.getBoundingClientRect())
+          .filter(box => box.width >= 1 && box.height >= 1);
+        let paintedW = 0;
+        let paintedH = 0;
+        let fallbackFit = 'unverified-fallback';
+        if (visualRects.length) {
+          const left = Math.max(r.left,
+            Math.min(...visualRects.map(box => box.left)));
+          const top = Math.max(r.top,
+            Math.min(...visualRects.map(box => box.top)));
+          const right = Math.min(r.right,
+            Math.max(...visualRects.map(box => box.right)));
+          const bottom = Math.min(r.bottom,
+            Math.max(...visualRects.map(box => box.bottom)));
+          paintedW = Math.max(0, right - left);
+          paintedH = Math.max(0, bottom - top);
+          fallbackFit = 'visual-descendant';
+        } else {
+          const style = getComputedStyle(node);
+          const backgroundSize = (style.backgroundSize || '')
+            .trim().toLowerCase();
+          if (style.backgroundImage !== 'none'
+              && (backgroundSize === 'cover'
+                || backgroundSize === '100% 100%')) {
+            paintedW = r.width;
+            paintedH = r.height;
+            fallbackFit = 'background-cover';
+          }
+        }
         media.push({
           key:section.key + '|figure:' + figureIndex,
           sectionKey:section.key, sid:section.sid,
           parentKey:section.parentKey, kind:'figure',
+          isResearchFigure:true,
           src:'', currentSrc:'', boxW:r.width, boxH:r.height,
-          paintedW:r.width, paintedH:r.height,
-          nw:0, nh:0, fit:'fallback',
+          paintedW:paintedW, paintedH:paintedH,
+          nw:0, nh:0, fit:fallbackFit,
         });
       });
   });
-  return {sections:sections, media:media};
+  const text = Array.from(document.querySelectorAll(
+    'h1,h2,h3,h4,h5,h6,p,li,td,th,figcaption,blockquote'
+  )).map((node, index) => {
+    const rect = node.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const inkRects = Array.from(range.getClientRects()).filter(
+      r => r.width > 0.01 && r.height > 0.01
+    );
+    const lineTops = [];
+    inkRects.forEach(r => {
+      if (!lineTops.some(y => Math.abs(y - r.top) <= 1)) lineTops.push(r.top);
+    });
+    const ink = inkRects.length ? {
+      x:Math.min(...inkRects.map(r => r.left)),
+      y:Math.min(...inkRects.map(r => r.top)),
+      w:Math.max(...inkRects.map(r => r.right))
+        - Math.min(...inkRects.map(r => r.left)),
+      h:Math.max(...inkRects.map(r => r.bottom))
+        - Math.min(...inkRects.map(r => r.top)),
+    } : {x:rect.x, y:rect.y, w:0, h:0};
+    const section = node.closest('.section[data-section]');
+    const sectionIndex = section ? sectionNodes.indexOf(section) : -1;
+    return {
+      key:'text:' + index,
+      tag:node.tagName.toLowerCase(),
+      value:(node.innerText || '').replace(/\s+/g, ' ').trim(),
+      sid:section ? (section.getAttribute('data-section') || '') : '',
+      parentKey:sectionIndex >= 0 ? sections[sectionIndex].parentKey : '',
+      controlled:!!node.closest('.section[data-section="scan-to-read"]'),
+      rect:rectOf(node), ink:ink, lineCount:lineTops.length,
+    };
+  });
+  const landmarkNodes = [
+    ...document.querySelectorAll('.poster'),
+    ...document.querySelectorAll('.titlebar'),
+    ...document.querySelectorAll('.columns'),
+    ...document.querySelectorAll('.columns > .col'),
+  ];
+  const landmarks = landmarkNodes.map((node, index) => ({
+    key:'landmark:' + index,
+    classes:node.className || '',
+    rect:rectOf(node),
+  }));
+  return {sections:sections, media:media, text:text, landmarks:landmarks};
 }
 """
 
@@ -528,6 +1177,170 @@ def _capture_expand_snapshot(page) -> dict:
     return result
 
 
+def _validate_source_geometry(
+    page,
+    baseline: dict,
+    *,
+    allow_scan_reflow: bool = False,
+) -> list[str]:
+    """Compare the accepted cold page with its pre-font-freeze source layout.
+
+    Renderer-owned row-gap expansion may move content vertically inside a card,
+    so text *positions* are intentionally not compared.  Text wrapping/ink
+    bounds, section/card geometry, landmarks, and media dimensions remain hard
+    invariants.  The parent column containing Scan-to-Read is excluded only
+    after the explicit scan-suppression pass actually hides that section and
+    is therefore allowed to reflow that one scope.  Callers must first run a
+    strict pre-suppression comparison so portable-font changes cannot hide in
+    the same column.
+    """
+    after = _capture_expand_snapshot(page)
+    failures: list[str] = []
+
+    def close(left, right, tolerance: float = _EXPAND_GEOMETRY_TOLERANCE_PX):
+        try:
+            return abs(float(left) - float(right)) <= tolerance
+        except (TypeError, ValueError):
+            return False
+
+    def rect_close(left, right, *, position: bool = True) -> bool:
+        if not isinstance(left, dict) or not isinstance(right, dict):
+            return False
+        keys = ("x", "y", "w", "h") if position else ("w", "h")
+        return all(close(left.get(key), right.get(key)) for key in keys)
+
+    before_sections = [
+        item for item in (baseline.get("sections") or [])
+        if isinstance(item, dict)
+    ]
+    after_sections = [
+        item for item in (after.get("sections") or [])
+        if isinstance(item, dict)
+    ]
+    controlled_parents = (
+        {
+            str(item.get("parentKey", "")) for item in before_sections
+            if str(item.get("sid", "")) == "scan-to-read"
+        }
+        if allow_scan_reflow
+        else set()
+    )
+    if len(before_sections) != len(after_sections):
+        failures.append(
+            f"section count changed ({len(before_sections)} -> {len(after_sections)})"
+        )
+    for index, (before, current) in enumerate(zip(before_sections, after_sections)):
+        identity = ("key", "sid", "parentKey")
+        if any(before.get(key) != current.get(key) for key in identity):
+            failures.append(f"section identity/order changed at index {index}")
+            continue
+        if str(before.get("parentKey", "")) in controlled_parents:
+            continue
+        if not rect_close(before.get("rect"), current.get("rect")):
+            failures.append(f"section geometry changed: {before.get('sid', index)}")
+        if not rect_close(before.get("parentRect"), current.get("parentRect")):
+            failures.append(f"section parent geometry changed: {before.get('sid', index)}")
+
+    before_landmarks = [
+        item for item in (baseline.get("landmarks") or [])
+        if isinstance(item, dict)
+    ]
+    after_landmarks = [
+        item for item in (after.get("landmarks") or [])
+        if isinstance(item, dict)
+    ]
+    if len(before_landmarks) != len(after_landmarks):
+        failures.append(
+            "poster/header/column landmark count changed "
+            f"({len(before_landmarks)} -> {len(after_landmarks)})"
+        )
+    for index, (before, current) in enumerate(zip(before_landmarks, after_landmarks)):
+        if (before.get("key") != current.get("key")
+                or before.get("classes") != current.get("classes")):
+            failures.append(f"landmark identity/order changed at index {index}")
+        elif not rect_close(before.get("rect"), current.get("rect")):
+            failures.append(f"landmark geometry changed at index {index}")
+
+    before_media = [
+        item for item in (baseline.get("media") or [])
+        if isinstance(item, dict)
+    ]
+    after_media = [
+        item for item in (after.get("media") or [])
+        if isinstance(item, dict)
+    ]
+    if allow_scan_reflow:
+        # A suppressed legacy Scan-to-Read tile can collapse its QR <img> to
+        # 0x0.  The snapshot intentionally omits such non-research media, so
+        # remove the complete controlled parent scope before comparing key
+        # sets.  Additions/removals everywhere else remain strict.
+        before_media = [
+            item for item in before_media
+            if str(item.get("parentKey", "")) not in controlled_parents
+        ]
+        after_media = [
+            item for item in after_media
+            if str(item.get("parentKey", "")) not in controlled_parents
+        ]
+    before_media_by_key = {str(item.get("key", "")): item for item in before_media}
+    after_media_by_key = {str(item.get("key", "")): item for item in after_media}
+    if set(before_media_by_key) != set(after_media_by_key):
+        failures.append("media set changed")
+    for key, before in before_media_by_key.items():
+        if str(before.get("parentKey", "")) in controlled_parents:
+            continue
+        current = after_media_by_key.get(key)
+        if current is None:
+            continue
+        identity = ("sectionKey", "sid", "kind", "src", "fit", "isResearchFigure")
+        if any(before.get(field) != current.get(field) for field in identity):
+            failures.append(f"media identity/source changed: {key}")
+            continue
+        for field in ("boxW", "boxH", "paintedW", "paintedH"):
+            old_value = float(before.get(field) or 0)
+            new_value = float(current.get(field) or 0)
+            tolerance = min(
+                _EXPAND_GEOMETRY_TOLERANCE_PX,
+                _EXPAND_MEDIA_REL_TOLERANCE
+                * max(abs(old_value), abs(new_value)),
+            )
+            if not close(old_value, new_value, tolerance):
+                failures.append(f"media {field} changed: {key}")
+        if (before.get("nw"), before.get("nh")) != (
+                current.get("nw"), current.get("nh")):
+            failures.append(f"media intrinsic dimensions changed: {key}")
+
+    before_text = [
+        item for item in (baseline.get("text") or [])
+        if isinstance(item, dict)
+    ]
+    after_text = [
+        item for item in (after.get("text") or [])
+        if isinstance(item, dict)
+    ]
+    if len(before_text) != len(after_text):
+        failures.append(f"text-block count changed ({len(before_text)} -> {len(after_text)})")
+    for index, (before, current) in enumerate(zip(before_text, after_text)):
+        if (before.get("key") != current.get("key")
+                or before.get("tag") != current.get("tag")
+                or before.get("value") != current.get("value")):
+            failures.append(f"text identity/content changed at index {index}")
+            continue
+        if allow_scan_reflow and (
+                before.get("controlled")
+                or str(before.get("parentKey", "")) in controlled_parents):
+            continue
+        if before.get("lineCount") != current.get("lineCount"):
+            failures.append(f"text wrapping changed: {before.get('key', index)}")
+        if not rect_close(before.get("rect"), current.get("rect"), position=False):
+            failures.append(f"text block size changed: {before.get('key', index)}")
+        if not rect_close(before.get("ink"), current.get("ink"), position=False):
+            failures.append(f"text ink bounds changed: {before.get('key', index)}")
+
+    # Keep diagnostics bounded even on a badly diverged legacy page.
+    return failures[:80]
+
+
 def _wait_for_images_decoded(page, *, timeout_ms: int, label: str) -> bool:
     """Wait until every document image has loaded and decoded.
 
@@ -535,31 +1348,55 @@ def _wait_for_images_decoded(page, *, timeout_ms: int, label: str) -> bool:
     standalone reopen cannot.  Durable geometry must therefore be measured
     only after a bounded decode wait in the fresh context used for capture.
     """
+    # Playwright interprets timeout=0 as "wait forever".  The CLI accepts
+    # zero for historical compatibility, so clamp every call to a genuinely
+    # bounded host-side timeout before entering the page.
+    timeout_ms = max(1_000, int(timeout_ms))
+    state_name = "__paper2posterImageDecodeState"
     try:
-        status = page.evaluate(
-            """timeoutMs => Promise.race([
-              Promise.all(Array.from(document.images).map(async img => {
-                if (!img.complete) {
-                  await new Promise(resolve => {
-                    img.addEventListener('load', resolve, {once:true});
-                    img.addEventListener('error', resolve, {once:true});
-                  });
-                }
-                if (typeof img.decode === 'function') {
-                  try { await img.decode(); } catch (_) {}
-                }
-                return img.complete && img.naturalWidth > 0
-                  && img.naturalHeight > 0;
-              })).then(results => results.every(Boolean) ? 'ok' : 'failed'),
-              new Promise(resolve => setTimeout(
-                () => resolve('timeout'), timeoutMs)),
-            ])""",
-            timeout_ms,
+        # Start and poll the asynchronous decode inside wait_for_function.
+        # Unlike page.evaluate, Playwright enforces this call's timeout from
+        # the host even when the page main thread is busy or the poster has
+        # replaced/throttled window.setTimeout. This keeps a nominally bounded
+        # image gate from hanging the complete render transaction.
+        status_handle = page.wait_for_function(
+            """stateName => {
+              let state = window[stateName];
+              if (!state) {
+                state = {status:'pending'};
+                window[stateName] = state;
+                Promise.all(Array.from(document.images).map(async img => {
+                  if (!img.complete) {
+                    await new Promise(resolve => {
+                      img.addEventListener('load', resolve, {once:true});
+                      img.addEventListener('error', resolve, {once:true});
+                    });
+                  }
+                  if (typeof img.decode === 'function') {
+                    try { await img.decode(); } catch (_) {}
+                  }
+                  return img.complete && img.naturalWidth > 0
+                    && img.naturalHeight > 0;
+                })).then(
+                  results => { state.status = results.every(Boolean)
+                    ? 'ok' : 'failed'; },
+                  () => { state.status = 'failed'; },
+                );
+              }
+              return state.status === 'pending' ? false : state.status;
+            }""",
+            arg=state_name,
+            timeout=timeout_ms,
+            polling=100,
         )
+        try:
+            status = status_handle.json_value()
+        finally:
+            status_handle.dispose()
     except Exception as exc:
         _eprint(
-            f"[render_preview] WARN: {label} image decode check failed: "
-            f"{ascii_safe(exc)}."
+            f"[render_preview] WARN: {label} images did not decode cleanly "
+            f"within {timeout_ms} ms: {ascii_safe(exc)}."
         )
         return False
     if status != "ok":
@@ -575,6 +1412,8 @@ def _validate_durable_expand(
     page,
     records: list[dict],
     baseline: dict,
+    *,
+    enforce_figure_floor: bool = True,
 ) -> dict:
     """Validate provisional rules against the whole natural poster snapshot.
 
@@ -710,16 +1549,15 @@ def _validate_durable_expand(
               ? current.paintedW / sec.rect.w : 0;
             const hr = sec && sec.rect && sec.rect.h > 0
               ? current.paintedH / sec.rect.h : 0;
-            // Legacy natural pages can already be outside the finishing band.
-            // Reject only a new threshold crossing here; the strict geometry
-            // comparisons above still reject any expand-created size drift.
-            const beforeFill = Math.max(beforeWr, beforeHr);
             const fill = Math.max(wr, hr);
-            if (beforeFill + 1e-6 >= figMin && fill + 1e-6 < figMin)
+            // Research figures normally have an absolute minimum.  The only
+            // exception is the explicit historical-backfill token, represented
+            // here by figMin=0; the <=1.01 overflow ceiling stays unconditional.
+            // QR codes and utility images are excluded by isResearchFigure.
+            if (current.isResearchFigure && fill + 1e-6 < figMin)
               addFailure(before.parentKey,
                 'media fill dropped below floor: ' + before.key);
-            if ((beforeWr <= figMax && wr > figMax)
-                || (beforeHr <= figMax && hr > figMax))
+            if (current.isResearchFigure && (wr > figMax || hr > figMax))
               addFailure(before.parentKey,
                 'media overflowed its section: ' + before.key);
           }
@@ -761,7 +1599,9 @@ def _validate_durable_expand(
             "gapTol": _EXPAND_GAP_TOLERANCE_PX,
             "geomTol": _EXPAND_GEOMETRY_TOLERANCE_PX,
             "mediaRelTol": _EXPAND_MEDIA_REL_TOLERANCE,
-            "figMin": _EXPAND_FIG_MIN_RATIO,
+            "figMin": (
+                _EXPAND_FIG_MIN_RATIO if enforce_figure_floor else 0.0
+            ),
             "figMax": _EXPAND_FIG_MAX_RATIO,
         },
     )
@@ -776,6 +1616,58 @@ def _validate_durable_expand(
             "snapshotReasons": ["durable validator returned malformed data"],
         }
     return result
+
+
+def _validate_final_figure_fill(
+    page,
+    *,
+    enforce_minimum: bool = True,
+) -> list[str]:
+    """Return absolute research-figure fill/overflow failures for ``page``.
+
+    Expand validation is conditional: a poster with no provisional expand rule
+    can reach capture without calling ``_validate_durable_expand`` at all.  The
+    >=90% figure contract is normally unconditional, so enforce it once
+    more on the accepted cold page immediately before PDF/PNG capture.  The
+    sole exception is the explicit historical-backfill compatibility token:
+    those immutable source pixels may already violate the modern minimum.
+    Overflow remains strict in both modes.
+    """
+    snapshot = _capture_expand_snapshot(page)
+    sections = {
+        str(item.get("key", "")): item
+        for item in (snapshot.get("sections") or [])
+        if isinstance(item, dict)
+    }
+    failures: list[str] = []
+    for media in snapshot.get("media") or []:
+        if not isinstance(media, dict) or not media.get("isResearchFigure"):
+            continue
+        section = sections.get(str(media.get("sectionKey", ""))) or {}
+        rect = section.get("rect") or {}
+        section_w = float(rect.get("w") or 0)
+        section_h = float(rect.get("h") or 0)
+        if section_w <= 0 or section_h <= 0:
+            failures.append(
+                f"research figure has no measurable section: {media.get('key', '')}"
+            )
+            continue
+        width_ratio = float(media.get("paintedW") or 0) / section_w
+        height_ratio = float(media.get("paintedH") or 0) / section_h
+        fill = max(width_ratio, height_ratio)
+        key = str(media.get("key", ""))
+        if enforce_minimum and fill + 1e-6 < _EXPAND_FIG_MIN_RATIO:
+            failures.append(
+                f"research figure fill {fill:.4f} is below "
+                f"{_EXPAND_FIG_MIN_RATIO:.2f}: {key}"
+            )
+        if (width_ratio > _EXPAND_FIG_MAX_RATIO + 1e-6
+                or height_ratio > _EXPAND_FIG_MAX_RATIO + 1e-6):
+            failures.append(
+                "research figure overflows its section "
+                f"({width_ratio:.4f}x{height_ratio:.4f}): {key}"
+            )
+    return failures
 
 
 def _settle_loaded_durable_page(
@@ -846,13 +1738,15 @@ def _reload_and_settle_after_bake(
     timeout_ms: int,
     playwright_timeout_error,
     label: str,
-) -> bool:
-    """Reload renderer-owned CSS and report whether geometry fully settled.
+) -> tuple[bool, bool]:
+    """Reload renderer-owned CSS and report navigation and settle separately.
 
     Rendering remains a soft path for MathJax/network failures, but provisional
     expand rules are optional.  A rule may be kept only when the durable page
     completed the same settle cycle used for final capture; otherwise its
-    validator fails closed and removes it.
+    validator fails closed and removes it.  A failed navigation is different:
+    there is no persisted page to validate or capture, so callers keep that as
+    a hard transaction failure.
     """
     navigated = True
     try:
@@ -878,13 +1772,14 @@ def _reload_and_settle_after_bake(
             f"[render_preview] WARN: {label} failed: {ascii_safe(exc)}; "
             "provisional expand rules will fail closed."
         )
-        return False
-    return _settle_loaded_durable_page(
+        return False, False
+    settled = _settle_loaded_durable_page(
         page,
         timeout_ms=timeout_ms,
         playwright_timeout_error=playwright_timeout_error,
         label=label,
-    ) and navigated
+    )
+    return navigated, settled
 
 
 def _new_print_context_page(browser, viewport: tuple[int, int]):
@@ -910,7 +1805,7 @@ def _open_fresh_durable_page(
     playwright_timeout_error,
     label: str,
 ):
-    """Navigate once in a brand-new BrowserContext, then fully settle it."""
+    """Open a fresh context and return navigation and settle independently."""
     context, page = _new_print_context_page(browser, viewport)
     navigated = True
     try:
@@ -931,14 +1826,14 @@ def _open_fresh_durable_page(
             f"[render_preview] WARN: {label} failed: {ascii_safe(exc)}; "
             "provisional expand rules will fail closed."
         )
-        return context, page, False
+        return context, page, False, False
     stable = _settle_loaded_durable_page(
         page,
         timeout_ms=timeout_ms,
         playwright_timeout_error=playwright_timeout_error,
         label=label,
     )
-    return context, page, stable and navigated
+    return context, page, navigated, stable
 
 
 def _capture_style_targets_and_freeze(context, page):
@@ -1050,6 +1945,18 @@ def _bake_scan_suppress_into_html(html_path: Path) -> bool:
     return True
 
 
+def _remove_scan_suppress_from_html(html_path: Path) -> bool:
+    """Remove the optional scan mutation after any durability uncertainty."""
+    original = html_path.read_text(encoding="utf-8")
+    text, count = _strip_derived_style_block(
+        original, "poster-scan-suppress"
+    )
+    if not count:
+        return False
+    html_path.write_text(text, encoding="utf-8")
+    return True
+
+
 def _autopack_header_logos(html_path: Path) -> None:
     """Step 5.9 auto-run: pack the header institution logos so they FILL their
     zone (multi-row, grown to fit) instead of one tiny row. This is a manual
@@ -1091,13 +1998,34 @@ def _render_staged(
     derived bake) lands on this adjacent working copy.  The caller promotes it
     only after both staged exports have completed successfully.
     """
-    # Expand and scan suppression are renderer-derived final state.  Measure a
-    # fresh source layout on every invocation; otherwise an older bake feeds
-    # back into its own rerender and POSTER_* = 0 cannot disable it.
+    legacy_figure_floor_compat = (
+        os.environ.get(_LEGACY_FIGURE_FLOOR_ENV, "").strip()
+        == _LEGACY_FIGURE_FLOOR_TOKEN
+    )
+    enforce_figure_floor = not legacy_figure_floor_compat
+    figure_policy_label = (
+        "the >=90% minimum and <=1.01 overflow research-figure contracts"
+        if enforce_figure_floor
+        else (
+            "the <=1.01 research-figure overflow contract under the explicit "
+            "legacy minimum-only exception"
+        )
+    )
+    if legacy_figure_floor_compat:
+        _eprint(
+            "[render_preview] LEGACY COMPAT: preserving an immutable "
+            "historical source that predates the >=90% research-figure "
+            "minimum; the minimum-only gate is disabled for this render, "
+            "while intrinsic geometry and <=1.01 overflow remain strict."
+        )
+
+    # Geometry/expand/scan state is renderer-derived final output.  Recover the
+    # authored natural document on every explicit rerender; otherwise the prior
+    # frozen snapshot (or an old row-gap bake) would feed back into itself.
+    _strip_durable_geometry_snapshot(html_path)
     _strip_derived_render_styles(html_path)
     _ensure_unscaled_layout_timer_guard(html_path)
     _sync_bundled_fonts(html_path)
-    freeze_system_font_webfont(html_path)
     _autopack_header_logos(html_path)   # Step 5.9, auto-run so it's never skipped
 
     resolved = _canvas.resolve_canvas(
@@ -1120,9 +2048,52 @@ def _render_staged(
     sync_playwright, PWTimeoutError = pw
 
     with sync_playwright() as p_:
-        browser, ctx, page = _render.open_print_emulated_page(
-            p_, viewport
+        browser = p_.chromium.launch()
+        (
+            _source_ctx,
+            _source_page,
+            _source_navigated,
+            _source_settled,
+        ) = _open_fresh_durable_page(
+            browser,
+            viewport,
+            html_path,
+            timeout_ms=args.mathjax_timeout_ms,
+            playwright_timeout_error=PWTimeoutError,
+            label="pre-font-freeze source baseline",
         )
+        if not _source_navigated:
+            _eprint(
+                "[render_preview] ERROR: source layout did not complete "
+                "navigation; refusing to mutate a render transaction without "
+                "a geometry baseline."
+            )
+            _source_ctx.close()
+            browser.close()
+            return 2
+        if not _source_settled:
+            _eprint(
+                "[render_preview] WARN: source layout did not fully settle; "
+                "continuing on the renderer's soft path with all optional "
+                "expand/scan mutations disabled."
+            )
+        try:
+            _source_baseline = _capture_expand_snapshot(_source_page)
+        except Exception as exc:
+            _eprint(
+                "[render_preview] ERROR: could not capture the source layout "
+                f"baseline: {ascii_safe(exc)}"
+            )
+            _source_ctx.close()
+            browser.close()
+            return 2
+        _source_ctx.close()
+
+        # Font freezing is the portability mutation under test.  It runs only
+        # after a settled source snapshot exists, and the final cold page must
+        # prove that section/media geometry and text wrapping survived it.
+        freeze_system_font_webfont(html_path)
+        ctx, page = _new_print_context_page(browser, viewport)
         # Soft path: a hung CDN (blocked MathJax fetch, unreachable
         # web font) must not hard-crash render. Playwright's default
         # `page.goto` waits for `load` (all subresources), which can
@@ -1155,29 +2126,76 @@ def _render_staged(
             label="initial load",
         )
 
-        settle = _render.settle_page(
-            page,
-            mathjax_timeout_ms=args.mathjax_timeout_ms,
-            settle_ms=1500,
+        _initial_settle_complete = bool(
+            _source_settled and _initial_images_ready
         )
-        # Render is soft path: warn but continue, even on MathJax
-        # problems — the user can SEE raw $...$ on the resulting PDF.
-        if settle.mathjax_status == "timeout":
-            _eprint(
-                f"[render_preview] WARN: MathJax typeset timed out "
-                f"after {args.mathjax_timeout_ms} ms."
+        try:
+            settle = _render.settle_page(
+                page,
+                mathjax_timeout_ms=args.mathjax_timeout_ms,
+                settle_ms=1500,
             )
-        elif settle.mathjax_status == "error":
+        except Exception as exc:
+            # Rendering is a soft path.  Navigation succeeded, so retain the
+            # natural page and reject only renderer-owned optional mutations.
+            _initial_settle_complete = False
             _eprint(
-                f"[render_preview] WARN: MathJax error: "
-                f"{ascii_safe(settle.mathjax_error)}"
+                "[render_preview] WARN: initial settle failed: "
+                f"{ascii_safe(exc)}; continuing without optional expand/scan "
+                "mutations."
             )
-        if settle.mathjax_intended and settle.tex_without_mathjax:
-            _eprint(
-                "[render_preview] WARN: page intended to load MathJax "
-                "but no <mjx-container> rendered -- MathJax may have "
-                "failed to load. PDF will show raw $...$ text."
-            )
+        else:
+            # Render is a soft path: warn but continue, even on MathJax
+            # problems — the user can SEE raw $...$ on the resulting PDF.
+            if settle.mathjax_status == "timeout":
+                _initial_settle_complete = False
+                _eprint(
+                    f"[render_preview] WARN: MathJax typeset timed out "
+                    f"after {args.mathjax_timeout_ms} ms."
+                )
+            elif settle.mathjax_status == "error":
+                _initial_settle_complete = False
+                _eprint(
+                    f"[render_preview] WARN: MathJax error: "
+                    f"{ascii_safe(settle.mathjax_error)}"
+                )
+            if settle.mathjax_intended and settle.tex_without_mathjax:
+                _initial_settle_complete = False
+                _eprint(
+                    "[render_preview] WARN: page intended to load MathJax "
+                    "but no <mjx-container> rendered -- MathJax may have "
+                    "failed to load. PDF will show raw $...$ text."
+                )
+
+        # Prove the portable-font mutation itself preserves the complete
+        # authored layout before Scan-to-Read suppression is allowed to reflow
+        # one column.  Without this strict pre-scan gate, the later intentional
+        # reflow exception could also conceal unrelated font wrapping changes
+        # in Headline Numbers, Takeaway, or another sibling card.
+        if _initial_settle_complete:
+            try:
+                _pre_scan_source_geometry_failures = (
+                    _validate_source_geometry(page, _source_baseline)
+                )
+            except Exception as exc:
+                _eprint(
+                    "[render_preview] ERROR: could not validate portable-font "
+                    "geometry before optional Scan-to-Read suppression: "
+                    f"{ascii_safe(exc)}"
+                )
+                browser.close()
+                return 2
+            if _pre_scan_source_geometry_failures:
+                _eprint(
+                    "[render_preview] ERROR: portable-font mutation changed "
+                    "source geometry or text wrapping before optional "
+                    "Scan-to-Read suppression: "
+                    + ascii_safe(
+                        "; ".join(_pre_scan_source_geometry_failures)
+                    )
+                )
+                browser.close()
+                return 2
 
         # Scan-to-Read aspect guard (runs BEFORE the expand pass). A scan section
         # that came out wide and flat -- its own width many times its own height
@@ -1200,7 +2218,7 @@ def _render_staged(
             _scan_wh = float(os.environ.get("POSTER_SCAN_SUPPRESS_WH", "3.8"))
         except Exception:
             _scan_wh = 3.8
-        if _scan_wh > 0:
+        if _scan_wh > 0 and _initial_settle_complete:
             try:
                 _sv = page.evaluate(
                     """(T) => {
@@ -1236,8 +2254,9 @@ def _render_staged(
         # row-gaps BETWEEN its rows -- COLUMN bottoms stay aligned. Figure/image
         # cards participate too, but only provisionally: after the rule is baked
         # and the page's on-load figure fitter runs again, a durable validation
-        # removes any rule that changes figure dimensions or drops the strict
-        # >=90% figure-fill gate. Two immediate guardrails remain: (a) the slack
+        # removes any rule that changes figure dimensions, violates the >=90%
+        # minimum when enforced, or exceeds the unconditional <=1.01 overflow
+        # ceiling. Two immediate guardrails remain: (a) the slack
         # cap -- never push content past the bottom padding; (b) the
         # PARENT-height revert -- if
         # growing the gap changes the card's CONTAINER (column/grid) height, undo
@@ -1258,7 +2277,7 @@ def _render_staged(
         _expand_baseline = {}
         _expand_failed = False
         _baked = []
-        if _expand_t > 0 and _initial_images_ready:
+        if _expand_t > 0 and _initial_settle_complete:
             try:
                 # This is the one natural-layout capture. It completes before
                 # the proposal evaluator is allowed to mutate any row-gap.
@@ -1380,7 +2399,7 @@ def _render_staged(
         elif _expand_t > 0:
             _eprint(
                 "[render_preview] WARN: render-time expand skipped because "
-                "the natural image baseline was not fully decoded."
+                "the natural page did not fully settle."
             )
 
         # Persist renderer-derived state in cascade order: scan first, expand
@@ -1399,19 +2418,43 @@ def _render_staged(
         # catches load-count-dependent fitters and late cascade overrides.
         _survivors = list(_expand_records)
         _had_provisional_expand = bool(_survivors)
-        _durable_ready = True
+        _durable_navigated = True
+        _durable_settled = True
         if _html_mutated or _expand_failed:
-            _durable_ready = _reload_and_settle_after_bake(
-                page,
-                timeout_ms=args.mathjax_timeout_ms,
-                playwright_timeout_error=PWTimeoutError,
-                label="post-bake reload",
+            _durable_navigated, _durable_settled = (
+                _reload_and_settle_after_bake(
+                    page,
+                    timeout_ms=args.mathjax_timeout_ms,
+                    playwright_timeout_error=PWTimeoutError,
+                    label="post-bake reload",
+                )
             )
-        if _expand_failed and not _durable_ready:
+        if not _durable_navigated:
             _eprint(
-                "[render_preview] ERROR: provisional expand failed and the "
-                "natural persisted HTML could not be reloaded reliably; "
-                "refusing to capture a possibly live-only DOM."
+                "[render_preview] ERROR: persisted HTML could not complete "
+                "post-bake navigation; refusing to capture a live-only DOM."
+            )
+            browser.close()
+            return 2
+        if not _durable_settled and _scan_suppressed:
+            _eprint(
+                "[render_preview] scan suppression rollback: durable settle "
+                "incomplete."
+            )
+            _remove_scan_suppress_from_html(html_path)
+            _scan_suppressed = False
+            _durable_navigated, _durable_settled = (
+                _reload_and_settle_after_bake(
+                    page,
+                    timeout_ms=args.mathjax_timeout_ms,
+                    playwright_timeout_error=PWTimeoutError,
+                    label="post-scan rollback reload",
+                )
+            )
+        if not _durable_navigated:
+            _eprint(
+                "[render_preview] ERROR: natural persisted HTML could not "
+                "complete navigation after optional scan rollback."
             )
             browser.close()
             return 2
@@ -1419,22 +2462,30 @@ def _render_staged(
         if _had_provisional_expand:
             _clean_validations = 0
             while True:
-                if not _durable_ready and _survivors:
+                if not _durable_navigated or not _durable_settled:
+                    _state_reason = (
+                        "durable navigation incomplete"
+                        if not _durable_navigated
+                        else "durable settle incomplete"
+                    )
                     _validation = {
                         "failures": [
                             {
                                 "sid": str(record.get("sid", "")),
-                                "reasons": ["durable settle incomplete"],
+                                "reasons": [_state_reason],
                             }
                             for record in _survivors
                         ],
                         "snapshotOk": False,
-                        "snapshotReasons": ["durable settle incomplete"],
+                        "snapshotReasons": [_state_reason],
                     }
                 else:
                     try:
                         _validation = _validate_durable_expand(
-                            page, _survivors, _expand_baseline,
+                            page,
+                            _survivors,
+                            _expand_baseline,
+                            enforce_figure_floor=enforce_figure_floor,
                         )
                     except Exception as exc:
                         _reason = f"durable validation failed: {ascii_safe(exc)}"
@@ -1456,11 +2507,13 @@ def _render_staged(
                     if _clean_validations >= 1:
                         break
                     _clean_validations += 1
-                    _durable_ready = _reload_and_settle_after_bake(
-                        page,
-                        timeout_ms=args.mathjax_timeout_ms,
-                        playwright_timeout_error=PWTimeoutError,
-                        label="post-expand confirmation reload",
+                    _durable_navigated, _durable_settled = (
+                        _reload_and_settle_after_bake(
+                            page,
+                            timeout_ms=args.mathjax_timeout_ms,
+                            playwright_timeout_error=PWTimeoutError,
+                            label="post-expand confirmation reload",
+                        )
                     )
                     continue
 
@@ -1514,19 +2567,37 @@ def _render_staged(
                             for record in _survivors
                         ],
                     )
-                    _durable_ready = _reload_and_settle_after_bake(
-                        page,
-                        timeout_ms=args.mathjax_timeout_ms,
-                        playwright_timeout_error=PWTimeoutError,
-                        label="post-expand rollback reload",
+                    _durable_navigated, _durable_settled = (
+                        _reload_and_settle_after_bake(
+                            page,
+                            timeout_ms=args.mathjax_timeout_ms,
+                            playwright_timeout_error=PWTimeoutError,
+                            label="post-expand rollback reload",
+                        )
                     )
                     _clean_validations = 0
                     continue
 
                 # All optional rules are already gone.  If the natural page
-                # still differs from the read-only baseline, capturing it would
-                # expose a live-only/stale document.  Abort the staged render so
-                # the user's previous HTML/PDF/PNG transaction stays untouched.
+                # navigated but a soft image/MathJax settle did not complete,
+                # the natural page remains renderable; the later independent
+                # warm/cold RGBA equality gate still protects durability.  A
+                # navigation failure or a settled geometry mismatch remains
+                # fatal.
+                if not _durable_navigated:
+                    _eprint(
+                        "[render_preview] ERROR: natural HTML did not complete "
+                        "navigation after expand rollback."
+                    )
+                    browser.close()
+                    return 2
+                if not _durable_settled:
+                    _eprint(
+                        "[render_preview] WARN: natural HTML settle remained "
+                        "incomplete after expand rollback; continuing on the "
+                        "soft render path."
+                    )
+                    break
                 _reasons = "; ".join(
                     str(reason) for reason in
                     (_validation.get("snapshotReasons") or [])
@@ -1553,32 +2624,68 @@ def _render_staged(
             _fresh_attempt = 0
             while True:
                 _fresh_attempt += 1
-                _fresh_ctx, _fresh_page, _fresh_ready = (
-                    _open_fresh_durable_page(
-                        browser,
-                        viewport,
-                        html_path,
-                        timeout_ms=args.mathjax_timeout_ms,
-                        playwright_timeout_error=PWTimeoutError,
-                        label=(
-                            "fresh-context expand confirmation "
-                            f"#{_fresh_attempt}"
-                        ),
-                    )
+                (
+                    _fresh_ctx,
+                    _fresh_page,
+                    _fresh_navigated,
+                    _fresh_settled,
+                ) = _open_fresh_durable_page(
+                    browser,
+                    viewport,
+                    html_path,
+                    timeout_ms=args.mathjax_timeout_ms,
+                    playwright_timeout_error=PWTimeoutError,
+                    label=(
+                        "fresh-context expand confirmation "
+                        f"#{_fresh_attempt}"
+                    ),
                 )
-                if not _fresh_ready:
+                if (not _fresh_settled and _fresh_navigated
+                        and _scan_suppressed):
+                    _eprint(
+                        "[render_preview] scan suppression rollback: "
+                        "fresh-context settle incomplete."
+                    )
+                    try:
+                        _fresh_ctx.close()
+                    except Exception:
+                        pass
+                    _remove_scan_suppress_from_html(html_path)
+                    _scan_suppressed = False
+                    continue
+                if (not _fresh_settled and _fresh_navigated
+                        and not _survivors and not _scan_suppressed):
+                    # All optional output is gone.  Keep the navigated natural
+                    # page on the documented soft path; the independent final
+                    # warm/cold pixel gate remains mandatory.
+                    _eprint(
+                        "[render_preview] WARN: natural fresh-context settle "
+                        "incomplete after optional rollback; continuing on "
+                        "the soft render path."
+                    )
+                    _old_ctx = ctx
+                    ctx, page = _fresh_ctx, _fresh_page
+                    try:
+                        _old_ctx.close()
+                    except Exception:
+                        pass
+                    break
+                if not _fresh_navigated or not _fresh_settled:
+                    _fresh_state_reason = (
+                        "fresh-context navigation incomplete"
+                        if not _fresh_navigated
+                        else "fresh-context settle incomplete"
+                    )
                     _fresh_validation = {
                         "failures": [
                             {
                                 "sid": str(record.get("sid", "")),
-                                "reasons": ["fresh-context settle incomplete"],
+                                "reasons": [_fresh_state_reason],
                             }
                             for record in _survivors
                         ],
                         "snapshotOk": False,
-                        "snapshotReasons": [
-                            "fresh-context settle incomplete"
-                        ],
+                        "snapshotReasons": [_fresh_state_reason],
                     }
                 elif _expand_baseline:
                     try:
@@ -1586,6 +2693,7 @@ def _render_staged(
                             _fresh_page,
                             _survivors,
                             _expand_baseline,
+                            enforce_figure_floor=enforce_figure_floor,
                         )
                     except Exception as exc:
                         _reason = (
@@ -1622,7 +2730,7 @@ def _render_staged(
                     _fresh_validation.get("snapshotOk")
                 )
                 if (not _fresh_failures and _fresh_snapshot_ok
-                        and _fresh_ready):
+                        and _fresh_navigated and _fresh_settled):
                     _old_ctx = ctx
                     ctx, page = _fresh_ctx, _fresh_page
                     try:
@@ -1686,6 +2794,16 @@ def _render_staged(
                     )
                     continue
 
+                if _scan_suppressed:
+                    _eprint(
+                        "[render_preview] scan suppression rollback: "
+                        "fresh-context validation did not reach a durable "
+                        "fixed point."
+                    )
+                    _remove_scan_suppress_from_html(html_path)
+                    _scan_suppressed = False
+                    continue
+
                 _reasons = "; ".join(
                     str(reason) for reason in
                     (_fresh_validation.get("snapshotReasons") or [])
@@ -1727,17 +2845,224 @@ def _render_staged(
             return 2
 
         try:
-            _capture_cdp, _capture_style_targets = (
-                _capture_style_targets_and_freeze(ctx, page)
+            _source_geometry_failures = _validate_source_geometry(
+                page,
+                _source_baseline,
+                allow_scan_reflow=_scan_suppressed,
             )
         except Exception as exc:
             _eprint(
-                "[render_preview] ERROR: could not freeze the accepted "
-                "durable page before capture: "
+                "[render_preview] ERROR: could not validate final cold page "
+                f"against its source geometry: {ascii_safe(exc)}"
+            )
+            browser.close()
+            return 2
+        if _source_geometry_failures:
+            _eprint(
+                "[render_preview] ERROR: portable-font/render mutations "
+                "changed source geometry or text wrapping: "
+                + ascii_safe("; ".join(_source_geometry_failures))
+            )
+            browser.close()
+            return 2
+
+        try:
+            _figure_fill_failures = _validate_final_figure_fill(
+                page,
+                enforce_minimum=enforce_figure_floor,
+            )
+        except Exception as exc:
+            _eprint(
+                "[render_preview] ERROR: could not validate final research "
+                f"figure fill: {ascii_safe(exc)}"
+            )
+            browser.close()
+            return 2
+        if _figure_fill_failures:
+            _eprint(
+                "[render_preview] ERROR: final poster violates "
+                f"{figure_policy_label}: "
+                + ascii_safe("; ".join(_figure_fill_failures))
+            )
+            browser.close()
+            return 2
+
+        # Persist the *actual* final figure geometry, not only the expand CSS.
+        # The current page is the accepted warm reference: all image fitters,
+        # MathJax, font freezing, logo packing, and expand rollback have already
+        # reached their fixed point and passed the active minimum/overflow
+        # figure policy.
+        # Capture its authored-node attributes, freeze scripts immediately, and
+        # take a full-canvas reference screenshot before touching the HTML.
+        try:
+            _geometry_snapshot = _capture_durable_geometry_snapshot(page)
+            _warm_cdp, _warm_style_targets = (
+                _capture_style_targets_and_freeze(ctx, page)
+            )
+            _warm_reference_png = _capture_full_viewport_png(page, viewport)
+        except Exception as exc:
+            _eprint(
+                "[render_preview] ERROR: could not capture/freeze the final "
+                "warm geometry reference: "
                 f"{ascii_safe(exc)}"
             )
             browser.close()
             return 2
+
+        try:
+            _guard_counts = _persist_durable_geometry_snapshot(
+                html_path,
+                _geometry_snapshot,
+                timeout_ms=args.mathjax_timeout_ms,
+            )
+        except Exception as exc:
+            _eprint(
+                "[render_preview] ERROR: could not persist the final figure "
+                f"geometry snapshot: {ascii_safe(exc)}"
+            )
+            browser.close()
+            return 2
+
+        # A brand-new BrowserContext is the equality oracle.  The final
+        # HTML must replay the authored warm fitter once, reassert the saved
+        # figure/img styles, publish its frozen/ready markers, preserve source
+        # geometry and the active figure policy, then paint the exact same
+        # decoded RGBA pixels as the warm reference.  No tolerance or
+        # approximate geometry gate can substitute for this comparison.  Only
+        # this accepted cold page is subsequently used for PDF and PNG capture.
+        (
+            _cold_ctx,
+            _cold_page,
+            _cold_navigated,
+            _cold_settled,
+        ) = _open_fresh_durable_page(
+            browser,
+            viewport,
+            html_path,
+            timeout_ms=args.mathjax_timeout_ms,
+            playwright_timeout_error=PWTimeoutError,
+            label="frozen-geometry cold confirmation",
+        )
+        if not _cold_navigated:
+            _eprint(
+                "[render_preview] ERROR: frozen-geometry HTML did not "
+                "complete navigation in a brand-new BrowserContext; refusing "
+                "promotion."
+            )
+            _cold_ctx.close()
+            browser.close()
+            return 2
+        if not _cold_settled:
+            _eprint(
+                "[render_preview] WARN: frozen-geometry cold page did not "
+                "fully settle; continuing on the soft render path because "
+                "the durable snapshot and exact warm/cold RGBA gates remain "
+                "mandatory."
+            )
+        if not _wait_for_installed_geometry_snapshot(
+            _cold_page,
+            timeout_ms=args.mathjax_timeout_ms,
+        ):
+            _eprint(
+                "[render_preview] ERROR: frozen-geometry cold page did not "
+                "complete its warm-fit-then-restore handshake; refusing "
+                "promotion."
+            )
+            _cold_ctx.close()
+            browser.close()
+            return 2
+        try:
+            _snapshot_failures = _validate_installed_geometry_snapshot(
+                _cold_page,
+                _geometry_snapshot,
+            )
+            _cold_source_geometry_failures = _validate_source_geometry(
+                _cold_page,
+                _source_baseline,
+                allow_scan_reflow=_scan_suppressed,
+            )
+            _cold_figure_fill_failures = _validate_final_figure_fill(
+                _cold_page,
+                enforce_minimum=enforce_figure_floor,
+            )
+        except Exception as exc:
+            _eprint(
+                "[render_preview] ERROR: frozen-geometry cold validation "
+                f"failed: {ascii_safe(exc)}"
+            )
+            _cold_ctx.close()
+            browser.close()
+            return 2
+        if _snapshot_failures:
+            _eprint(
+                "[render_preview] ERROR: frozen-geometry snapshot was not "
+                "installed exactly: "
+                + ascii_safe("; ".join(_snapshot_failures))
+            )
+            _cold_ctx.close()
+            browser.close()
+            return 2
+        if _cold_source_geometry_failures:
+            _eprint(
+                "[render_preview] ERROR: frozen-geometry cold page changed "
+                "source geometry or text wrapping: "
+                + ascii_safe("; ".join(_cold_source_geometry_failures))
+            )
+            _cold_ctx.close()
+            browser.close()
+            return 2
+        if _cold_figure_fill_failures:
+            _eprint(
+                "[render_preview] ERROR: frozen-geometry cold page violates "
+                f"{figure_policy_label}: "
+                + ascii_safe("; ".join(_cold_figure_fill_failures))
+            )
+            _cold_ctx.close()
+            browser.close()
+            return 2
+
+        try:
+            _capture_cdp, _capture_style_targets = (
+                _capture_style_targets_and_freeze(_cold_ctx, _cold_page)
+            )
+            _cold_candidate_png = _capture_full_viewport_png(
+                _cold_page,
+                viewport,
+            )
+            _pixels_equal, _pixel_detail = _compare_decoded_rgba(
+                _warm_reference_png,
+                _cold_candidate_png,
+            )
+        except Exception as exc:
+            _eprint(
+                "[render_preview] ERROR: could not run the warm/cold decoded "
+                f"RGBA pixel gate: {ascii_safe(exc)}"
+            )
+            _cold_ctx.close()
+            browser.close()
+            return 2
+        if not _pixels_equal:
+            _eprint(
+                "[render_preview] ERROR: frozen-geometry cold page is not "
+                "pixel-identical to the final warm DOM: "
+                f"{ascii_safe(_pixel_detail)}"
+            )
+            _cold_ctx.close()
+            browser.close()
+            return 2
+
+        _eprint(
+            "[render_preview] frozen geometry persisted "
+            f"(fit guards={_guard_counts.get('fit', 0)}, "
+            f"fitAll guards={_guard_counts.get('fitAll', 0)}); "
+            f"warm/cold pixel gate PASS: {ascii_safe(_pixel_detail)}."
+        )
+        _warm_ctx = ctx
+        ctx, page = _cold_ctx, _cold_page
+        try:
+            _warm_ctx.close()
+        except Exception:
+            pass
 
         # ---- PDF: exact poster size, print-emulated ----
         pdf_scale = _pdf_content_scale(canvas, viewport)

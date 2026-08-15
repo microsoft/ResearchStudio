@@ -121,7 +121,10 @@ FONT_ALIASES = {
 EMBEDDED_FONT_FAMILIES: set[str] = {"inter"}
 
 
-def _pick_font_family(font_family_css: str) -> str:
+def _pick_font_family(
+    font_family_css: str,
+    font_fidelity: dict | None = None,
+) -> str:
     """Pick the first font from a CSS font-family stack, applying our alias
     map. Walks the list left-to-right until it finds a name we recognize as
     installed (or maps to one), avoiding generic CSS keywords like sans-serif
@@ -129,10 +132,23 @@ def _pick_font_family(font_family_css: str) -> str:
     if not font_family_css:
         return ""
     GENERIC = {"sans-serif", "serif", "monospace", "cursive", "fantasy"}
+    fidelity = font_fidelity or {}
+    requested = str(fidelity.get("requested") or "").strip()
+    browser_faces = {
+        str(fidelity.get(key) or "").strip().casefold()
+        for key in ("source", "fallback")
+        if str(fidelity.get(key) or "").strip()
+    }
     for raw in font_family_css.split(","):
         name = raw.strip().strip('"').strip("'")
         if not name:
             continue
+        # paper2poster's browser fidelity block deliberately computes to the
+        # exact Linux-rendered face (plus a metric-identical bundled fallback).
+        # That is a browser portability detail: editable PowerPoint should keep
+        # the user's requested native family such as Calibri or Arial.
+        if requested and name.casefold() in browser_faces:
+            return requested
         if name in FONT_ALIASES:
             return FONT_ALIASES[name]
         if name.lower() in GENERIC:
@@ -1690,10 +1706,16 @@ def extract_dom(html_path: Path, viewport_w: int | None = None,
             _pushMath(k, _tex.trim(), k.closest('.katex-display') !== null);
           }
 
+          const _fidelity = document.getElementById('poster-font-fidelity');
+          const font_fidelity = _fidelity ? {
+            requested:_fidelity.getAttribute('data-requested-family') || '',
+            source:_fidelity.getAttribute('data-source-family') || '',
+            fallback:_fidelity.getAttribute('data-fallback-family') || '',
+          } : null;
           return {viewport_w: window.innerWidth, viewport_h: window.innerHeight,
                   body_w: document.body.scrollWidth,
                   body_h: document.body.scrollHeight,
-                  elements, text_blocks, math_blocks};
+                  elements, text_blocks, math_blocks, font_fidelity};
         }""")
         # Rasterize each equation region as a PNG fallback while the page is open.
         # PowerPoint renders the native OMML we emit in Pass 3, but LibreOffice/
@@ -2165,7 +2187,10 @@ def build_pptx(dom: dict, out_path: Path,
                     run.text = chip_text
                     fsz_px = el.get("font_size_px", 14) or 14
                     run.font.size = Pt(fsz_px * 72 / 96 * slide_scale)
-                    fam = _pick_font_family(el.get("font_family", "Inter"))
+                    fam = _pick_font_family(
+                        el.get("font_family", "Inter"),
+                        dom.get("font_fidelity"),
+                    )
                     if fam:
                         run.font.name = fam
                     fw = el.get("font_weight", "400")
@@ -2741,7 +2766,9 @@ def build_pptx(dom: dict, out_path: Path,
                     run.text = _hyphenate(run.text)
                 font = run.font
                 ff = run_data.get("font_family") or ""
-                first_family = _pick_font_family(ff)
+                first_family = _pick_font_family(
+                    ff, dom.get("font_fidelity"),
+                )
                 # OOXML's classic embedded-font spec gives each typeface only
                 # 4 slots (Regular / Bold / Italic / BoldItalic) — there's
                 # no slot for SemiBold (600) or ExtraBold (800). If we just
