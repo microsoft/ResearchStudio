@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ResearchStudio">
+  <title>ResearchStudio</title>
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <path d="M14 46V18h12c6 0 10 4 10 9.5 0 4.5-2.5 7.7-6.5 9L40 46h-7l-9-9h-3v9h-7zm7-15h5c2.8 0 4.5-1.4 4.5-3.5S28.8 24 26 24h-5v7z" fill="#fff"/>
+  <circle cx="48" cy="42" r="6" fill="#00d4a8"/>
+</svg>
