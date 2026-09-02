@@ -123,6 +123,17 @@ function wrapPhase(value, period){
 function setupAutoScroll(){
   tracks = [];
   document.querySelectorAll("#wall-view .wall").forEach((track, idx) => {
+    if (track.dataset.looping === "1"){
+      // Already duplicated + measured: re-measure the period (tile widths / padding can
+      // change on resize) without duplicating the content a second time, and re-attach
+      // with the current position so the phase stays in sync with where the row is.
+      const kids = track.children;
+      const n = track.children.length / 2;
+      const period = kids[n] ? kids[n].offsetLeft - kids[0].offsetLeft : track.scrollWidth / 2;
+      if (period > 0) track.dataset.period = String(period);
+      tracks.push({ el: track, period: +track.dataset.period, paused: false, dir: +track.dataset.dir, position: track.scrollLeft, _lastWritten: track.scrollLeft });
+      return;
+    }
     if (track.scrollWidth <= track.clientWidth + 4) return; // fits, no loop needed
     track.style.scrollBehavior = "auto";
     const originalCount = track.children.length;
@@ -138,15 +149,40 @@ function setupAutoScroll(){
     const dir = idx % 2 ? -1 : 1;                           // alternate row directions
     const position = dir < 0 ? period : 0;
     track.scrollLeft = position;
-    const state = { el: track, originalCount, period, position, paused: false, dir };
+    const state = { el: track, originalCount, period, position, paused: false, dir, _lastWritten: position };
+    track.dataset.looping = "1";
+    track.dataset.period = String(period);
+    track.dataset.dir = String(dir);
+    // Manual scrolls (arrow buttons, touch, wheel) must resync the phase accumulator,
+    // otherwise the next tick would snap back to the stale phase. Our own writes are
+    // detected by comparing against the last value we wrote.
+    track.addEventListener("scroll", () => {
+      const st = tracks.find(s => s.el === track);
+      if (st && Math.abs(track.scrollLeft - st._lastWritten) > 0.5) st.position = track.scrollLeft;
+    });
     // Pause ONLY while the cursor is over an actual poster tile — not the gaps/padding.
-    track.addEventListener("mousemove", (e) => { state.paused = !!(e.target.closest && e.target.closest(".tile")); });
-    track.addEventListener("mouseleave", () => { state.paused = false; });
+    // Look the state up by element instead of closing over `state`: setupAutoScroll is
+    // re-run on resize and replaces the state objects, so a stale closure would keep
+    // mutating an object the tick loop no longer reads (hover-pause silently breaks).
+    track.addEventListener("mousemove", (e) => {
+      const st = tracks.find(s => s.el === track);
+      if (st) st.paused = !!(e.target.closest && e.target.closest(".tile"));
+    });
+    track.addEventListener("mouseleave", () => {
+      const st = tracks.find(s => s.el === track);
+      if (st) st.paused = false;
+    });
     // Pause the marquee while the cursor is over a left/right arrow so its scroll is clean.
     const wrap = track.closest(".wall-wrap");
     if (wrap) wrap.querySelectorAll(".cnav").forEach(nav => {
-      nav.addEventListener("mouseenter", () => { state.paused = true; });
-      nav.addEventListener("mouseleave", () => { state.paused = false; });
+      nav.addEventListener("mouseenter", () => {
+        const st = tracks.find(s => s.el === track);
+        if (st) st.paused = true;
+      });
+      nav.addEventListener("mouseleave", () => {
+        const st = tracks.find(s => s.el === track);
+        if (st) st.paused = false;
+      });
     });
     tracks.push(state);
   });
@@ -163,6 +199,7 @@ window.addEventListener("resize", () => {
       if (period <= 0) return;
       s.period = period;
       s.position = wrapPhase(s.el.scrollLeft, period);
+      s._lastWritten = s.el.scrollLeft;
     });
   }, 150);
 });
@@ -172,6 +209,7 @@ window.addEventListener("resize", () => {
     // writes, so deriving every frame from the DOM would discard SPEED entirely.
     if (s.paused){
       s.position = wrapPhase(s.el.scrollLeft, s.period);
+      s._lastWritten = s.el.scrollLeft;
       return;
     }
     const next = s.position + SPEED * s.dir;
@@ -180,10 +218,20 @@ window.addEventListener("resize", () => {
     s.position = s.dir > 0
       ? (next >= s.period ? next - s.period : next)
       : (next <= 0 ? next + s.period : next);
-    s.el.scrollLeft = s.position;
+    s._lastWritten = Math.round(s.position);
+    s.el.scrollLeft = s._lastWritten;
   });
   requestAnimationFrame(tick);
 })();
+
+// Re-measure on resize: the loop period depends on tile widths, and a row that fit at
+// one width can overflow at a narrower one. setupAutoScroll is idempotent, so
+// already-looping rows keep their duplicated content and only get re-synced.
+let marqueeResizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(marqueeResizeTimer);
+  marqueeResizeTimer = setTimeout(setupAutoScroll, 150);
+});
 
 // ---------- lightbox: show the reel directly ----------
 let openSlug = null;
