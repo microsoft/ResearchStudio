@@ -333,6 +333,60 @@ f = resolve_named_paper('Cosmos', _fake('Cosmos World Foundation Model Platform 
 check('N6 no-colon system title still resolves (containment, not punctuation)',
       (f or {}).get('arxiv_id') == '0000.0', str(f))
 
+# ---- chinese_word_order: the calque that survives derivation --------------------
+from scripts.validators.chinese_word_order import validate_chinese_word_order  # noqa: E402
+
+
+def _zh(**fields):
+    d = Path(_tf.mkdtemp()) / 'phase4_expansion.json'
+    d.write_text(_json.dumps(fields, ensure_ascii=False))
+    return str(d)
+
+
+def _warns(f):
+    return [x for x in f if x['severity'] == 'warn']
+
+
+# The measured shape: an English relative clause left in front of the Chinese noun. 26 chars
+# before 的 — the reader has no idea what is being described until the very end.
+BAD = '在锁定版本处查阅目标后端自动化命名空间中每个声明操作的只读记录时会出现这个问题'
+GOOD = '在锁定版本上查阅目标后端的自动化命名空间，看每个声明的操作是否在其中'
+# The control that set the threshold: a model told only to shorten modifiers rewrote none of
+# the 16-17 character runs. Those read fine, so the check must leave them alone.
+BORDERLINE = '失败率审计了提取置信度单独无法捕捉的那部分缺陷'
+
+f = validate_chinese_word_order(_zh(plain_motivation_zh=BAD))
+check('Z1 over-long pre-nominal modifier is flagged', len(_warns(f)) == 1, str(f))
+
+f = validate_chinese_word_order(_zh(plain_motivation_zh=GOOD))
+check('Z2 the split rewrite passes', _warns(f) == [], str(f))
+
+# A comma inside the run means the reader already has a landing point.
+f = validate_chinese_word_order(_zh(plain_motivation_zh='这个方法先做完整的检索，再做一次相关性过滤的流程'))
+check('Z3 a break inside the run is not a pre-nominal pile-up', _warns(f) == [], str(f))
+
+# Ordinary technical noun phrases must not trip it, or the check is unusable.
+f = validate_chinese_word_order(_zh(plain_motivation_zh='基于检索的方法在长时程任务上的表现优于无记忆的基线。'))
+check('Z4 ordinary technical noun phrases pass', _warns(f) == [], str(f))
+
+f = validate_chinese_word_order(_zh(plain_motivation_zh=BORDERLINE))
+check('Z4b a 17-character run is left alone (the control rewrote none of these)',
+      _warns(f) == [], str(f))
+
+# The regression that motivated excluding 的 from the run: without it, one match rolled
+# across an earlier 的 and reported two clauses as a single 20+ character modifier.
+f = validate_chinese_word_order(_zh(plain_motivation_zh='每条目的正确性从未被测量的混淆变成了可观察的量'))
+check('Z5 a run does not roll across an earlier 的', _warns(f) == [], str(f))
+
+f = validate_chinese_word_order(_zh(plain_motivation_zh='在保留任务上检查结果'))
+check('Z6 calque 保留任务 is flagged', any('留出' in x['message'] for x in _warns(f)), str(f))
+
+f = validate_chinese_word_order(_zh(plain_method_steps_zh=[{'what_to_do': BAD}]))
+check('Z7 nested step fields are scanned too', len(_warns(f)) == 1, str(f))
+
+f = validate_chinese_word_order(_zh(plain_motivation_zh=GOOD))
+check('Z8 a clean card emits a pass finding', any(x['severity'] == 'pass' for x in f), str(f))
+
 n_fail = sum(1 for _n, ok in RESULTS if not ok)
 print(f'\n[{"RED" if n_fail else "GREEN"}] selftest_units: '
       f'{len(RESULTS) - n_fail}/{len(RESULTS)} passed', file=sys.stderr)

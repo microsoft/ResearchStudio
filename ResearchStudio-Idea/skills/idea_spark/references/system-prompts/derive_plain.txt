@@ -57,6 +57,28 @@ are not cosmetic rules.
    plain text. Correct plain text always beats a red KaTeX error.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ CHINESE WORD ORDER — applies to EVERY `_zh` field below
+
+An English relative clause becomes a SEPARATE Chinese clause. It does NOT become a
+modifier in front of the noun. Chinese cannot carry a long pre-nominal modifier: the
+reader has to reach the end before learning what is being described, and the sentence
+reads as translated rather than written.
+
+The test is mechanical — if what sits before 的 runs past ~18 characters with no comma,
+split it. Put the noun first and let the description follow as its own clause.
+
+  WRONG  一个在九个部分正确而只在一个部分失败的程序会得到与完全坏掉的程序相同的分数
+  RIGHT  一个程序九个部分都对、只有一个部分错，它拿到的分数却和完全坏掉的程序一样
+
+  WRONG  引用不存在菜单命令或视频从未演示过的 API 签名的技能会通过同样的检查
+  RIGHT  有的技能引用了不存在的菜单命令，有的引用了视频从未演示过的 API 签名 —— 它们
+         通过的检查和正确技能完全一样
+
+Two more calques to avoid: `held-out` is 留出 (not 保留), and "the two bits" is 两个二值
+判定 (not 两个位, which reads as two positions).
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 ## Output (a flat derive_map JSON)
 
 Write `$RUN_DIR/phase4/derive_map.json` containing EXACTLY these 7 paths and nothing else:
@@ -90,7 +112,7 @@ what_changes_when_gap_closes.
 
 **`plain_motivation_zh`** — Chinese 普通版 counterpart. Same content and mechanism; keep code
 identifiers, math symbols, file paths, and method/abbreviation acronyms in English (e.g. GRPO,
-m_q, A_i). Natural Chinese prose, NOT a word-for-word translation.
+m_q, A_i). Obeys CHINESE WORD ORDER above.
 
 **`plain_method_steps_en`** and **`plain_method_steps_zh`** — per-step plain rendering mirroring
 `method_flow.steps`: SAME step_ids, SAME count, SAME order. Each entry:

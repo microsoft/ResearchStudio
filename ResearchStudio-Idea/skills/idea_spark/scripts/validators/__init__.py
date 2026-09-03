@@ -44,6 +44,7 @@ from .implementability_readability import validate_implementability_readability
 from .threat_grounding import validate_threat_grounding
 from .alias_collateral_coverage import validate_alias_collateral_coverage
 from .user_direction import validate_user_direction
+from .chinese_word_order import validate_chinese_word_order
 
 
 def run_all_validators(phase2_path=None, phase3_path=None, phase4_path=None, phase1_path=None,
@@ -64,6 +65,7 @@ def run_all_validators(phase2_path=None, phase3_path=None, phase4_path=None, pha
 
     if phase4_path:
         findings.extend(validate_expansion_completeness(phase4_path))
+        findings.extend(validate_chinese_word_order(phase4_path))
 
     if phase4_path and phase4_impl_path:
         findings.extend(validate_implementability_completeness(phase4_path, phase4_impl_path))
