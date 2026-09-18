@@ -15,7 +15,7 @@
  * up from each skill dir and that is the nearest common ancestor they check.
  *
  * Non-interactive (--yes or no TTY) takes env answers:
- *   RS_PLUGINS=idea,reel  RS_SCOPE=global|project  RS_AGENTS=claude,codex
+ *   RS_PLUGINS=idea,reel  RS_SCOPE=global|project  RS_AGENTS=claude,codex,qwenpaw
  *   RS_PIP=0|1  + the key env vars.
  */
 import fs from 'node:fs';
@@ -25,8 +25,44 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const PKG_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const AGENTS = { claude: '.claude', codex: '.codex' };
 const PYTHON = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+
+const expandHome = (p) => (p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p);
+
+// Agent registry — every runtime that can host ResearchStudio skills. Adding
+// support for a new agent host is one entry here. `skillsDir(base)` returns
+// where SKILL.md folders go for a scope base (home dir for global, cwd for
+// project). `pool: true` marks agents without a project-scoped skills dir:
+// they install into one shared location regardless of scope.
+const AGENTS = {
+  claude: { label: 'Claude Code', skillsDir: (base) => path.join(base, '.claude', 'skills') },
+  codex: { label: 'Codex CLI', skillsDir: (base) => path.join(base, '.codex', 'skills') },
+  qwenpaw: { label: 'QwenPaw', skillsDir: () => qwenpawDirs().pool, pool: true },
+};
+
+// QwenPaw keeps one shared skill pool under its working dir; pool entries are
+// then broadcast into per-agent workspaces from the Console. The working dir
+// resolution mirrors QwenPaw's constant.py: QWENPAW_WORKING_DIR env var first,
+// then the legacy ~/.copaw layout, then ~/.qwenpaw.
+function qwenpawDirs() {
+  const home = process.env.QWENPAW_WORKING_DIR
+    ? path.resolve(expandHome(process.env.QWENPAW_WORKING_DIR))
+    : [path.join(os.homedir(), '.copaw'), path.join(os.homedir(), '.qwenpaw')]
+        .find((d) => fs.existsSync(d)) || path.join(os.homedir(), '.qwenpaw');
+  return { home, pool: path.join(home, 'skill_pool') };
+}
+
+// QwenPaw picks up manually placed pool skills on its next manifest reconcile.
+// If its CLI is on PATH, nudge one now so the skills show up immediately;
+// otherwise the next Console/CLI skill operation reconciles the manifest.
+function qwenpawReconcile() {
+  try {
+    execFileSync('qwenpaw', ['skills', 'list', '--pool'], { stdio: 'ignore', timeout: 60_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Preserve an explicit editor choice while giving installer subprocesses a
 // predictable fallback on machines where EDITOR is unset or empty.
@@ -255,13 +291,24 @@ async function main() {
     const a = (await ask('Install globally (all projects) or into this project? g/p', 'g')).toLowerCase();
     scope = a.startsWith('p') ? 'project' : 'global';
   }
+  const base = scope === 'global' ? os.homedir() : process.cwd();
+  const agentList = Object.entries(AGENTS);
   let agents = (process.env.RS_AGENTS || 'claude').split(',').map((s) => s.trim()).filter(Boolean);
   if (!NONINTERACTIVE) {
-    agents = ['claude'];
-    if (await askYN('Also install for Codex (in addition to Claude Code)?', false)) agents.push('codex');
+    say(`\n${C.b}Agents${C.r}`);
+    agentList.forEach(([key, a], i) => say(
+      `  ${i + 1}) ${a.label}  ${C.d}(→ ${a.skillsDir(base)})${C.r}`));
+    const ans = (await ask('Install for which agents? numbers e.g. 1 or 1,3', '1')).toLowerCase();
+    const picked = ans === 'all' ? agentList.map(([k]) => k)
+      : ans.split(/[\s,]+/).map((n) => agentList[parseInt(n, 10) - 1]?.[0]).filter(Boolean);
+    agents = picked.length ? picked : ['claude'];
   }
-  const base = scope === 'global' ? os.homedir() : process.cwd();
-  const targets = agents.filter((a) => AGENTS[a]).map((a) => path.join(base, AGENTS[a], 'skills'));
+  agents = agents.filter((a) => {
+    if (AGENTS[a]) return true;
+    say(`${C.y}  skipping unknown agent '${a}' — known: ${Object.keys(AGENTS).join(', ')}${C.r}`);
+    return false;
+  });
+  if (!agents.length) { say(`${C.y}No agent selected.${C.r}`); process.exit(1); }
 
   // union of keys from the selected plugins' templates (dedup by name)
   const keySpec = []; const seen = new Set();
@@ -283,7 +330,12 @@ async function main() {
   // install
   say('');
   const reelSelected = selected.some((p) => p.key === 'reel');
-  for (const dir of targets) {
+  for (const key of agents) {
+    const agent = AGENTS[key];
+    const dir = agent.skillsDir(base);
+    if (agent.pool && scope === 'project') {
+      say(`${C.d}  ${agent.label} has no project-scoped skills dir — installing into its shared pool instead${C.r}`);
+    }
     for (const p of selected) installSkills(dir, p.src, p.skills);
     const total = selected.reduce((n, p) => n + p.skills.length, 0);
     say(`${C.g}✓${C.r} installed ${total} skills (${selected.map((p) => p.key).join(', ')}) → ${C.c}${dir}${C.r}`);
@@ -293,8 +345,19 @@ async function main() {
       const deps = fetchDependencySkills(dir);
       if (deps.length) say(`  ${C.g}✓${C.r} provisioned ${deps.length} Paper2Video dep skill(s) (${deps.join(', ')}) → ${C.c}${dir}${C.r}`);
     }
-    const w = writeEnv(dir, values);
+    // QwenPaw's runtime loads <working-dir>/.env into the process env its
+    // skills run in, and the skills' own .env walker reaches that file from
+    // the pool — so one merged .env there covers pool skills wherever they run.
+    // Other agents keep the skills-dir .env (the nearest common ancestor their
+    // loaders check).
+    const envDir = key === 'qwenpaw' ? qwenpawDirs().home : dir;
+    const w = writeEnv(envDir, values);
     if (w) say(`  ${C.g}✓${C.r} wrote ${Object.keys(values).length} key(s) → ${w.envPath}${w.backedUp ? `  ${C.d}(backup: .env.bak)${C.r}` : ''}`);
+    if (key === 'qwenpaw') {
+      const ok = qwenpawReconcile();
+      say(`  ${C.d}pool skills are shared — load them into a workspace from QwenPaw Console → Workspace → Skills` +
+        `${ok ? '' : ' (they appear after the next manifest reconcile)'}`);
+    }
   }
 
   // python deps for whichever selected plugins declare them

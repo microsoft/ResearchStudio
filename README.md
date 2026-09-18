@@ -11,7 +11,7 @@
 [![Status: Active](https://img.shields.io/badge/Status-Active-brightgreen)](https://aka.ms/ResearchStudio)
 
 ResearchStudio is a collection of skills covering the **entire research lifecycle** — from an under-specified research direction to a published paper.
-The skills run on [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) and [Codex](https://developers.openai.com/codex).
+The skills run on [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), [Codex](https://developers.openai.com/codex), and [QwenPaw](https://github.com/agentscope-ai/QwenPaw).
 
 ---
 

@@ -89,7 +89,7 @@ Full protocol, IdeaSpark vs the baselines, and the scoring skill are in [`evalua
 
 ## Acknowledgements
 
-- [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) and [Codex](https://developers.openai.com/codex) — the agent runtime that drives every skill.
+- [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), [Codex](https://developers.openai.com/codex), and [QwenPaw](https://github.com/agentscope-ai/QwenPaw) — the agent runtimes that drive every skill.
 - [arXiv](https://arxiv.org/), [OpenAlex](https://openalex.org/), [Semantic Scholar](https://www.semanticscholar.org/product/api), [OpenReview](https://openreview.net/) — the Phase 0 / 3.1 literature connectors.
 - [PyMuPDF](https://pymupdf.readthedocs.io/) + [BeautifulSoup](https://www.crummy.com/software/BeautifulSoup/) — full-text fetch and parsing.
 - [tectonic](https://tectonic-typesetting.github.io/) / XeLaTeX — optional PDF compilation of the idea cards.

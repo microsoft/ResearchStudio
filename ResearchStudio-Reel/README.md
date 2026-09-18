@@ -36,7 +36,7 @@
 | **[Paper2Blog](skills/paper2blog/README.md)**   | paper PDF or assets | two blogs (DOCX) | publicity push after acceptance — bilingual outreach in one pass     |
 | **[Paper2Reel](skills/paper2reel/README.md)**   | poster + deck artifacts | an interactive reel viewer (HTML) | one scrollable view that aligns the poster with slide / video frames |
 
-Each skill is shipped as a [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) and [Codex](https://developers.openai.com/codex) **skill**.
+Each skill is shipped as a [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) / [Codex](https://developers.openai.com/codex) / [QwenPaw](https://github.com/agentscope-ai/QwenPaw) **skill**.
 
 ---
 
@@ -210,7 +210,7 @@ For the full bootstrap behavior, alignment map, section-modal UI contract, brows
 
 ## Acknowledgements
 
-- [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) and [Codex](https://developers.openai.com/codex) — the agent runtime that drives every skill.
+- [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), [Codex](https://developers.openai.com/codex), and [QwenPaw](https://github.com/agentscope-ai/QwenPaw) — the agent runtimes that drive every skill.
 - [PyMuPDF](https://pymupdf.readthedocs.io/), [Poppler](https://poppler.freedesktop.org/), [Pillow](https://python-pillow.org/) — PDF + image processing.
 - [Playwright](https://playwright.dev/) + Chromium — HTML → PDF / PNG rendering for posters.
 - [LibreOffice](https://www.libreoffice.org/) + [FFmpeg](https://ffmpeg.org/) — slide rasterization and video muxing.
