@@ -437,36 +437,39 @@ if [ "$USE_REEL" = 1 ]; then
 
   # Paper2Video delegates deck authoring to ppt-master and rendering/QA to
   # pptx2video. Fetch both skills from their upstream repos via `npx skills add`.
+  # The skills CLI refuses non-interactive runs without --agent, and the agent
+  # choice only decides where content lands, so fetch into a throwaway dir and
+  # copy from there into every selected runtime.
   if command -v npx >/dev/null 2>&1; then
     log "Fetching Paper2Video dependency skills via npx skills add (ppt-master, pptx2video)"
+    dep_tmp="$(mktemp -d)"
+    npx -y skills add hugohe3/ppt-master --skill ppt-master -y --agent claude-code \
+      || warn "npx skills add failed for ppt-master — install manually; paper2video will not work until then"
+    npx -y skills add ai-nuts/pptx2video --skill pptx2video -y --agent claude-code \
+      || warn "npx skills add failed for pptx2video — install manually; paper2video will not work until then"
+
     for target_dir in \
       "$([ "$USE_CLAUDE" = 1 ] && echo "$CLAUDE_SKILLS_DIR")" \
       "$([ "$USE_CODEX" = 1 ] && echo "$CODEX_SKILLS_DIR")" \
       "$([ "$USE_QWENPAW" = 1 ] && echo "$QWENPAW_POOL_DIR")"; do
       [ -n "$target_dir" ] || continue
       mkdir -p "$target_dir"
-      ( cd "$target_dir" \
-        && npx -y skills add hugohe3/ppt-master --skill ppt-master \
-        && npx -y skills add ai-nuts/pptx2video --skill pptx2video ) \
-        || warn "npx skills add failed for ppt-master/pptx2video — install them manually; paper2video will not work until then"
-
-      # `skills add` drops the skill content under <target>/.agents/skills/<name>
-      # (its own project layout) rather than the skills-dir top level where the
-      # Reel/Idea skills live. Move each up to the top level so the agent's
-      # top-level scan finds them next to the other skills.
       for dep_name in ppt-master pptx2video; do
-        dep_src="$target_dir/.agents/skills/$dep_name"
+        # Accept both CLI layouts: the current direct .claude/skills/<name>
+        # and the legacy .agents/skills/<name> scaffold.
+        dep_src="$dep_tmp/.claude/skills/$dep_name"
+        [ -d "$dep_src" ] || dep_src="$dep_tmp/.agents/skills/$dep_name"
         if [ -d "$dep_src" ]; then
           rm -rf "$target_dir/$dep_name"
-          mv "$dep_src" "$target_dir/$dep_name"
+          cp -R "$dep_src" "$target_dir/$dep_name"
         fi
       done
-      rmdir "$target_dir/.agents/skills" "$target_dir/.agents" 2>/dev/null || true
     done
+    rm -rf "$dep_tmp"
   else
     warn "npx not found — install ppt-master + pptx2video manually:"
-    warn "    npx skills add hugohe3/ppt-master --skill ppt-master"
-    warn "    npx skills add ai-nuts/pptx2video --skill pptx2video"
+    warn "    npx skills add hugohe3/ppt-master --skill ppt-master -y --agent claude-code"
+    warn "    npx skills add ai-nuts/pptx2video --skill pptx2video -y --agent claude-code"
   fi
   echo
 fi

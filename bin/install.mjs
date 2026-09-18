@@ -189,33 +189,34 @@ function installSkills(skillsDir, srcDir, names) {
 // pptx2video. Fetch both skills from their upstream repos via `npx skills add`,
 // installing into skillsDir. Returns the names that were added.
 function fetchDependencySkills(skillsDir) {
-  fs.mkdirSync(skillsDir, { recursive: true });
   const DEPS = [
     { repo: 'hugohe3/ppt-master', name: 'ppt-master' },
     { repo: 'ai-nuts/pptx2video', name: 'pptx2video' },
   ];
   const added = [];
+  // The skills CLI refuses non-interactive runs without --agent, and the agent
+  // choice only decides where content lands. Fetch into a throwaway dir, then
+  // copy the skill content into skillsDir. Both CLI layouts are accepted: the
+  // current direct .claude/skills/<name> and the legacy .agents/skills/<name>.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rs-deps-'));
   for (const d of DEPS) {
     try {
-      execFileSync('npx', ['-y', 'skills', 'add', d.repo, '--skill', d.name],
-        { cwd: skillsDir, stdio: 'inherit' });
-      // `skills add` drops content under <skillsDir>/.agents/skills/<name>
-      // rather than the top level where the Reel/Idea skills live. Move it up
-      // to the top level so the agent's top-level scan finds it.
-      const src = path.join(skillsDir, '.agents', 'skills', d.name);
-      const dst = path.join(skillsDir, d.name);
-      if (fs.existsSync(src)) {
-        fs.rmSync(dst, { recursive: true, force: true });
-        fs.renameSync(src, dst);
-      }
+      execFileSync('npx', ['-y', 'skills', 'add', d.repo, '--skill', d.name, '-y', '--agent', 'claude-code'],
+        { cwd: tmp, stdio: 'inherit' });
+      const src = [
+        path.join(tmp, '.claude', 'skills', d.name),
+        path.join(tmp, '.agents', 'skills', d.name),
+      ].find((c) => fs.existsSync(c));
+      if (!src) throw new Error(`no skill content found for ${d.name}`);
+      fs.rmSync(path.join(skillsDir, d.name), { recursive: true, force: true });
+      fs.cpSync(src, path.join(skillsDir, d.name), { recursive: true });
       added.push(d.name);
     } catch {
       say(`  ${C.y}! failed to fetch ${d.name} via npx skills add — install it manually:${C.r}`);
-      say(`    ${C.c}npx skills add ${d.repo} --skill ${d.name}${C.r}`);
+      say(`    ${C.c}npx skills add ${d.repo} --skill ${d.name} -y --agent claude-code${C.r}`);
     }
   }
-  // Remove the now-empty .agents scaffold left by `skills add`.
-  fs.rmSync(path.join(skillsDir, '.agents'), { recursive: true, force: true });
+  fs.rmSync(tmp, { recursive: true, force: true });
   return added;
 }
 
