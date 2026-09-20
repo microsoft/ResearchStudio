@@ -370,6 +370,10 @@ if __name__ == "__main__":
         help="OPT-IN noise filter: drop papers with relevance score below N "
              "(the number dropped is always printed; default: keep everything)",
     )
+    parser.add_argument(
+        "--json", default=None,
+        help="Write ranked results, including abstracts, to a JSON file",
+    )
     args = parser.parse_args()
     if not args.query and not args.queries:
         parser.error("one of --query / --queries is required")
@@ -405,8 +409,31 @@ if __name__ == "__main__":
         from postprocess import dedup, rank
         per_source = {s_: len(ps) for s_, ps in results.items()}
         merged = dedup(results)
-        ranked, n_dropped = rank(merged, query_list, min_score=args.min_score)
+        unfiltered_ranked, _ = rank(merged, query_list)
+        ranked, n_dropped = rank(
+            list(unfiltered_ranked), query_list, min_score=args.min_score
+        )
         n_dup = sum(per_source.values()) - len(merged)
+        if args.json:
+            json_path = Path(args.json)
+            json_path.parent.mkdir(parents=True, exist_ok=True)
+            json_path.write_text(
+                json.dumps(
+                    {
+                        "queries": query_list,
+                        "start_year": args.start_year,
+                        "end_year": args.end_year,
+                        "per_source_hits": per_source,
+                        "unique_papers": len(merged),
+                        "duplicates_merged": n_dup,
+                        "papers_dropped_by_min_score": n_dropped,
+                        "papers": unfiltered_ranked,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         print("\nper-source hits: " + ", ".join(f"{k}={v}" for k, v in per_source.items()))
         print(f"unique papers: {len(merged)} ({n_dup} cross-source duplicate records merged)")
         if n_dropped:
