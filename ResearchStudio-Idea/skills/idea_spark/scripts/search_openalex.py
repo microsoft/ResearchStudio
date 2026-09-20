@@ -40,17 +40,35 @@ _SELECT = ('id,title,doi,publication_year,publication_date,abstract_inverted_ind
            'authorships,primary_location,cited_by_count,best_oa_location,type,primary_topic')
 
 
+_KEY_REJECTED = [False]   # an invalid/expired OPENALEX_API_KEY answers 401/403: drop it, the keyless pool still works
+
+
 def _api_get(params: dict, timeout: int = 30) -> dict:
-    """Issue one OpenAlex GET. Adds api_key. Raises on HTTP error."""
+    """Issue one OpenAlex GET. Adds api_key unless it was rejected earlier in this process; a
+    rejected key falls back to the keyless pool (same data, lower rate tier) instead of taking the
+    connector down. 429 waits Retry-After (or 10 s) twice. Raises on other HTTP errors."""
     api_key = os.environ.get('OPENALEX_API_KEY', '')
-    if api_key:
-        params = {**params, 'api_key': api_key}
-    url = f'{API}?{urllib.parse.urlencode(params)}'
-    # OpenAlex polite-pool: identifying email in User-Agent gets the higher
-    # rate-limit tier (10 req/s vs 1 req/s anonymous).
-    req = urllib.request.Request(url, headers={'User-Agent': f'idea-spark/1.0'})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())
+    for attempt in range(3):
+        q = dict(params)
+        if api_key and not _KEY_REJECTED[0]:
+            q['api_key'] = api_key
+        url = f'{API}?{urllib.parse.urlencode(q)}'
+        req = urllib.request.Request(url, headers={'User-Agent': 'idea-spark/1.0'})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403) and api_key and not _KEY_REJECTED[0]:
+                _KEY_REJECTED[0] = True
+                print('  openalex: API key rejected (HTTP %d); continuing without it' % e.code, file=sys.stderr)
+                continue
+            if e.code == 429 and attempt < 2:
+                wait = e.headers.get('Retry-After') if e.headers else None
+                wait = min(float(wait), 120.0) if wait and str(wait).strip().replace('.', '', 1).isdigit() else 10.0
+                print(f'  openalex 429, waiting {wait:.0f}s', file=sys.stderr); time.sleep(wait)
+                continue
+            raise
+    raise RuntimeError('unreachable')
 
 
 def work_to_record(work: dict, semantic_recall: bool = False) -> dict:

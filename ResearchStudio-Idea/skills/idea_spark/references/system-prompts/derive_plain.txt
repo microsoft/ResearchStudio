@@ -9,15 +9,15 @@ render it faithfully at the same level of precision — do not resolve ambiguity
 This step is deliberately mechanical so it can run on a cheaper/faster model tier (the same tier
 `NOVELTY_LLM_CLASSIFY_FAST_CMD` names): no domain reasoning is required, only register control and
 Chinese translation quality. It runs AFTER the technical fill_map is assembled into a partial
-expansion, and BEFORE the implementability audit (which reads your plain step renderings).
+expansion, AFTER implementation audit, bounded source corrections and technical/cost review.
 
-## Input (one file)
+## Input (version-bound request)
 
-- `$RUN_DIR/phase4/phase4_expansion.json` — the PARTIAL expansion. The technical fields
+- The FINAL technical file named in request.json (technical_expansion.json or repaired_technical.json), plus cost_assessment.json and the implementation audit. The technical fields
   (`title`, `motivation.*`, `method_flow.steps[]`, `key_equations[]`, `abstract_draft`, …) are
   finished prose; the paths you own still carry `<TODO[path]: hint>` placeholders (the hint is an
   abridged spec — this file is the full one). Read the technical fields you derive from; ignore
-  everything else (differentiation, landscape, reviewer concerns, kill-switch fields).
+  unneeded landscape metadata. Read the protected falsification paragraph, cost assessment and implementation issues to derive the matching delivery sections.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ▸ MARKDOWN SAFETY — applies to EVERY prose field below
@@ -95,7 +95,7 @@ Write `$RUN_DIR/phase4/derive_map.json` containing EXACTLY these 7 paths and not
 }
 ```
 
-The assembler merges this map with the technical fill_map (`phase4_assemble --fill-map <tech> --fill-map <this>`);
+The flow's assembler merges this map with the technical fill map;
 overlapping paths are a hard error, so never emit any other path — in particular never
 `falsification_prediction` or `compute_budget` (kill-switch fields; the assembler refuses them).
 
@@ -109,6 +109,17 @@ for a reader outside this subfield. Simplify the LANGUAGE only — never drop th
 mechanism. Spell out every abbreviation on first use (e.g. 'GRPO (Group Relative Policy
 Optimization)'). Multi-paragraph prose mirroring problem_framing → why_now → why_prior_stopped →
 what_changes_when_gap_closes.
+  THE FIRST SENTENCE IS A CLAIM, NOT A DEFINITION. It states what is wrong, missing, or
+  assumed — something a reader could disagree with. Definitions, glosses and "X means Y"
+  go in the second sentence or later; a reader who needs them is still served, one line
+  down, and a reader who does not is not made to wait for the point.
+    WRONG  Super-resolution means turning a small, blurry photo into a sharp larger one.
+    RIGHT  The best real-world super-resolution systems only reach top quality by leaning
+           on a vision-language model at inference, which puts them out of reach of the
+           sub-1B budgets they are meant for. (Super-resolution turns a small, blurry ...)
+    WRONG  A self-evolving agent is a language-model system that improves itself while it works.
+    RIGHT  Self-evolving agents decide each round which skills to keep, but that decision is
+           scored by the same run that produced the skill. (A self-evolving agent is ...)
 
 **`plain_motivation_zh`** — Chinese 普通版 counterpart. Same content and mechanism; keep code
 identifiers, math symbols, file paths, and method/abbreviation acronyms in English (e.g. GRPO,
@@ -120,9 +131,12 @@ m_q, A_i). Obeys CHINESE WORD ORDER above.
 drop only the jargon framing fields (`linked_component`, `linked_falsification`).
 
 **`plain_method_modules_en`** and **`plain_method_modules_zh`** — group the steps into named
-modules. Each entry: `{module_id, purpose_oneline, step_ids}`. Derive the grouping from
-`method_flow` (its step titles and the modules implied by the technical prose); the same grouping
-must appear in both languages.
+modules. Each entry: `{module_id, module_title, purpose_oneline, step_ids}`. Derive the grouping
+from `method_flow` (its step titles and the modules implied by the technical prose); the same
+grouping must appear in both languages. `module_title` is the heading the reader sees on the card:
+a short noun phrase in that entry's language naming what the module IS (en ≤ 8 words, zh ≤ 12
+characters), e.g. "Priced edit-slot allocation" / "编辑槽的定价分配" — never the id, never a
+sentence. The setup module is titled "Background" / "背景".
 
 A method has THREE kinds of step, and the renderer floats anything named Background/scaffolding to
 the FRONT — so the split decides reading order, not just labels:
@@ -130,8 +144,7 @@ the FRONT — so the split decides reading order, not just labels:
 1. **Pre-existing setup** the contribution is built ON — the frozen backbone, the planner, the data
    pipeline, exposing an internal tensor. Leave these unclaimed (or name one module
    `Background`): they belong first, because the reader cannot implement the contribution without
-   knowing what it attaches to. Keep them at FULL implementation detail — this bucket is what tells
-   an author what they are building on, so brevity here is a defect, not a virtue.
+   knowing what it attaches to. Explain enough setup for a reader outside the subfield to understand the contribution. Preserve necessary implementation detail, but do not repeat definitions or expand a tool into a manual.
 2. **The contribution** — one module per coherent mechanism.
 3. **Validation apparatus** — ablation switches, control/baseline arms, evaluation protocol,
    oracle measurements, estimator checks. These are NOT background: they are things you do AFTER
@@ -155,3 +168,14 @@ the FRONT — so the split decides reading order, not just labels:
 4. **Register**: the zh fields target a domain-newcomer reader (研究生新生能读懂); the en plain
    fields target a technically-literate reader outside this subfield. Neither is a children's
    explanation — keep every quantity and condition.
+
+## Delivery sections and audience
+Fill EVERY remaining plain_* and title_zh TODO, including plain_core_claim_en/zh,
+plain_falsification_en/zh, plain_resource_summary_en/zh, plain_open_questions_en/zh.
+The resource summary names original estimate, current estimate, user ceiling, feasibility
+and uncertainty from the cost assessment. The falsification section preserves experiment,
+metric/direction, controls and failure conditions. Open questions include ordinary choices
+and explicit proof obligations, not newly invented caveats. Use an explicit none when empty.
+Keep needed concept explanations for field outsiders. Explain terms once, avoid semantic
+repetition. Pedagogical examples must be labelled as examples, never experimental evidence.
+There is no fixed short-card word budget. Technical details remain fully accessible.

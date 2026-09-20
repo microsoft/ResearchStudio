@@ -56,11 +56,17 @@ def _spans(doc):
 
 
 def validate_chinese_word_order(phase4_path: str) -> list[dict]:
-    findings: list[dict] = []
     try:
         doc = json.loads(Path(phase4_path).read_text())
     except Exception:
-        return findings
+        return []
+    return chinese_word_order_findings(doc)
+
+
+def chinese_word_order_findings(doc) -> list[dict]:
+    """The same check on an in-memory document, so the plain_derive record handshake can refuse a
+    derivation that breaks the rule before it is committed (the author fixes the named fields)."""
+    findings: list[dict] = []
     if not isinstance(doc, dict):
         return findings
 

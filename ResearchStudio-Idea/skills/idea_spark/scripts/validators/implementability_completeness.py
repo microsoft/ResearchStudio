@@ -36,6 +36,21 @@ def validate_implementability_completeness(phase4_path: str, phase4_impl_path: s
     from scripts.json_repair import load_llm_json
     p4 = json.loads(Path(phase4_path).read_text())
     impl = load_llm_json(Path(phase4_impl_path))
+    if impl.get('contract_version') == 2:
+        from scripts.quality_contract import implementability_findings
+        repairs_path = Path(phase4_path).parent / 'technical_repairs.json'
+        repairs = json.loads(repairs_path.read_text()) if repairs_path.exists() else None
+        review_path = Path(phase4_path).parent / 'technical_review.json'
+        reviewed = False
+        if review_path.exists():
+            rv = json.loads(review_path.read_text()); checks = rv.get('checks') or {}
+            reviewed = not any(isinstance(c, dict) and c.get('status') == 'fail' and c.get('executed') is True for c in checks.values())
+        from scripts.quality_contract import run_depth
+        run_dir = Path(phase4_path).resolve().parents[2]          # <run>/phase4/work/phase4_expansion.json
+        advisory = (run_dir / 'run_contract.json').exists() and run_depth(run_dir) == 'idea'
+        result = implementability_findings(impl, p4, repairs, reviewed, advisory)
+        return result or [{'severity': 'pass', 'validator': 'implementability_completeness',
+                          'message': 'Audit-only report covers every technical step; no semantic certification implied.'}]
 
     # 1. No kill-switch field may appear in the audit file (bounded-contract guard).
     leaked = [f for f in KILL_SWITCH_FIELDS if f in impl]

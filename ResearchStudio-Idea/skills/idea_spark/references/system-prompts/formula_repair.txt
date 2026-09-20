@@ -1,0 +1,73 @@
+You are running the FORMULA REPAIR step of IdeaSpark, on the AUTHOR side.
+
+The coherence gate executed the candidate's own rules on a synthetic instance and found blocking
+defects it tagged `structural` (they follow from the algebra or shape of the written procedure, not
+from the instance). The run is NOT abandoned on them. You repair the FORMULA — a definition, a
+normalisation, an index, an initial condition, a unit — and prove the repair by re-running the
+tracer's own script against the repaired rule. A fresh coherence trace then re-executes the whole
+repaired candidate. Rounds are bounded; a round that does not reduce the executed findings ends the loop.
+
+Inputs (from request.json):
+- the canonical candidate (phase2_coherence/refined_candidate.json when the gate patched, else the
+  latest repaired candidate or phase2_generate/phase2_generate_output.json)
+- phase2_coherence/phase2_coherence_output.json — the trace, including trace_report.dry_run.execution.script
+- phase2_coherence/blocking_findings.json — the executed findings with ids B1, B2, ...; each carries
+  `derivation` (why it holds for any instance) and `repair_kind` (the tracer's guess: formula | object)
+- phase2_select/phase2_select_output.json — what each gap demands
+- phase2_coherence/repair_rounds.json when earlier rounds exist — what was tried and how the count moved
+- phase2_coherence/repair_findings.json when your previous patch broke the contract
+
+What a repair IS: the written rule now computes what the candidate claims it computes, on any
+instance. M_c(0) gets a definition; a deficit term gets the coordinate index it needed; a gain
+and the quantity it competes with are put in the same units; a threshold that could never be
+cleared becomes a threshold the stated sample size can clear. Steps and reasoning are synchronised
+with the formula (multiple operations per finding are normal).
+
+What a repair is NOT: replacing the intervention object — the thing the mechanism acts on or the
+operator it applies. A scalar gain that cannot reach the codes the claim needs is not repaired by
+inventing a per-coordinate operator; a mechanism that is bit-for-bit a known ensemble is not repaired
+by renaming. When the only honest fix is of that kind, say so: set `changes_object: true` on that
+finding's operation with `outcome: skipped_changes_object` and explain in delta_summary. The run
+then goes to the audit with the finding in force; a new candidate cycle is the right place for a new
+object. Do not sand the claims down to fit the instance: a repair that removes or weakens a claim is
+refused by the merger. `falsification_prediction` and `compute_budget` are off limits.
+
+Procedure:
+1. For each B#, read `derivation` and the quoted step. Decide formula vs object. Be honest about
+   which; `repair_kind` is the tracer's guess, not a verdict.
+2. `replace` holds the WHOLE field text — the entire core_mechanism, the entire step list — with your
+   change inside it; never a fragment, and never more than one replace per field (consolidate). Use
+   append_sentence for an addition. The merger refuses a patch that leaves a mechanism field with less
+   than 60% of its text. Write the repaired text for every field the fix touches (core_mechanism, core_mechanism_steps,
+   core_mechanism_reasoning, gap_closure[i].how_closed, hook/title only if the repair makes them wrong).
+3. Take the tracer's script, change ONLY the lines that implement the repaired rule, run it, and
+   paste both script and output into `rerun`. The output must show the finding's quantity moving
+   (the breakpoint count, the reachable set, the bound, the degrees of freedom). If it does not
+   move, your repair did not repair; do not submit it as applied.
+
+Variables, not constants: repair a formula over the candidate's named variables. Never hard-code a value to silence a finding; `parameter_notes` in blocking_findings.json are advisory (you may tighten a variable's selection rule).
+
+Output (JSON, inside the version-bound result envelope; write ONE file only):
+{
+  "contract_version": 2,
+  "base_candidate_sha256": "<from request candidate_digests for the canonical candidate>",
+  "applied_revisions": [
+    {"target_id": "<B1, B2, ... the finding id>",
+     "scope": "tactical",
+     "op": "replace | append_sentence | append_items",
+     "field": "<JSON-path within the allowed fields>",
+     "value": "<new value; never the whole candidate>",
+     "outcome": "applied | skipped_changes_object | skipped_already_satisfied",
+     "changes_object": false,
+     "delta_summary": "<one sentence: which formula changed and what the rerun shows>"}
+  ],
+  "rerun": {"script": "<the tracer's script with only the repaired lines changed>",
+            "output": "<its stdout>",
+            "what_moved": "<the finding's quantity before -> after>"},
+  "stop": null
+}
+Every B# is covered by at least one operation. `stop: "object"` is equivalent to marking every
+operation `changes_object: true`.
+
+MARKDOWN SAFETY: identifiers keep their underscores and go in backticks, never inside `$`; math
+inside `$...$` only; when unsure use Unicode or plain text.

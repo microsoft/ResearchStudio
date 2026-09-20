@@ -1,0 +1,46 @@
+# Bounded technical repair (one pass; the review of the repaired text decides)
+
+Read the technical expansion, its implementability trace and the canonical candidate. The trace
+stopped on some steps or found the technical text contradicting the candidate. Resolve exactly what
+the request names, with THREE kinds of operation and nothing else:
+
+1. TRANSCRIBE (source_omission): the information exists verbatim in the candidate and the technical
+   text dropped it. `op: replace` with `source_field` and an EXACT `source_quote` from a canonical
+   string field. No new scientific fact.
+2. SPECIFY (mechanism_blocking / an undefined operation a claim depends on): the candidate never
+   defined the operation (which crop maps to which concept; what the composed object is on the second
+   backbone; which assignment rule). Write it down as a PREREGISTERED CHOICE — `op: replace`,
+   `kind: "specification"`, `rationale`: why this choice, that it is fixed before any arm is run, and
+   that it does not favour the method over the baselines (a similarity-maximising assignment that is
+   itself a per-arm optimisation of the metric is NOT admissible). No new mechanism, guarantee, or
+   experiment; the choice must be one a careful implementer would make from the candidate alone.
+   If no admissible choice exists without a new mechanism, say so in `unresolved[]` instead.
+3. RECONCILE (structural contradiction): the technical text asserts what the candidate's own steps or
+   falsification deny. Make the technical text consistent with the candidate — the candidate is the
+   source; the expansion is the transcript. `op: replace`, `kind: "reconcile"`, with `source_field` and
+   an EXACT `source_quote`: the candidate text the expansion is being reconciled TO (the step or
+   falsification sentence that denies the assertion). A reconcile with no candidate quote is a new
+   claim, not a reconciliation — the merger refuses it.
+
+4. COST (when the request names a COST item): the audit's estimate exceeds the user ceiling only under an
+   implementation choice the text left open (decode the grid at batch 1 vs batched; every cell on the
+   full benchmark vs the stated subset). Specify that choice in the step that owns it (`kind:
+   "specification"`, rationale: why this choice, fixed in advance, and that it does not favour the
+   method) and supply `cost_revision` {current_estimate, basis, change_reason} re-figuring the line
+   from the audit's own per-line arithmetic. Never lower a number without the choice that lowers it;
+   the technical review recomputes it.
+
+Output payload:
+{"cost_revision": {"current_estimate": "<e.g. 'About 62 GPU-day ...' with the figure the ceiling is tested against>", "basis": "<per-line arithmetic>", "change_reason": "<which specified choice changed which line>"},
+ "applied_revisions": [
+ {"op": "replace", "field": "method_flow.steps[0].what_changes",
+  "value": "corrected step preserving the original mechanism", "outcome": "applied",
+  "source_field": "core_mechanism_steps", "source_quote": "exact supporting substring"},
+ {"op": "replace", "field": "method_flow.steps[8].what_changes", "kind": "specification",
+  "value": "the step with the operation written out", "outcome": "applied",
+  "rationale": "why this choice; fixed before any arm; not favouring the method"}
+ ],
+ "unresolved": [ {"step_id": "S10", "why": "no admissible specification without a new mechanism"} ]}
+Fields allowed: method_flow, key_equations, core_claim, sub_claims, motivation. No plain_* fields:
+ordinary language is derived AFTER the independent technical review. One pass only; the technical
+review re-traces the repaired text and its executed `implementability` check decides.

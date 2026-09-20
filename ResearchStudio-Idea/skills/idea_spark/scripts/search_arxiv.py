@@ -86,9 +86,12 @@ def _fetch(url: str) -> bytes:
             with urllib.request.urlopen(req, timeout=30) as r:
                 return r.read()
         except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < MAX_RETRIES:
+            if e.code in (429, 503) and attempt < MAX_RETRIES:
                 backoff = MIN_INTERVAL_S * (2 ** attempt)  # 4s, 8s, 16s, 32s
-                print(f'  arxiv 429 (rate-limited), backing off {backoff:.0f}s '
+                ra = e.headers.get('Retry-After') if e.headers else None
+                if ra and str(ra).strip().isdigit():
+                    backoff = max(backoff, min(float(ra), 120.0))   # the server's own figure wins
+                print(f'  arxiv {e.code} (rate-limited), backing off {backoff:.0f}s '
                       f'(attempt {attempt + 1}/{MAX_RETRIES})', file=sys.stderr)
                 time.sleep(backoff)
                 continue

@@ -60,7 +60,7 @@ The same three candidates yielded strong diagnosis when the GATE — which holds
 
 Provenance for every number is the notation-layer instance of the same criterion. The skill forbids fabrication in four places on the FACT side (no invented naive comparison, no invented observation-model premise, no invented lineage ancestors, honest `open` holes over invented fills) but originally asked nothing of NUMBERS, so digits acquired unearned authority through three unguarded seams: parameters (every check was keyed on symbols, so writing a bare literal instead of naming it evaded all of them — the cheapest way to satisfy "no undefined symbols" was to use no symbol), falsification bars (the structure check verifies experiment/metric/direction/variable/control, all of which stay intact around an invented threshold), and equations (authored at Phase 4, after every gate has run, so nothing had ever read them). Measured on the run corpus before the fix: unnamed method parameters were the high-frequency case, invented outcome bars appeared in ~15% of runs, and equation-borne fabrication was rare but the most damaging per instance (one run derived a sample size from an invented variance, so the number read as computed when it was assumed). The three repairs are one rule — a number must be named or sourced — with teeth on the verification side (T1 for parameters, audit check 5 for bars, 4.1.5 for equations) and a single generation-side clause. Deliberately NOT a deterministic validator: a regex proxy over the same corpus was two-thirds false positives (powerset exponents, `mod 2`), so the judgment stays semantic.
 
-Regression protocol: because the generator is stochastic, "did the same idea come back" is meaningless; regressions are judged at the PROPERTY level over a fixed cross-shape direction set (references/regression-directions.md, deterministic subset in scripts/regression_check.py). The theory direction is mandatory in every sweep specifically to exercise the n/a escapes without fabrication — it is the shape most easily hurt by well-meant universal demands.
+Regression protocol: because the generator is stochastic, "did the same idea come back" is meaningless; regressions are judged at the PROPERTY level over a fixed cross-shape direction set. The theory direction is mandatory in every sweep specifically to exercise the n/a escapes without fabrication — it is the shape most easily hurt by well-meant universal demands.
 
 ## Why 2 stages with judgment, not lock-in
 
@@ -196,3 +196,158 @@ robotics-RL work `irrelevant` where the host model judged it `borderline`. The e
 are asymmetric — an over-strict drop makes the paper invisible to every later phase and
 is unrecoverable, while an over-inclusion costs one row a later stage can still catch —
 so this class is gated on recall, not on agreement rate.
+
+---
+
+## Quality-flow additions (2026-09-06)
+
+The principles above still hold; the quality flow changes the sibling-admission test, makes revision a transaction and adds version-bound review. Principle 2 (≥2 patterns per candidate) is retired by the first subsection below — the 500-run archive showed the pattern-count default plus the verification-shaped removal test admitted a measurement sibling in 228/793 selections.
+
+### The measurement sibling is refused, not weighed (2026-09-06)
+The 500-run archive put controlled_diagnostic_design as the second gap's primary pattern in 228/793
+selections on method anchors — the corpus rate is 1.9% — because the old removal test admitted a
+sibling whenever it made the anchor "verifiable", which a measurement always does. A rewritten
+test (object → producer → consumer → capability lost) was tried first: in a paired A/B (five method
+topics, same phase0/phase1, one Opus draw per arm) the diagnostic sibling went from 5/5 to 3/5, and
+the survivors were self-declared "training"/"inference" signals. A self-declared field is not a
+gate. So the rule is deterministic: on a method anchor the diagnostic is not a component; the
+measurement it asked for is the falsification's ablation arm or negative control, where the
+contract already demands one. One bounded regeneration keeps the run alive; the second refusal is
+terminal. Theory and empirical_reveal anchors are untouched — there the measurement can be the
+contribution.
+
+### The audit is evidence, not template matching (2026-09-07)
+Every abandon in the first full runs cited the coherence gate's executed trace; the corpus-derived
+checks decided nothing (recipe applied/borderline throughout, anti-pattern matched in 0 of 5 runs, the
+lesson floor's true positives all rested on executed findings). Meanwhile the blind read found the cards
+the first release carried undefined operators, a no-op negative control passed by two structure checks, and a
+cost labelled tight above its ceiling. The generator had learned the shape of the questionnaires. So the
+audit is reduced to two evidence types that do not depend on the 15 patterns: what can be executed (one
+trace evaluator, reused on the candidate, the technical steps and the removal tests) and what can be
+retrieved (the paper-pointed threat). Everything else is advisory. Labels are inputs to arithmetic.
+
+### Contribution depth is not pattern count
+
+One anchor is sufficient; up to two siblings and optional companions are allowed
+only when their actual dependency is articulated. Historical pair frequencies
+are suggestions, not membership gates. The independent naive-baseline comparison
+remains the depth check. A method's post-hoc evaluation belongs in falsification;
+runtime diagnostic signals, diagnostic anchors and theory proof objects are valid.
+
+Citation validity and tactic applicability are separate. Null sub_pattern with a
+reason is a normal path. A C05 label never creates a recovery-theorem obligation.
+A candidate's own asserted guarantee does create obligations; calling a false
+mathematical statement a research hypothesis does not repair it.
+
+### Revisions are transactions, not additive essays
+
+A target may require several synchronized operations. Every target is dispositioned
+and every applied operation is linked to it. Protected budgets and falsification
+commitments remain guarded, with only the existing authorized falsification route.
+The whole patch validates before the final candidate is written. Replaying a merge
+starts from the same base, so it does not append twice.
+
+The reviser may dispute a false request with evidence. A separate reviewer decides
+whether the target is resolved. Mechanism changes invalidate dataflow, dry-run,
+degeneracy, claim mapping, falsification, cost and novelty review, even with unchanged
+signature terms. Redesign uses the existing bounded retry budget; tactical repair is
+not permission to replace the research problem.
+
+### Evidence validity means version correspondence
+
+Inputs, prompts and actual outputs have content fingerprints. Requests are prepared
+before execution; results commit under the matching request id. The receipt is the
+commit marker. A file's presence or timestamp never certifies a check. next is pure.
+A hash proves byte correspondence, not truth, novelty, or an independent mathematical
+proof. Semantic defects require evidence from a separate reviewer.
+
+Directories without a run contract are refused, not resumed or backfilled. Hard errors and upheld semantic defects block publication. Warning counters,
+title vocabulary and length are not quality scores. Failed gates preserve needs_work;
+there is no “fail twice then ship with caveat” rule.
+
+### Cost, source fidelity and audience
+
+Intake owns user resource ceilings. The original compute_budget remains an audit
+record. A candidate-bound current assessment explains drivers, changed costs and
+uncertainty; unknown is not feasible and theory need not invent GPU usage.
+
+The mechanism record references reviewed source text and coherence dataflow/claims;
+it is not a second authored method. Technical expansion is followed by an audit that
+distinguishes omitted source information, unvalidated implementation defaults and
+undefined core operations. Only source omissions receive one bounded correction.
+Technical consistency/cost review comes before ordinary-language derivation.
+
+Ordinary English and Chinese serve non-specialists: explain necessary terms once,
+keep step purposes and label pedagogical examples. Detailed English retains assumptions,
+proof obligations, implementation choices and reviewer risks. All cards expose the
+main contribution, minimal falsification, resources, open questions and proposal status.
+Rendering is pure templating from the final shared source, never a method rewrite.
+PDF compilation and visual inspection are reported separately; absence of tooling is
+not a completed rendering check.
+
+### Remaining evidence
+
+See [quality-flow.md](quality-flow.md). Generation quality and stability across directions are established only by real runs.
+
+### Unchanged retrieval design
+
+The following rationale remains applicable to Phase 0 and existing collision retrieval.
+The quality repair does not expand retrieval strategy, the pattern corpus or paper cards.
+
+### Why collision is dual-channel (signature@10mo + alias@48mo)
+
+Phase 0 covers 0-24mo but with broad-domain TOPIC queries; Phase 3.1 re-queries by the candidate's mechanism-specific `signature_terms[]`. With the original 6-month collision window, a same-mechanism paper 7-24 months old could be missed by both passes (too old for collision, too mechanism-specific for Phase 0's topical recall). 10 months narrows that at negligible cost.
+
+But a real run exposed a second, LEXICAL blind spot no window widening can fix: the same mechanism under another community's name. A "goal-image conditioned scorer for task completion" (VLA vocabulary) had 2023-2024 near-ancestors published as "goal-conditioned success detectors" / "goal-image reward models" (reward-modeling vocabulary) — signature terms drawn from the candidate's own wording never contain those tokens, so a 48-month signature search still returns nothing. The fix uses the one knowledge source retrieval lacks: Phase 2.2 emits `alias_terms[]` from PARAMETRIC knowledge ("what would other communities call this?"), and Phase 3.1 runs them as a second channel over a 48-month window. Hits carry a `collision_channel` tag; the audit is told not to discount alias-channel threats for age (an ancestor subsumes regardless).
+
+Dual-channel retrieval roughly 2.4×'d the raw pool (a real run hit 653 hits / 721KB — beyond what the audit context can read whole), so the orchestrator relevance-truncates the audit-facing file: each hit is scored by lexical overlap between its title+abstract and its OWN channel's query terms (crude prefix-stemmed content-word match — deterministic, zero deps); zero-score hits are dropped unconditionally (they are BM25 phrase-fragment accidents — a true same-mechanism paper is retrieved BY those terms, so its overlap cannot be 0); each channel then keeps its top-120. Abstracts are slimmed to 1000 chars. Drops are printed per channel with the min kept score (no silent caps), and the untruncated pool is preserved as `collision_hits.full.json`. Embedding/LLM reranking was considered and rejected for this job: reranking a fixed pool where the true positives share vocabulary with the query terms by construction is exactly the case lexical overlap handles; heavier rerankers buy nothing here (they matter for RECALL improvements — e.g. a future citation-graph third channel — not for this cut). Backstop for families neither channel surfaced: the audit's `parametric_family_concern` soft signal names the family + query vocabulary (never specific papers — family names don't hallucinate, cites do) and flows into Phase 4's reviewer_concerns as a "run a scoop-check on X before investing" flag rather than gating the verdict.
+
+### Why Phase 0 retrieval is orchestrated (not WebSearch)
+
+Skills are advisory — when SKILL.md says "run Phase 0 literature search", the model has multiple paths (Skill tool, direct Bash, WebSearch simulation, fetch arxiv URL), each "satisfying the spirit" of Phase 0. Soft rules don't reliably prevent tool drift. The orchestrator collapses the choice space: SKILL.md Phase 0 says "run THIS Bash command" — the model has one path or must explicitly admit failure. Coupled with Phase 1's entry assertion (lit_grounding_mode + retrieved_via), bypass becomes mechanically detectable, not just discouraged.
+
+### Why the freshness window is dual-engine (and why overlap is now a feature)
+
+The original design used NON-overlapping windows (arXiv owned 0-6mo, SS/OA owned 6-24mo) to avoid double-counting. That made the 0-6mo window — exactly where gap freshness lives — a SINGLE-engine window, owned by arXiv's official API, which is the weakest RETRIEVER of the four (pure lexical, poor ranking). Retriever quality ≠ corpus coverage: SS indexes the same arXiv papers but ranks them far better, and across real runs nearly every core hit came back as an SS record while the arXiv connector contributed weak-relevance filler. So the freshness window is now covered by BOTH engines (arxiv 0-6mo + ss_recent 0-6mo). Overlap became a feature once dedup turned SS-priority-with-key-merge: a paper in both windows collapses to one record AND the arXiv record's externalIds enrich the SS one. Two engines also removes the single-point-of-failure (arXiv's connector 429s were observed live blacking out the entire recent window). OA was deliberately NOT added as a third recent engine (slowest to ingest arXiv, its unique strength is the published long tail which its 6-24mo role already covers, and it is the main cross-domain noise importer) — it stays as `oa_recent` cap 0, a per-run opt-in for journal-heavy fields. The retrieval pool is majority-recent, and the fulltext deep-read pool was rebalanced the same way (T3 carries the largest tier cap) because lifting only the corpus layer leaves fresh gaps stuck in the un-deep-read tail. Current cap values live in `PHASE0_RETRIEVAL_JOBS` and the `phase0_fulltext` flag defaults — do not restate them here, they have already drifted once.
+
+### Why the multi-query merge is round-robin
+
+Map mode writes 4 ROLE-DIFFERENTIATED queries (broad-domain / method-signature / most-similar-problem / escape-mechanism). Every connector then ran all of them against ONE cap and merged by concatenating each query's in-window hits in query order before taking `merged[:max_results]` — which silently made query ORDER the priority. Measured on a live 6-query arXiv run at cap 40:
+
+    query 1  53 in-window  ->  40 survive (13 of its own already cut)
+    query 2  41 unique     ->  0
+    query 3  37 unique     ->  0
+    query 4  76 unique     ->  0      <- the escape-mechanism query, the highest yield of the six
+    query 5  57 unique     ->  0
+    query 6  18 unique     ->  0
+    282 unique in-window papers available; 40 kept, ALL from query 1.
+
+So the corpus was effectively a ONE-QUERY corpus; five of six fetches were pure wall-clock (this is what blew the arXiv timeout); and the escape-mechanism query — which exists precisely to catch the paper that already solved the bottleneck and titled itself by its solution — contributed nothing. It also explains why two runs on the same topic surfaced disjoint sets of load-bearing papers: phrasing, not coverage, decided the corpus.
+
+Round-robin (`scripts/_merge.py`) gives every query a floor: each contributes its most relevant hit, then its second, and so on, preserving the connector's own relevance order within a query. A single query is byte-identical to the old path, so the change is invisible where it should be. Re-measured after the switch: corpus 119 -> 129, arXiv's unique contribution 25 -> 32, and two landmark papers concatenation had dropped came back.
+
+The consequence to keep in mind when editing map mode: round-robin makes query QUALITY matter much more, because a low-yield query now spends a guaranteed share of a saturated cap instead of being harmlessly truncated. That is why the count guidance is 4 (not 4-6) and why the escape query carries a vocabulary-ownership test — see references/intent-recognition.md.
+
+### Why retrieval casts a wide net + a host relevance-partition (Phase 0.4)
+
+A live run exposed the failure: at the old caps (arxiv 18, ss/oa 15) EVERY connector returned EXACTLY its cap — all four saturated. A saturated cap means the source had more matches ranked just below the cutoff that were truncated before anything downstream (Phase 1, deep-read, collision) could see them. That is a pure recall ceiling: the gap can only be as fresh/complete as what got past the top-N. The same run also showed the opposite failure — cross-domain "memory-augmented" false positives (cognitive-radio resource allocation, exercise recommendation, fake-news NLP) had leaked into the corpus and slipped past the weak Haiku `outside_taxonomy` tag, diluting the "every mechanism in the cluster" denominator.
+
+The two failures have one joint fix: **widen retrieval (~2.5-3×: arxiv 40, ss/oa 30) AND add a host precision gate that runs before tagging.** Widening alone would just import more noise; the gate is what makes it safe. The gate is the Phase 0.4 relevance-partition: the host reads every record's title+abstract in ONE pass and labels `core | adjacent | off_topic`. off_topic is archived and dropped; only `core` feeds the gap corpus and the deep-read pool; `adjacent` (base policies, spatial/tactile/reasoning VLA, eval-only) stays citeable but never consumes a deep-read slot. The gate is deliberately CONSERVATIVE on the core/adjacent line (unsure → core) because a wrong off_topic is an unrecoverable recall loss, whereas a wrong adjacent only costs a citeable-baseline demotion. Marginal on-topic papers live in ranks N..~3N, not the long tail, so ~3× recovers them without drowning the gate — "retrieve ALL" is wrong (unbounded noise, gate cost scales with pool size). This runs on the host's own model (open-ended relevance judgment, not mechanical) and REPLACES `outside_taxonomy` as the precision gate; the per-paper pattern-tagging then only sees survivors. The deep-read pool is `core`-gated (U bypasses; H needs its nomination tagged core), ceiling raised 20→25, and empty method extractions are backfilled from the next-ranked core reserve so a paywalled/extraction-missed fetch doesn't waste a slot. Default-on, `IDEASPARK_RELEVANCE_PARTITION=off`, deterministic-driven by `next` with one idempotent marker.
+
+### Why a whole connector must not be able to vanish quietly (Phase 0 resilience)
+
+Three failure modes were observed in one live run, each of which silently thinned the corpus while Phase 0 still reported success. They are listed together because the fix is one layered defence, not three patches.
+
+1. **Cost scales with QUERY COUNT, not with the cap.** The arxiv job pulls `max_per_query` (200) per query because only ~5-8% of relevance-ranked arXiv hits land inside the 0-6mo window; `max_results` only truncates after the merge. A 6-query run blew the old 300s budget and the orchestrator dropped the entire freshest source. Timeout is 600s now, but the real lesson is that adding queries — not raising caps — is what costs wall-clock.
+2. **rc=0 plus a non-empty FILE is not "records returned".** A throttled connector writes a valid `[]` (2 bytes), which passed the old emptiness check, so a zero-yield job was credited in `connectors used:` and the corpus quietly fell from 91 to 62 papers with no diagnostic. Zero-yield is now counted, reported per job, and summarised in a WARNING.
+3. **One transient failure was permanent for the run.** Each job ran exactly once. A measured example: an arXiv query that timed out at 300s returned in 1.8s a few minutes later. There is now one bounded retry (45s pause, 1.5x budget), and — because the 0-6mo window is deliberately dual-engine — a dead job's cap is absorbed by the surviving job covering the SAME window, capped at 2x so one engine cannot balloon the pool past what the Phase 0.4 partition can triage.
+
+Underneath all three sits the cause that made them compound: **re-running Phase 0 re-hammered every API**. Three runs inside ~15 minutes rate-limited arXiv and Semantic Scholar into returning nothing. Retrieval now has a cross-run cache (`~/.cache/ideaspark/retrieval/`, 24h TTL, `IDEASPARK_RETRIEVAL_CACHE=off`), keyed on everything that changes the result set (connector, queries, window, caps, extra args, `--as-of`). Successful non-empty results only — caching a throttled `[]` would turn one bad minute into a day of thin corpora. The short TTL is deliberate: freshness is this skill's whole point, and the windows are relative to the clock. The fulltext cache is 30 days because paper CONTENT is stable; a retrieval result set is not.
+
+### Why the host coverage check is nominate-then-verify (Phase 0.5)
+
+Retrieval, however wide, has recall holes: a landmark the query vocabulary misses, a venue the connectors index poorly. The host, having read the whole tagged table, can often see what's absent ("ADAS isn't here?") — this was done by hand in a real run. But letting the host WRITE records directly is unsafe: parametric memory hallucinates plausible-looking papers, and downstream phases join on paper_id, so one fake record poisons Phase 1 and can't be caught by collision. The fix separates NOMINATION from ADMISSION: the host proposes titles (its open-ended judgment, on its own model — not a cheap tier, because deciding what's load-bearing-but-missing is exactly the judgment worth the good model; WebSearch allowed only to find titles), and `add_host_refs` VERIFIES each via a connector title-match (>=0.9) before anything enters the corpus. A hallucinated title resolves to nothing and is rejected to `host_refs_unresolved.md`, visible but not trusted. Every admitted record is thus connector-real, so `lit_grounding_mode` stays honestly `real` and the Phase 1 entry assertion is untouched. Admitted refs ride the fulltext H tier (just under U). Default-on but `IDEASPARK_COVERAGE_CHECK=off`; the whole sub-flow is deterministic-driven by `next` with one idempotent marker.
+
+### Phase 0 pool design
+
+Role-based retrieval as a JOB LIST (a connector may run more than one window; see "Why the freshness window is dual-engine" above): arxiv 0-6mo + ss_recent 0-6mo (freshness, two engines) / openalex + semanticscholar 6-24mo published / openreview 0-6mo in-review / oa_recent 0-6mo off by default. SS-first dedup priority (its externalIds block is the best cross-source anchor) collapsing the intentional window overlap. Caps are per-job env-overridable (`IDEASPARK_POOL`). Full-text fetch caps the pool (+ user refs, never capped) across U > H (host-recall) > T2 (published) > T3 (recent arxiv, absorbs freed slots), method-first ordering (eval/benchmark-only papers sink), concurrent fetch with per-paper budget so a slow PDF can't stall the step, HTML path first (~85% of 2024+ ML preprints) with pymupdf PDF fallback. Limitations sections are intentionally NOT extracted — author-written limitation paragraphs are often weaker than what the audit synthesizes from method + experiments.

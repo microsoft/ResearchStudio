@@ -30,13 +30,18 @@ def normalize_title(t: str) -> str:
 
 
 def get_client():
+    """Logged-in client when OPENREVIEW_USER/PASS work; otherwise the anonymous client, which reads
+    public submissions (the in-review window this connector exists for) without credentials. Invalid
+    credentials therefore cost nothing but a stderr note; only a missing package disables the connector."""
     if openreview is None:
         raise RuntimeError('openreview-py not installed; pip install openreview-py')
-    return openreview.api.OpenReviewClient(
-        baseurl='https://api2.openreview.net',
-        username=os.environ.get('OPENREVIEW_USER', ''),
-        password=os.environ.get('OPENREVIEW_PASS', ''),
-    )
+    user, pw = os.environ.get('OPENREVIEW_USER', ''), os.environ.get('OPENREVIEW_PASS', '')
+    if user and pw:
+        try:
+            return openreview.api.OpenReviewClient(baseurl='https://api2.openreview.net', username=user, password=pw)
+        except Exception as e:
+            print(f'  openreview: login rejected ({str(e)[:80]}); continuing anonymously', file=sys.stderr)
+    return openreview.api.OpenReviewClient(baseurl='https://api2.openreview.net')
 
 
 def derive_active_venues(now: datetime, custom_venues: list[str] | None = None) -> list[str]:

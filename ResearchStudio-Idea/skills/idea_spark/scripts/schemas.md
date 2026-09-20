@@ -1,5 +1,12 @@
 # JSON schemas
 
+Phase 0/retrieval structures below are unchanged. The current Phase 2–4 additive
+contract, request/result/receipt schema, patch target linkage, mechanism record,
+current cost assessment and completion states are specified in
+[quality-v2.md](../references/quality-v2.md). Per-phase prompts define payload fields;
+the versioned request defines the output envelope. Legacy artifacts remain readable
+but cannot satisfy v2 provenance gates.
+
 ## `lit_results.json` (map mode)
 
 ```json

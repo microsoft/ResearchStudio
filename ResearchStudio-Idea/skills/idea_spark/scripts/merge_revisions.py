@@ -8,7 +8,7 @@ Why this script exists:
   reason to know that re-typing them risks a backend inference timeout.
 
   The new contract: Phase 3.3 emits only the `applied_revisions[]` patch list
-  (one entry per revision_target, each carrying the new value of one named
+  (one or more entries per revision_target, each carrying the new value of one named
   field plus an explicit `op`). This script walks that patch, applies each
   op to a deep copy of the Phase 2.2 candidate, refuses to touch kill-switch
   fields (mechanical guard, not a post-hoc validator), and writes
@@ -291,7 +291,7 @@ def _critique_authorizes_falsification_rewrite(critique_path: Path | None) -> bo
 
 def merge_phase3_revisions(phase2_candidate_path: Path, revisions_path: Path,
                            out_dir: Path, critique_path: Path | None = None,
-                           out_name: str = 'final_candidate.json') -> tuple[Path, Path]:
+                           out_name: str = 'final_candidate.json', incremental: bool = False) -> tuple[Path, Path]:
     """Top-level entry. Read Phase 2.2 candidate + Phase 3.3 patch; write
     `final_candidate.json` to out_dir AND back-inject `final_candidate` into
     the patch file (so the legacy kill_switch_integrity check on
@@ -309,8 +309,100 @@ def merge_phase3_revisions(phase2_candidate_path: Path, revisions_path: Path,
         raise ValueError(f'{revisions_path} is not a JSON object')
     applied = patch_doc.get('applied_revisions') or []
 
+    from scripts.quality_contract import change_scope, atomic_json, digest
+    v2 = patch_doc.get('contract_version') == 2
+    if v2:
+        if patch_doc.get('base_candidate_sha256') != digest(candidate):
+            raise ValueError('Patch base_candidate_sha256 does not match the base candidate ('
+                             + ('phase3_revise/revision_base.json, the last accepted text' if incremental else 'the canonical candidate') + ')')
+        if critique_path:
+            critique = json.loads(critique_path.read_text())
+            targets = {t.get('target_id') or f'R{i + 1}': t
+                       for i, t in enumerate(critique.get('revision_targets', []))}
+            if len(targets) != len(critique.get('revision_targets', [])):
+                raise ValueError('Duplicate revision target ids')
+            # A bounded re-revision also answers the post-revision review's own targets (P#/F#),
+            # materialized next to the patch by revision_retry; each is covered like an R#.
+            retry = revisions_path.parent / 'post_revision_findings.json'
+            if retry.exists():
+                for t in json.loads(retry.read_text()).get('targets', []) or []:
+                    if t.get('target_id') in targets:
+                        raise ValueError('Retry target id collides with an audit target: ' + str(t.get('target_id')))
+                    targets[t['target_id']] = t
+            # The coherence trace's wording suggestions (W#) reach the reviser as advisory input
+            # (they no longer buy a repair call); an op that applies or keeps one names its id.
+            wording = revisions_path.parent.parent / 'phase2_coherence' / 'blocking_findings.json'
+            if wording.exists():
+                for w in json.loads(wording.read_text()).get('suggested_repairs', []) or []:
+                    wid = w.get('id') if isinstance(w, dict) else None
+                    if wid and wid not in targets:
+                        targets[wid] = {**w, 'scope': 'tactical'}   # a wording repair is tactical by definition
+            # A re-revision applies to the LAST ACCEPTED text (revision_base.json), which already carries
+            # every earlier target: only the review's own targets (P#/F#/TR#) must be covered. Observed:
+            # re-issuing the whole transaction against the canonical text made every re-revision a
+            # retyping exercise the reviewer then had to check for dropped content.
+            required = set(targets)
+            if incremental:
+                required = {t.get('target_id') for t in (json.loads(retry.read_text()).get('targets', []) or [])} if retry.exists() else set()
+            covered = set()
+            for op in applied:
+                tid = op.get('target_id')
+                if tid not in targets:
+                    raise ValueError(f'Unknown or missing target_id: {tid}')
+                if op.get('outcome') not in ('applied', 'skipped_already_satisfied',
+                                           'skipped_requires_redesign', 'skipped_invalid_request'):
+                    raise ValueError('Every v2 operation needs an explicit disposition')
+                if op.get('outcome', '').startswith('skipped_') and not op.get('delta_summary'):
+                    raise ValueError('Skipped targets require evidence/reason')
+                if op.get('op') == 'rewrite_falsification' and targets[tid].get('scope') != 'falsification':
+                    raise ValueError('Falsification rewrite must reference the authorizing target')
+                if op.get('outcome') == 'applied':
+                    scope = targets[tid].get('scope')
+                    if scope not in ('tactical', 'sub_pattern', 'falsification'):
+                        raise ValueError('Unknown or redesign-only revision scope')
+                    if scope == 'falsification' and op.get('op') != 'rewrite_falsification':
+                        raise ValueError('Falsification target cannot authorize unrelated edits')
+                    if scope != 'sub_pattern' and (op.get('op') == 'swap_sub_pattern' or
+                            '.sub_pattern' in op.get('field', '')):
+                        raise ValueError('Sub-pattern changes need a sub_pattern target')
+                covered.add(tid)
+            if not required <= covered:
+                raise ValueError('Revision targets omitted: ' + ', '.join(sorted(required - covered)))
+        # The model cannot add arbitrary top-level candidate fields through replace.
+        for op in applied:
+            if not str(op.get('outcome', '')).startswith('skipped_') and op.get('op') != 'swap_sub_pattern':
+                tokens = _parse_field_path(op.get('field', ''))
+                if tokens[0] not in candidate:
+                    raise ValueError('Unknown candidate field: ' + str(tokens[0]))
+                if op.get('op') != 'rewrite_falsification':
+                    parent, last = _resolve_parent(candidate, tokens)
+                    if isinstance(parent, dict) and last not in parent:
+                        raise ValueError('Unknown nested candidate field: ' + op['field'])
+
     authorized = _critique_authorizes_falsification_rewrite(critique_path)
+
+    # A falsification rewrite may also be authorized by the technical review's route (Phase 4 found the
+
+    # declared experiment infeasible): the request is recorded in post_revision_findings.json with
+
+    # source technical_review — an independent reviewer, never the reviser itself.
+
+    _p4 = revisions_path.parent / 'post_revision_findings.json'
+
+    if not authorized and _p4.exists():
+
+        _pf = json.loads(_p4.read_text())
+
+        authorized = (_pf.get('source') == 'technical_review' or _pf.get('authorized_by') == 'technical_review') and any(
+
+            isinstance(t, dict) and t.get('scope') == 'falsification' for t in _pf.get('targets', []) or [])
     final_candidate = apply_patch(candidate, applied, falsification_authorized=authorized)
+    if v2:
+        def bindings(c):
+            keys = ('gap', 'main_pattern', 'sub_pattern') if critique_path is None else ('gap', 'main_pattern')
+            return [[g.get(k) for k in keys] for g in c.get('gap_closure', [])]
+        if bindings(candidate) != bindings(final_candidate):
+            raise ValueError('Patch changed a locked contribution/pattern binding; redesign requires bounded retry')
 
     falsification_rewritten = any(
         isinstance(r, dict) and r.get('op') == 'rewrite_falsification'
@@ -319,7 +411,7 @@ def merge_phase3_revisions(phase2_candidate_path: Path, revisions_path: Path,
 
     out_dir.mkdir(parents=True, exist_ok=True)
     final_path = out_dir / out_name
-    final_path.write_text(json.dumps(final_candidate, indent=2, ensure_ascii=False))
+    atomic_json(final_path, final_candidate)
 
     # Back-inject for legacy consumers (kill_switch_integrity, host LLM expecting
     # `phase3_revise_output.json['final_candidate']`). `falsification_rewritten`
@@ -327,6 +419,18 @@ def merge_phase3_revisions(phase2_candidate_path: Path, revisions_path: Path,
     # (instead of 2.2 → 4) and tells the host a re-audit is REQUIRED before Phase 4.
     patch_doc['final_candidate'] = final_candidate
     patch_doc['falsification_rewritten'] = falsification_rewritten
-    revisions_path.write_text(json.dumps(patch_doc, indent=2, ensure_ascii=False))
+    if v2:
+        # Preserve the model-result artifact/receipt. Legacy consumers get the
+        # same back-injected shape in a separate deterministic derivative.
+        patch_doc['change_scope'] = change_scope(candidate, final_candidate)
+        patch_doc['word_counts'] = {k: {'before': len(str(candidate.get(k, '')).split()),
+                                      'after': len(str(final_candidate.get(k, '')).split())}
+                                   for k in sorted(set(candidate) | set(final_candidate))
+                                   if candidate.get(k) != final_candidate.get(k) or k in
+                                   ('core_mechanism', 'core_mechanism_steps', 'core_mechanism_reasoning')}
+        patch_doc['word_count_metric'] = 'whitespace tokens of each top-level field serialized as text; diagnostic only'
+        atomic_json(out_dir / 'merged_revision.json', patch_doc)
+    else:
+        atomic_json(revisions_path, patch_doc)
 
     return final_path, revisions_path

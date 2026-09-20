@@ -1,108 +1,51 @@
-You are running Phase 4 — Expansion + Packaging — of IdeaSpark.
+You are running the technical-authoring part of IdeaSpark Phase 4.
 
-Phase 4 takes the canonical candidate (Phase 2.2 directly when audit verdict=advance, or Phase 3.3 `final_candidate.json` when revise ran) and produces the structured expansion JSON. This is the only model call in Phase 4; the subsequent rendering step (Step 4.render) is templating only — it emits the lean idea cards (Title + Motivation + Method) in plain and detailed registers, with the plain English card returned inline as the run's final response.
+Read request.json FIRST; output the version-bound artifacts envelope it requests.
+The payload is a flat fill_map for technical TODO fields only. Do not write the
+canonical artifact or method source directly.
 
-**Scope contract**: Phase 4 produces the IDEA — motivation, method flow, claims, falsification, feasibility validation. It does NOT design experiments (no experiment matrix, ablation plan, baseline table, expected figures), does NOT project calendars (no week N plans, go/no-go windows). The user designs experiments with their own dataset / compute context. Phase 4's job is a defensible IDEA card + an honest feasibility judgment.
+Required inputs: phase4_skeleton.json, the reviewed canonical candidate,
+mechanism_record.json, and any source artifacts explicitly listed in the request.
+The source record is a verbatim index of mechanism/reasoning/steps/falsification and
+coherence dataflow/claim mappings, NOT a new design. Read the actual source passages.
+mechanism_record.regime_notes lists input families on which the executed trace found the procedure degrades; they go into the limitations and, where the falsification arms do not already cover them, are named there. Do not hide them.
+If mechanism_record.dataflow_status is "stale_since_revision", the revision changed the mechanism
+after the coherence trace ran: `sources` (the final candidate) are the authority, `dataflow` and
+`claim_step_map` describe the PRE-revision design, and `post_revision_evidence` carries the
+reviewer's executed checks of the revised mechanism. Never trace from the stale parts.
 
-## How Phase 4 runs (three steps)
+Phase order: technical fill and assembly → implementation audit → at most one
+source-omission repair → technical consistency and current cost review → plain-language
+derivation → fidelity audit → render. This call does not author the ordinary cards.
+All plain_* fields and title_zh remain TODO here.
 
-Phase 4 is split into three steps so the LLM's payload is bounded to authored prose, not to mechanical echoes that risk a backend inference timeout:
-
-1. **`phase4_skeleton` (orchestrator, pure Python — runs FIRST)** — builds `phase4_skeleton.json` with every mechanical field fully populated and every prose field set to a `<TODO[path]: hint>` placeholder. The orchestrator deterministically computes: kill-switch echoes (`falsification_prediction`, `compute_budget` — byte-identical to the candidate), `differentiation_from_lit` enriched with `venue_year` per paper, `almost_prior_paper_id` + `almost_prior_venue_year`, `domain_landscape.candidate_uses` (joined from `gap_closure[].main_pattern` and `phase2_select.pattern_saturation[]`), `domain_landscape.pattern_distribution` (from Phase 1's `domain_pattern_distribution`), `literature_breakdown` (grouped from `lit_table.md`), `reviewer_concerns_and_responses[].attack` + `severity` + `fields_changed_to_address` (lifted from Phase 3.2 audit + Phase 3.3 patch), `motivation.why_prior_stopped[].paper_id` + `venue_year`, and `feasibility_validation.compute.{verdict,rationale}` (bucketed against `intake.compute`).
-
-2. **`phase4_fill` (THIS LLM CALL)** — you read `phase4_skeleton.json`, find every `<TODO[path]: hint>` placeholder, and output ONE JSON object whose keys are the placeholder paths and whose values are the prose to substitute. You do NOT re-emit any non-TODO field. You do NOT touch any field whose ROOT key is `falsification_prediction` or `compute_budget` — the assembler refuses such writes.
-
-3. **`phase4_assemble` (orchestrator, pure Python — runs AFTER you)** — reads your fill_map JSON and the skeleton, applies each `{path: value}` entry to the skeleton at the named path, and writes `phase4_expansion.json` (the canonical input to `phase4_render`).
-
-## Inputs you read
-
-- `$RUN_DIR/phase4/phase4_skeleton.json` — the only input you need. It already contains every mechanical field. Walk its tree and identify every string value that starts with `<TODO[`.
-
-You MAY also consult these for context (the skeleton was built from them, so the values are already baked in — re-reading them only helps you author higher-quality prose):
-
-- `$RUN_DIR/phase3_revise/final_candidate.json` (or `$RUN_DIR/phase2_generate/phase2_generate_output.json` if Phase 3.3 did not run) — the canonical candidate's core_mechanism, core_mechanism_steps, core_mechanism_reasoning. The `method_flow.steps[]` TODO is derived from `core_mechanism_steps`.
-- `$RUN_DIR/phase1/phase1_output.json` — bottleneck_statement + closest_adjacent + intake. The motivation prose draws on these.
-- `$RUN_DIR/phase3_critique/phase3_critique_output.json` — audit report. The reviewer_concerns responses anchor in the verdict_rationale.
-- `$RUN_DIR/phase0/lit_table.md`, `$RUN_DIR/phase0/lit_results.json` — for additional cites in motivation.why_now. lit_table.md (paper_id / venue / date / gap phrase per paper) is usually sufficient for citing; open lit_results.json only for specific paper_id lookups when an abstract is genuinely needed — do NOT read the full dump into context.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-▸ MARKDOWN SAFETY — applies to EVERY prose field below
-
-The renderer hands `$...$` to KaTeX. One stray `$` pairs with the next one in
-the paragraph and swallows the prose between them into italic garbage, so these
-are not cosmetic rules.
-
-1. An identifier keeps its underscore. `foo_bar` is code, NOT `foo_{bar}`, and
-   never goes inside `$`. Backtick it whole. This is the rule that matters:
-   almost every broken render starts as an underscore reflexively read as a
-   subscript.
-     WRONG  gradients disabled $(torch.no_{grad},$ model in eval mode)
-     RIGHT  gradients disabled (`torch.no_grad`, model in eval mode)
-     WRONG  set $K_{eff} = min(K_{ckpt},$ |y|)
-     RIGHT  set `K_eff = min(K_ckpt, |y|)`
-   Field and variable names from this pipeline are identifiers too:
-   `core_mechanism`, `differentiation_from_lit`, `verdict_rationale`,
-   `non_blocking` — backticks, never `$..._{...}$`.
-
-2. A literal dollar sign is `\$`. Currency in prose opens math otherwise.
-     WRONG  API line ~ $1500 vs $10000 (15%) -> feasible
-     RIGHT  API line ~ \$1500 vs \$10000 (15%) -> feasible
-
-3. Inside `$...$`: math tokens only. No English words, and close the math
-   BEFORE any comma that belongs to the sentence, never after it.
-     WRONG  ... at weight $lambda_{v},$ and take the step
-     RIGHT  ... at weight $\lambda_v$, and take the step
-
-4. To WRITE ABOUT LaTeX delimiters, backtick them. Never type a bare `$$`
-   inside a sentence.
-
-5. Display math stands alone in its own paragraph, at column 0, balanced.
-   Never mid-sentence.
-
-6. When unsure, Unicode (delta sigma phi rho lambda <= ~ ->) or backticked
-   plain text. Correct plain text always beats a red KaTeX error.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## Output (a flat fill_map JSON)
-
-```json
-{
-  "<path matching a TODO[path] placeholder>": "<the prose to substitute>",
-  "<path>": <value-of-the-right-type>,
-  ...
-}
-```
-
-Path syntax matches the TODO labels exactly:
-- Top-level: `"method_name"`, `"abstract_draft"`, `"core_claim"`
-- Nested: `"motivation.problem_framing"`, `"feasibility_validation.data.verdict"`
-- List entry sub-field: `"motivation.why_prior_stopped[0].what_they_did"`, `"reviewer_concerns_and_responses[0].response"`
-- Whole-list field: `"sub_claims"` (value is the full list), `"method_flow.steps"` (value is the full list), `"key_equations"` (value is `[]` for a pure-prose candidate or 3-6 entries)
-
-Values:
-- Strings for prose fields.
-- Lists for the few list-typed TODOs: `sub_claims`, `method_flow.steps`, `key_equations`. Each list entry is a dict matching the schema documented in the TODO's hint.
-
-**Derive-owned paths — do NOT author (leave their TODOs untouched):** `title_zh`,
-`plain_motivation_en`, `plain_motivation_zh`, `plain_method_steps_en`, `plain_method_steps_zh`,
-`plain_method_modules_en`, `plain_method_modules_zh`. A separate post-assembly derivation step
-(`derive_plain.txt`, fast-tier) rewrites YOUR finished technical fields into the plain register.
-The assembler tolerates their placeholders at this stage; the final assemble merges the derive_map.
-
-Output path: `$RUN_DIR/phase4/fill_map.json`. The assembler runs:
-
-```
-python3 -m scripts.run phase4_assemble \
-  --skeleton $RUN_DIR/phase4/phase4_skeleton.json \
-  --fill-map $RUN_DIR/phase4/fill_map.json \
-  --out $RUN_DIR/phase4/
-```
-
-It produces `phase4_expansion.json` (partial at this stage — the derive-owned placeholders remain until the derive step lands and the final assemble merges both maps). Author every prose TODO EXCEPT the derive-owned paths listed above; any OTHER placeholder you leave un-filled will fail the `expansion_completeness` validator downstream.
+Your task:
+- Explain and expand existing operations, with their inputs, outputs, assumptions and
+  purpose. Each technical step and claim must map to an existing source step/claim.
+- Preserve concrete models, tools, evaluation objects and independence requirements
+  already fixed in the source. Do not replace known choices with “author to decide”.
+- Do not add a core algorithm, theorem, recovery guarantee, data requirement, independent
+  evaluation definition or oracle. An essential missing operator is a blocker for the
+  later audit, not permission to invent it here.
+- State conditional claims and unresolved proof obligations as such. A defined theorem
+  conjecture without a proof is not the same as an undefined computational operation.
+- sub_claims may be []; count is determined by the actual contribution. key_equations
+  may be []; if present, equations must describe source operations and name the same
+  assumptions and objects. Include id, linked_step_id, latex, description, description_zh.
+- method_flow.steps must include step_id, title, what_changes, why_this_step, input,
+  output, linked_component and linked_falsification. Use S1, S2, ... in order.
+- No extra experiment matrix or invented measured results. Preserve the entire committed
+  falsification design; clarify its experiment/object/metric/controls/failure condition.
+- compute_budget and falsification_prediction are protected echoes and not fill targets.
+  Feasibility is assessed against the CURRENT method in a separate report. Unknown is
+  unknown. Do not silently shrink an experiment or assume unlimited resources.
+- Explain necessary background without repeating definitions. No unified short-card cap.
+  Detailed English retains assumptions, implementation options and reviewer risks.
+- The final ordinary versions are derived only after this technical version passes review.
 
 ## Field schemas (what each TODO must contain)
 
-The skeleton's hint is the abridged spec. The full schemas live here (derive-owned fields' schemas live in `derive_plain.txt`):
+The skeleton's hint is the abridged spec. The full schemas live here (derive-owned fields' schemas live in `derive_plain.txt`; `feasibility_validation.compute` is NOT a fill target in v2 — the implementation audit's cost_assessment fills it):
 
 **`method_name`** — short handle for the proposed method, e.g. `'Persistent Baseline GRPO (PB-GRPO)'`; the English acronym is kept verbatim in both the English and Chinese cards.
 
@@ -158,24 +101,47 @@ Step_ids MUST be `S1`, `S2`, … in reading order. A step that is `linked_compon
 
 **`domain_landscape.position_note`** — one sentence: how the candidate's chosen patterns sit relative to the area's pattern usage. Descriptive, not prescriptive.
 
-## Hard rules
+Payload shape: {"motivation.problem_framing": "...", "method_flow.steps": [...], ...}.
+Only replace the TODO at the exact path. Non-TODO fields and protected roots are
+rejected by the deterministic assembler. A list TODO takes the whole list as its value.
+The full request output envelope, not a bare fill_map, is written to result.json.
 
-1. **Do NOT write `falsification_prediction` or `compute_budget`** under any path. They are byte-identical from the candidate. The assembler refuses such writes; if you emit one, the run fails.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ MARKDOWN SAFETY — applies to EVERY prose field below
 
-2. **`motivation.why_prior_stopped` MUST cover ≥ 2 entries (filled at scaffold; you only author the three prose sub-fields)**. Generic "prior work didn't do X" without paper attributions is a process error — the skeleton already binds each entry to a specific `paper_id`.
+The renderer hands `$...$` to KaTeX. One stray `$` pairs with the next one in
+the paragraph and swallows the prose between them into italic garbage, so these
+are not cosmetic rules.
 
-3. **`method_flow.steps` MUST be numbered S1, S2, …** with `linked_component` AND `linked_falsification` per step. Steps with both fields equal to `"both"` are suspicious — most steps have a clean assignment.
+1. An identifier keeps its underscore. `foo_bar` is code, NOT `foo_{bar}`, and
+   never goes inside `$`. Backtick it whole. This is the rule that matters:
+   almost every broken render starts as an underscore reflexively read as a
+   subscript.
+     WRONG  gradients disabled $(torch.no_{grad},$ model in eval mode)
+     RIGHT  gradients disabled (`torch.no_grad`, model in eval mode)
+     WRONG  set $K_{eff} = min(K_{ckpt},$ |y|)
+     RIGHT  set `K_eff = min(K_ckpt, |y|)`
+   Field and variable names from this pipeline are identifiers too:
+   `core_mechanism`, `differentiation_from_lit`, `verdict_rationale`,
+   `non_blocking` — backticks, never `$..._{...}$`.
 
-4. **Your `method_flow.steps` is the source the derive step's `plain_method_steps_{en,zh}` must mirror** (same `step_id`s, count, order — enforced by `expansion_completeness` on the merged expansion). Keep step_ids stable and final: the derive step and the implementability audit both key on them.
+2. A literal dollar sign is `\$`. Currency in prose opens math otherwise.
+     WRONG  API line ~ $1500 vs $10000 (15%) -> feasible
+     RIGHT  API line ~ \$1500 vs \$10000 (15%) -> feasible
 
-5. **`key_equations[].linked_step_id` MUST match a `method_flow.steps[].step_id`** — equations render inline under their step, not in a detached trailing list.
+3. Inside `$...$`: math tokens only. No English words, and close the math
+   BEFORE any comma that belongs to the sentence, never after it.
+     WRONG  ... at weight $lambda_{v},$ and take the step
+     RIGHT  ... at weight $\lambda_v$, and take the step
 
-6. **Symbol rendering**: full equations belong in `key_equations[]` as LaTeX. (Unicode-glyph rules for the plain-register fields live in `derive_plain.txt` with those fields.)
+4. To WRITE ABOUT LaTeX delimiters, backtick them. Never type a bare `$$`
+   inside a sentence.
 
-7. **No calendar projections anywhere**. NO "by week N", "in the first month", "two-week plan". Sequencing is in dependencies, not weeks.
+5. Display math stands alone in its own paragraph, at column 0, balanced.
+   Never mid-sentence.
 
-8. **No experiment matrix, ablation plan, baseline table, expected figures**. The skill produces the IDEA + falsifiability + honest feasibility — experimental engineering is the user's design responsibility.
+6. When unsure, Unicode (delta sigma phi rho lambda <= ~ ->) or backticked
+   plain text. Correct plain text always beats a red KaTeX error.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-9. **Echo vs reference policy**: anti-substitution-guarded fields (`falsification_prediction`, `compute_budget`, `differentiation_from_lit`, `almost_prior_paper_id`, `what_step_was_missed`) and structural lookups (`venue_year`s, `domain_landscape`, `literature_breakdown`, `reviewer_concerns.attack/severity/fields_changed`) are filled by the skeleton — never re-emit them in your fill_map. `closest_adjacent` from Phase 1 and `lit_grounding_mode` from the Phase 0 sentinel are rendered directly by the card template; do not echo them either.
-
-After you write your fill_map, the orchestrator runs `phase4_assemble`, then `phase4_render`. You do not need to do those steps yourself.
+Variables, not constants: write steps and equations over the candidate's variables. Do not introduce numeric constants the candidate does not carry; feasibility rationales are qualitative unless the candidate or a cited paper gives the figure.

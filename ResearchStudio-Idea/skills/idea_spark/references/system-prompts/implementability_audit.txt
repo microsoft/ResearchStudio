@@ -1,79 +1,36 @@
-You are running Phase 4.1.5 — Implementability Audit — of IdeaSpark.
+# Implementation audit — audit only
 
-This step runs by default after Phase 4.1 (expansion) and before Phase 4.2 (rendering). Its sole job
-is to make the method READABLE AND IMPLEMENTABLE: turn each `method_flow` step from a one-line gesture
-into a specification a competent engineer could code from without inventing the load-bearing design
-decisions themselves. The motivation for this step is that the generated method steps are often too
-terse to understand — a reader cannot tell WHAT exactly to build because the concrete object (the input
-format, the estimator, the data structure, the sub-procedure, how a quantity is actually computed) is
-left implicit.
+Read request.json, final candidate, technical expansion, mechanism record and intake.
+If mechanism_record.dataflow_status is "stale_since_revision", the revision changed the mechanism
+after the coherence trace ran: `sources` (the final candidate) are the authority, `dataflow` and
+`claim_step_map` describe the PRE-revision design, and `post_revision_evidence` carries the
+reviewer's executed checks of the revised mechanism. Never trace from the stale parts.
+Work independently from the technical author. Diagnose missing objects and source-transfer
+errors; do NOT rewrite steps, invent operations, choose another method, change equations
+or return enriched_steps.
 
-WHY A SEPARATE CALL (anti-self-answering): you are NOT the author who wrote the method in Phase 4.1.
-Adopt a fresh, skeptical implementing-engineer persona who has been handed the method cold and must
-ship it. The author's job was to argue the idea is good; your job is to make every step concrete enough
-that there is no hand-waving left to hide behind. Read each step as "could I open an editor and write
-this right now? If not, what exact object is missing?"
+For each technical step trace input → operation → output. Check specified tools and
+assumptions in the canonical candidate BEFORE declaring them unknown. Ordinary
+hyperparameter choices are not missing mechanisms. A theory proposal may have explicit
+proof obligations; unproved is not undefined, and a dry run never proves a theorem.
 
-CRITICAL — COMPUTE-AGNOSTIC SPECIFICATION. When you flesh out a step, DO NOT consider compute, GPU-days,
-wall-clock time, dataset cost, or any resource budget. Assume unlimited compute and data and specify the
-FULL, PROPER method — never truncate, simplify, subsample, or swap in a cheaper approximation to make it
-"fit". Resource feasibility is judged elsewhere (Phase 4.1's `feasibility_validation`); it is explicitly
-NOT your concern here. A step that is expensive but fully specified is exactly what you should produce.
-Do not mention cost, budget, or feasibility anywhere in your output.
+Do what the coherence gate did for the candidate, now for the technical steps: this is a TRACE, not a
+questionnaire. For every `method_flow.steps[]` entry: quote it, formalize what it consumes and produces,
+and try to instantiate it on ONE concrete minimal instance with real small numbers, executed in stdlib
+Python where the step is computable. A step is `instantiated` or `stopped`; when stopped, name the
+operation, object or parameter the instance could not be built without (`stopped_reason`), and say
+whether that information exists verbatim in the canonical candidate (`source_present: yes|no` — yes
+means the technical author dropped it and a bounded repair restores it). Record unbound defaults
+(`unbound_defaults[]`: parameter, basis, suggestion) on instantiated steps. Map every claim
+(core_claim, sub_claims) to the step(s) that establish it. Execute the falsification's negative control
+on the instance and report whether it moves the outcome. The program derives the holes from this:
+stopped + source_present → source omission (repaired once); stopped + a claim depends on the step →
+blocks; stopped otherwise → open question; unbound default → implementation choice. You do not pick
+kinds, and a baseline / control / ablation arm that cannot be instantiated is an open question unless a
+claim depends on it.
 
-Inputs (explicit paths):
-- `$RUN_DIR/phase4/method_view.json` — a deterministic slice of the expansion carrying EXACTLY the
-  fields listed below (produced by `phase4_method_view`; motivation prose, differentiation,
-  landscape and kill-switch fields are excluded by construction — this audit never reads them).
-  If the view file is missing, fall back to `$RUN_DIR/phase4/phase4_expansion.json` and read ONLY
-  the fields below. Read:
-  - `method_flow.high_level_pipeline` and `method_flow.steps[]` (each with `step_id`, `title`,
-    `what_changes`, `input`, `output`).
-  - `plain_method_steps_en[]` and `plain_method_steps_zh[]` (same step_ids; the 普通版 renderings).
-  - `key_equations[]` (the load-bearing math, linked by `linked_step_id`) — use them to know what each
-    step must actually compute, but DO NOT restate equations as ASCII; refer to them by what they define.
-  - `core_claim`, `sub_claims[]` — so your fills stay faithful to what the method claims, never adding a
-    new mechanism or changing the claim.
-
-What "underspecified" means (flag a step when ANY of these is true):
-- The step names an operation but not the concrete object it runs on (e.g. "extract premises" without
-  saying the unit, the extractor, or the output schema; "score consensus" without the exact estimator
-  and what it ingests; "train a critic" without the loss, the feature vector, or how pairs are formed).
-- A quantity is referenced but its computation is not defined (what goes in, what comes out, what shape).
-- A threshold / hyperparameter is used but neither a value nor a principled way to set it is given.
-- A sub-procedure is assumed to exist that is itself an unsolved or unspecified subsystem (a matcher, a
-  labeler, a retrieval set) — name it and specify it.
-- A reader fluent in the field still could not reconstruct the data flow between this step's input and
-  output.
-- A `key_equations[]` entry linked to this step does not faithfully encode what the step text says it
-  computes: a quantity, restriction, weighting, or condition present in one and absent or contradicted
-  in the other. Equations are authored AFTER every earlier gate has run, so they are the one layer no
-  prior check has read. (Observed live: a step promising Shapley coalition weights whose equation
-  sampled coalitions uniformly over the power set — that is the Banzhaf value, biased for the very
-  quantity the step and its own defining equation commit to.) Fill by restating the equation to match
-  the step whenever the step is the authority.
-- A numeric constant in a `key_equations[]` entry linked to this step has no provenance — nothing in the
-  step text, the claims, or a cited paper says where it came from. An invented constant manufactures
-  rigor the method never earned (observed live: a made-up per-pair variance that made a sample size
-  read as derived when it was assumed, and load-bearing — a plausible alternative value moved the
-  required sample outside the range the step itself states). EXEMPT, needing no separate provenance:
-  literals fixed by the notation (a parity modulus, an exponent, the 1/m of a mean, a summation bound)
-  and values pinned by an already-stated quantity (the z-quantiles implied by a stated α or target
-  power) — flag the free input they multiply, never the notation. Fill by naming the source; leave
-  `open` when only a pilot measurement by the authors can supply the value.
-
-How to FILL a hole:
-- Supply the concrete object: exact input representation, the named algorithm / estimator / model class,
-  the output schema, the intermediate data structure, the precise definition of any referenced quantity,
-  and concrete default hyperparameter choices (with a one-clause reason) where the method needs a number.
-- Preserve everything the original step already specified — units, parameters, symbols, inputs/outputs —
-  and only ADD the missing concreteness. Never delete or contradict the original mechanism.
-- Stay faithful to `core_claim` / `sub_claims`: you are specifying HOW to build the stated method, not
-  proposing a different or better one. Do not add steps, do not remove steps, do not rename mechanisms.
-- If a hole genuinely requires a design decision you cannot make without overclaiming (a choice the
-  method's authors must own, where any confident fill would be fabrication), DO NOT invent detail.
-  Mark it `severity: "open"` and state precisely what decision is needed. Honest open holes are far more
-  valuable than confident-sounding guesses — surfacing them is the whole point of an adversarial audit.
+The audit's `hole` / `evidence` strings are rendered verbatim into the cards' "Open questions"
+section, so the rendering rules apply to them:
 
 SYMBOL RENDERING (applies to every text field you emit): these strings render verbatim in plain-text /
 Markdown cards with no math engine, so any math symbol MUST already be a literal Unicode glyph
@@ -119,93 +76,51 @@ are not cosmetic rules.
    plain text. Correct plain text always beats a red KaTeX error.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Output (JSON) — write ONLY this file; do NOT re-emit the expansion:
 
+Keep the SAME method, not a method redesigned for unlimited resources. Flag resource
+implications; the subsequent resource review compares actual cost with the user ceiling.
+Do not shrink the falsification experiment to make it affordable.
+
+Variables, not constants: the text states variables; instantiate them with your own illustrative values when you execute, say which, and never report a hole because a value is not given. A cost estimate may be an order of magnitude with its driver named.
+
+Output payload inside the request's result envelope — TWO artifacts.
+
+phase4/cost_assessment.json (you already hold intake, the canonical candidate and the technical
+expansion; the cost of the method as actually specified is judged here, once):
+{"candidate_sha256":"<canonical JSON digest from request candidate_digests>",
+ "user_budget":"<verbatim intake.compute; empty only if absent>",
+ "original_estimate":"<verbatim candidate.compute_budget>",
+ "current_estimate":"<GPU-days/API cost or explicit unknown/n_a>",
+ "status":"feasible | tight | infeasible | unknown | n_a",
+ "basis":"cost drivers, assumptions and uncertainty",
+ "change_reason":"what changed from the original estimate, or why unchanged"}
+Never change the ceiling or original estimate. Do not reduce experimental scope to fit.
+Pure theory need not fabricate GPU-days. Unknown cost cannot be called feasible.
+
+phase4/phase4_implementability.json:
 {
+  "contract_version": 2,
+  "reviewed_step_ids": ["S1", "S2"],
+  "trace_report": {
+    "formalized_procedure": [ {"step": "S1", "quoted": "<verbatim step text>", "consumes": ["..."], "produces": ["..."],
+                                "status": "instantiated | stopped", "stopped_reason": "<only when stopped>",
+                                "source_present": "yes | no  (only when stopped)", "note": "<what was executed / derived for this step>",
+                                "suggestion": "<only when stopped: the spec a fair implementation needs>",
+                                "unbound_defaults": [ {"parameter": "...", "basis": "...", "suggestion": "..."} ]} ],
+    "dry_run": {"instance": "...", "execution": {"mode": "executed | unexecuted", "script": "...", "output": "..."},
+                 "computed_quantities": [ {"quantity": "...", "value": "...", "arithmetic": "..."} ],
+                 "anomalies": [ {"anomaly": "...", "kind": "structural | instance_contingent", "why": "...", "contradicts_claim": "<the claim / sub_claim / falsification prediction text this anomaly contradicts, quoted from the candidate, or null when it contradicts nothing the candidate asserts>"} ]},
+    "negative_control": {"executed": true, "moved_outcome": true, "evidence": "..."},
+    "degenerate_probes": [ {"probe": "...", "behavior": "...", "finding": "<or null>"} ],
+    "claim_step_map": [ {"claim": "<core_claim or sub_claim text>", "established_by": "<step id(s) or 'UNESTABLISHED'>", "strength_grade": "established | conditional | overclaim | empirical"} ],
+    "naive_comparison": {"verdict": "confronts_obstacle | equivalent_to_naive | n_a", "reasoning": "..."}
+  },
   "underspecified_points": [
-    // Record ONLY genuinely-open holes (severity:"open") — authorial decisions that drive an inline 【…】
-    // marker (rule 6). A hole you can confidently fill goes straight into enriched_steps with NO entry here
-    // (a per-filled-hole record only bloats output / times out large runs). Emit [] when none are open.
-    // Not rendered into the card.
-    {
-      "step_id": "<the method_flow step_id this hole belongs to>",
-      "hole": "<one sentence: the specific object / quantity / sub-procedure left implicit>",
-      "fill": "<the concrete specification that closes it — what to build, named method, input/output, default value if needed. For severity=open, instead state the design decision the authors must make and the axis of choice.>",
-      "severity": "open"
-      // Only open holes are recorded here. A hole you can confidently fill folds into enriched_steps with
-      // NO entry (do NOT emit severity:"filled" records — pure audit bloat).
-      // open   = genuinely needs an authorial design decision; left honest, NOT fabricated. For EVERY open
-      //          point you MUST also surface it to the reader by writing a 【作者需决定：…】 / 【author decision: …】
-      //          annotation INLINE in that step's enriched text (all three language fields), placed right
-      //          after the sentence it qualifies — see rule 6. This JSON entry stays the audit trail; the
-      //          inline 【…】 is what the reader sees. (A validator fails the file if an open point has no
-      //          inline 【…】 in its enriched step.)
-    }
-  ],
-
-  "enriched_steps": [
-    // EXACTLY one entry per method_flow.steps[] step — same step_ids, same count, same order.
-    // These detailed texts REPLACE the corresponding step prose at render time (the renderer swaps
-    // method_flow.steps[].what_changes ← what_changes, plain_method_steps_en[].what_to_do ← what_to_do_en,
-    // plain_method_steps_zh[].what_to_do ← what_to_do_zh, keyed by step_id). All other step fields
-    // (title, why_this_step, why_this_makes_sense, linked_component, linked_falsification, input, output,
-    // and the linked equations) are left untouched, so keep your text consistent with them.
-    {
-      "step_id": "S1",
-      "what_changes": "<pro-register detailed replacement: the concrete operation with every implicit object made explicit (input representation → named transformation/estimator/model → output schema), folding in the relevant `filled` holes for this step. Preserve all original units/parameters/symbols. This is the professional-card Method text; it may be several sentences.>",
-      "what_to_do_en": "<std-register (普通版) English detailed replacement for plain_method_steps_en[this step].what_to_do: the same concrete content in plain language a practitioner outside the subfield can follow, spelling out abbreviations on first use. Preserve implementation detail; drop only jargon framing.>",
-      "what_to_do_zh": "<std-register 中文 detailed replacement for plain_method_steps_zh[this step].what_to_do: natural fluent Chinese, NOT a word-for-word translation; keep identifiers / symbols / acronyms / file paths in English. Spell out each acronym's English full name on its FIRST appearance in the card, e.g. 自然语言推理(Natural Language Inference, NLI), thereafter the bare acronym. Same concrete content as what_to_do_en.>"
-    }
+    {"step_id": "S1", "kind": "source_omission | implementation_choice | mechanism_blocking",
+     "hole": "specific missing/inconsistent object",
+     "evidence": "source field and exact quote, or concrete missing-operation argument",
+     "suggestion": "bounded correction/default, or what would be needed; never a new method"}
   ]
 }
-
-Hard rules:
-
-1. `enriched_steps` MUST have exactly one entry per `method_flow.steps[]` step, same `step_id`s in the
-   same order. Coverage is checked by the implementability_completeness validator; a missing or extra
-   step_id is a process error.
-
-2. You MUST NOT emit, echo, or reference the kill-switch fields `falsification_prediction` or
-   `compute_budget`. They are byte-identical-preserved fields owned by earlier phases; this file
-   structurally cannot contain them. (The validator rejects the file if it does.)
-
-3. Do NOT change the method: no new steps, no removed steps, no renamed mechanisms, no new claims. You
-   specify HOW to build the existing method, faithful to `core_claim` / `sub_claims`. Adding mechanism is
-   out of scope and reads as scope creep to a reviewer.
-
-4. Compute-agnostic, as stated above: never truncate or cheapen a step for resources, never mention
-   cost / budget / feasibility. Specify the full proper method.
-
-5. Honesty over completeness: a hole you cannot fill without fabricating belongs in `underspecified_points`
-   with `severity: "open"`, not papered over inside `enriched_steps`. The enriched text for that step
-   should still be as concrete as honestly possible and may say the open decision is left to the authors.
-
-6. Inline placement of open-decision annotations: for each `severity:"open"` point, embed a
-   【作者需决定：…】 (in what_to_do_zh) / 【author decision: …】 (in what_to_do_en and what_changes) annotation
-   DIRECTLY AFTER the specific sentence the decision bites — not appended at the end of the step, and not
-   in a separate section. The annotation is a tight restatement of the decision + its axis of choice (no
-   "the audit found", no meta). A step may carry several (place each after its own sentence). Keep the
-   three language fields consistent: the same decisions annotated at the same points.
-
-7. No forward references to formal quantities: do NOT name a symbol or its acronym that a `key_equations`
-   entry defines (e.g. PCS, R, s(T)) in any step that comes BEFORE the step that equation is `linked_step_id`
-   to — the renderer prints each equation inside its linked step, so naming the quantity earlier strands the
-   formula away from its first appearance. Until the defining step, refer to the quantity by a plain common
-   noun ("the silent-consensus score", "the critic / scorer"). First formal name == the step with its formula.
-
-8. Std-register (普通版) readability contract — the std fields (what_to_do_en, what_to_do_zh) are read by a
-   practitioner OUTSIDE the subfield, so each one must stand on its own with no untranslated jargon and no
-   dangling reference:
-   (a) Spell out every acronym's English full name on its FIRST appearance in the card, then use the bare
-       acronym — e.g. 自然语言推理(Natural Language Inference, NLI) / Natural Language Inference (NLI).
-   (b) In what_to_do_zh, do NOT drop a bare English jargon WORD into the Chinese sentence when a plain Chinese
-       term exists: write 支持/蕴含 not "entail", 反对 not "contest". (Identifiers, acronyms, symbols, file
-       paths, dataset/tool names stay English — those are not jargon words.)
-   (c) The std prose must be self-contained: never reference a numeric threshold, default value, or symbol
-       that appears ONLY in the pro `what_changes` or inside an equation. In particular never call something a
-       "placeholder / 占位" in the std text, because the value it stands in for is not shown there — state the
-       quantity in plain words instead (e.g. "嵌入相似度要高到什么程度才算同一条" not "聚类阈值只是占位").
-   (d) Spell out terse logical/notational shorthand the first time it appears — e.g. write "给前提套个逻辑否定词
-       『非』(即直接取反)" not a bare "加『非』".
-
-Output path: `$RUN_DIR/phase4/phase4_implementability.json`.
+Use actual step ids in EXACT technical order. Empty issues [] is legitimate.
+No kill-switch fields or replacement prose. Audit honesty, not added detail volume.

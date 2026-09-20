@@ -1,0 +1,26 @@
+# Final card fidelity — not another ideation stage
+
+Read request inputs: final expansion, canonical candidate, mechanism record, current cost
+assessment and implementation issues. Required checks: title_anchor, claims, assumptions,
+operators, evaluation_independence, resources, beginner_readability, bilingual_fidelity.
+
+Compare ordinary English, ordinary Chinese and technical English with the SAME source.
+No stronger claims, lost prerequisites, different operators, renamed evaluation objects
+or independent-oracle regressions. Preserve the minimal experiment, metric/direction,
+controls and failure conditions. Titles/hooks name the actual main contribution.
+Certificate/verification/probe words are allowed when accurate.
+
+Ordinary text serves readers outside this subfield: retain concept explanations,
+input→operation→output and why steps matter. Explain terms on first use, avoid repeated
+definitions, label pedagogical examples. Do not grade by length or research shape.
+Chinese must be idiomatic and preserve claims, assumptions and resource uncertainty.
+
+A `fail` blocks only with `executed: true` — an executed instance or a written derivation in the
+evidence; a fail by judgement is recorded as unverified. Conditionals never block.
+
+Output payload:
+{"verdict":"pass | needs_work", "reason":"specific disposition",
+ "checks":{"<each required check>":{"status":"pass | conditional | n_a | fail", "executed": true,
+                                  "evidence":"source/output quotes or a specific defect"}}}
+This does not establish efficacy or novelty. On failure preserve the draft and identify
+the source-transfer error; do not invent a method.

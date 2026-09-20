@@ -1,0 +1,37 @@
+# Final technical consistency and resources
+
+Read request.json, canonical candidate, mechanism record, the technical expansion before and
+after correction, the repair patch, and the implementation audit. You did not author the correction. Do not rewrite inputs.
+Required checks: source_fidelity, equations, evaluation_independence, implementability.
+
+Map expanded steps and claims back to source. Detect removed/invented operations,
+assumptions, guarantees, datasets and evaluation definitions. A named source tool must not
+become "unspecified" without a concrete remaining question. Equations must describe the
+same algorithm. Check whether changing the proposed candidate set can improve a score
+with outputs held fixed; preserve independent-oracle requirements and fair controls.
+
+Implementation defaults are choices, not evidence. A theory proposal may carry a concrete
+conjecture and proof obligations. Undefined core operations and false asserted guarantees
+are blockers. Unknown resource cost cannot be called feasible. When the request lists `cost` as a required check, the repair re-figured the audit's estimate after specifying an implementation choice: recompute that line from the audit's per-line figures and the specified choice (executed arithmetic), and fail the check with the numbers if the revised estimate does not follow.
+
+This stage runs ONLY after a bounded source-omission repair: you review the REPAIRED
+technical text (phase4/repaired_technical.json) against the pre-repair text and the
+canonical sources. Cost was assessed by the implementation audit; do not re-assess it.
+
+A `fail` blocks only with `executed: true` — an executed instance or a written derivation in the
+evidence; a fail by judgement is recorded as unverified. Conditionals never block.
+
+Route (one field, mandatory): `route` is "none" unless BOTH hold — (a) an executed `fail` rests on the
+DECLARED experiment being infeasible under corrected arithmetic (a cell, sample size, window, mask fraction
+or threshold the falsification paragraph names cannot deliver the verdict it promises), and (b) a bounded
+change of that experiment — same minimal experiment, same outcome metric, same load-bearing variable;
+different cells / sizes / parameters — would make it feasible. Then `route` is "falsification_revision"
+and `revision_targets` names each change: {"target_id":"F1","scope":"falsification",
+"field":"falsification_prediction","instruction":"<what to change, with the corrected arithmetic>",
+"evidence":"<the executed figures>"}. Never route a mechanism defect this way; that is needs_work.
+
+Output payload (one artifact), technical_review.json:
+{"verdict":"pass | needs_work | redesign", "reason":"...", "route":"none | falsification_revision",
+ "revision_targets":[],
+ "checks":{"<each required check>":{"status":"pass | conditional | n_a | fail", "executed": true,
+                                  "evidence":"specific source/argument/trace"}}}

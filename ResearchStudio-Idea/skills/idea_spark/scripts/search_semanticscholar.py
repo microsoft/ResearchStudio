@@ -64,6 +64,39 @@ def _format_paper_id(paper: dict) -> str:
     return f'semanticscholar:{paper.get("paperId", "")}'
 
 
+_KEY_REJECTED = [False]      # a 403 with a key means the key is revoked/expired: fall back to keyless pacing for the rest of the process
+_BACKOFF_S = (5, 15, 40, 90)  # keyless S2 is throttled hard; Retry-After is honoured when present
+
+
+def _get_json(url, headers):
+    """One paced GET. A rejected key (403) is dropped for the process and the request retried keyless;
+    429 backs off exponentially (Retry-After first) instead of failing the query on the second try.
+    Observed: an expired key returned 403 on every query and the keyless fallback was never taken,
+    so the whole connector contributed nothing while the pool was audited as if it had run."""
+    if _KEY_REJECTED[0]:
+        headers = {k: v for k, v in headers.items() if k != 'x-api-key'}
+    for attempt in range(len(_BACKOFF_S) + 1):
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=45) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code == 403 and 'x-api-key' in headers:
+                print('    semanticscholar: API key rejected (403); falling back to keyless throttled mode for this process', file=sys.stderr)
+                _KEY_REJECTED[0] = True
+                headers = {k: v for k, v in headers.items() if k != 'x-api-key'}
+                time.sleep(3.0)
+                continue
+            if e.code == 429 and attempt < len(_BACKOFF_S):
+                ra = e.headers.get('Retry-After') if e.headers else None
+                wait = float(ra) if ra and str(ra).isdigit() else _BACKOFF_S[attempt]
+                print(f'    semanticscholar 429, backing off {wait:.0f}s (attempt {attempt + 1}/{len(_BACKOFF_S)})', file=sys.stderr)
+                time.sleep(wait)
+                continue
+            raise
+    raise urllib.error.HTTPError(url, 429, 'semanticscholar: still rate-limited after backoff', None, None)
+
+
 def search(query: str, since_year: int, until_year: int | None = None,
            published_only: bool = False, max_results: int = 50) -> list[dict]:
     """Query Semantic Scholar paper search API. Returns list of normalized hit dicts.
@@ -88,18 +121,7 @@ def search(query: str, since_year: int, until_year: int | None = None,
     if api_key:
         headers['x-api-key'] = api_key
 
-    req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=45) as r:
-            data = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 429:
-            # rate limited — back off and retry once
-            time.sleep(5)
-            with urllib.request.urlopen(req, timeout=45) as r:
-                data = json.loads(r.read())
-        else:
-            raise
+    data = _get_json(url, headers)
 
     out = []
     for paper in data.get('data', [])[:max_results]:
@@ -173,7 +195,7 @@ def main():
         per_query.append(hits)
         # Rate limit: 1 req/sec cumulative (introductory key tier); anonymous tier ~0.3/sec.
         # Sleep 1.1s with key (safe margin); 3s without (anonymous tier is bursty).
-        time.sleep(1.1 if os.environ.get('SEMANTICSCHOLAR_API_KEY') else 3.0)
+        time.sleep(1.1 if (os.environ.get('SEMANTICSCHOLAR_API_KEY') and not _KEY_REJECTED[0]) else 3.0)
 
     # Round-robin so every role-differentiated query gets a floor — concatenate-
     # then-truncate made query ORDER the priority and starved later queries. See

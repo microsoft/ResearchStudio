@@ -92,6 +92,10 @@ def validate_subpattern_citation_consistency(phase2_path: str) -> list[dict]:
             })
 
         # Parse the C## cluster id out of the sub_pattern string.
+        if not sub_pattern and entry.get('sub_pattern_not_applicable_reason') and main_pattern in valid_parents:
+            findings.append({'severity': 'pass', 'validator': 'subpattern_citation_consistency',
+                             'message': f'gap_closure[{i}]: explicit parent-only fit; no fabricated C## citation.'})
+            continue
         cid_match = _CLUSTER_ID.search(sub_pattern)
         if not cid_match:
             findings.append({
@@ -129,34 +133,12 @@ def validate_subpattern_citation_consistency(phase2_path: str) -> list[dict]:
                             f"name is '{true_disp}'. Name mismatch — a name was invented, not read."),
             })
 
-    # Pattern-count commitment (Phase 2.1 contract): the anti-incremental default is
-    # >=2 distinct patterns per candidate (chain and/or earned sibling). A single-
-    # pattern selection is sanctioned ONLY with a non-empty composition_note defense
-    # (echoed into the candidate by Phase 2.2). This check is presence-only —
-    # deterministic; the defense's QUALITY is weighed by the Phase 3.2 audit.
-    distinct_patterns = set()
-    for entry in gap_closure:
-        entry = entry or {}
-        for key in ('main_pattern', 'companion_pattern'):
-            v = (entry.get(key) or '').strip()
-            if v and v.lower() not in ('null', 'none'):
-                distinct_patterns.add(v)
-    if len(distinct_patterns) == 1:
-        note = (p2.get('composition_note') or '').strip()
-        if not note:
-            findings.append({
-                "severity": "fail", "validator": "subpattern_citation_consistency",
-                "message": ("Candidate uses a SINGLE ideation pattern "
-                            f"({next(iter(distinct_patterns))}) with no composition_note defense. "
-                            "The >=2-pattern default (chain on the anchor via companion-combos, or an "
-                            "earned sibling) was neither met nor explicitly waived — re-run Phase 2.1's "
-                            "Step 2a/2b, or record the single-pattern defense in composition_note."),
-            })
+    # One anchor is sufficient; composition_note is optional for every pattern count.
 
     if not findings:
         findings.append({
             "severity": "pass", "validator": "subpattern_citation_consistency",
             "message": ("All gap_closure[] sub-pattern citations resolve to real clusters under their "
-                        "cited parents; pattern-composition commitment satisfied."),
+                        "cited parents."),
         })
     return findings

@@ -65,6 +65,41 @@ def _tokens(s: str) -> set:
     return {t for t in raw if len(t) > 2 and t not in _GENERIC}
 
 
+def uncovered_collateral(p2: dict, p1: dict) -> list:
+    """Names of Phase 1 collateral families that no alias term queries."""
+    nodes = ((p1.get('method_lineage') or {}).get('nodes') or [])
+    collateral = [n for n in nodes if isinstance(n, dict) and n.get('is_collateral')]
+    aliases = [a for a in (p2.get('alias_terms') or []) if isinstance(a, str)]
+    alias_tokens = [_tokens(a) for a in aliases]
+    uncovered = []
+    for n in collateral:
+        name = (n.get('method') or n.get('node_id') or '').strip()
+        want = _tokens(name)
+        if not want:
+            continue
+        # A family whose name reduces to ONE distinctive token (`ddmin`, `McNemar's
+        # test`) can never share two, so a flat MIN_SHARED made those permanently
+        # uncoverable — including `ddmin`, the family this validator exists because a
+        # run missed. Require the lesser of MIN_SHARED and what the name actually has.
+        need = min(MIN_SHARED, len(want))
+        if not any(len(want & got) >= need for got in alias_tokens):
+            uncovered.append(name)
+    return uncovered
+
+
+def unjustified_collateral(p2: dict, p1: dict) -> list:
+    """Uncovered families the candidate neither queries nor explains away: `composition_note` must
+    name the family it skips (the generation prompt asks for which and why). Used by the record
+    handshake so the explanation is written when the candidate is, not weighed later from silence."""
+    note = _tokens(str(p2.get('composition_note') or ''))
+    out = []
+    for name in uncovered_collateral(p2, p1):
+        want = _tokens(name)
+        if len(want & note) < min(MIN_SHARED, len(want)):
+            out.append(name)
+    return out
+
+
 def validate_alias_collateral_coverage(phase2_path: str, phase1_path: str) -> list[dict]:
     findings = []
     V = 'alias_collateral_coverage'
@@ -85,22 +120,7 @@ def validate_alias_collateral_coverage(phase2_path: str, phase1_path: str) -> li
         return findings
 
     p2 = json.loads(Path(phase2_path).read_text())
-    aliases = [a for a in (p2.get('alias_terms') or []) if isinstance(a, str)]
-    alias_tokens = [_tokens(a) for a in aliases]
-
-    uncovered = []
-    for n in collateral:
-        name = (n.get('method') or n.get('node_id') or '').strip()
-        want = _tokens(name)
-        if not want:
-            continue
-        # A family whose name reduces to ONE distinctive token (`ddmin`, `McNemar's
-        # test`) can never share two, so a flat MIN_SHARED made those permanently
-        # uncoverable — including `ddmin`, the family this validator exists because a
-        # run missed. Require the lesser of MIN_SHARED and what the name actually has.
-        need = min(MIN_SHARED, len(want))
-        if not any(len(want & got) >= need for got in alias_tokens):
-            uncovered.append(name)
+    uncovered = uncovered_collateral(p2, p1)
 
     n_total = len(collateral)
     n_missing = len(uncovered)

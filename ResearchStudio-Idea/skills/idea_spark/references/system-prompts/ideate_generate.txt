@@ -33,13 +33,14 @@ Phase 2.2 runs in two reading sub-steps:
    candidate main patterns are chosen_pattern_id together with any
    anchor_alternates Phase 2.1 left unresolved; read the sub-cluster rosters
    under all of them. Sibling entries use their single chosen_pattern_id.
-3. Pick ONE sub-pattern per gap whose `when_to_pick_this_one` describes
+3. Pick a sub-pattern only if its tactic fits without adding a new research claim.
+   If none fits, use sub_pattern=null and sub_pattern_not_applicable_reason; do not invent a C## or force a theorem. Otherwise pick ONE whose `when_to_pick_this_one` describes
    the gap's situation and whose `differentiation_within_parent` separates
    it from sibling sub-patterns on a bottleneck-relevant axis.
    THIN-CORPUS DECLARATION: when NO sub-cluster under this gap's parent (or
    its alternates) carries a domain-adjacent exemplar — every candidate
-   card's examples come from distant domains — still pick the structurally
-   closest cluster, but declare the thinness explicitly inside this gap's
+   card's examples come from distant domains — pick a structurally
+   fitting cluster only if one exists; otherwise use parent-only fit. Declare thinness explicitly inside this gap's
    `how_closed` (e.g. "corpus support thin in this domain; closest
    exemplars are from X"). The audit then judges the entry against the
    cluster's abstract Step-by-Step moves, not exemplar surface match. Same sub-
@@ -53,22 +54,14 @@ Phase 2.2 runs in two reading sub-steps:
    method. When the top-ranked chosen_pattern_id has no sub-cluster matching
    that grade but an anchor_alternate does, pick from the alternate and carry
    it forward as this gap's main_pattern.
-   COMPANION (only when Phase 2.1 set `companion_pattern` non-null on this
-   gap — either a Step 2a CHAIN on the anchor, or a Step 3b deliverable
-   pair; `companion_rationale` tells you which): for a chain, realize the
-   A→O→B dataflow the rationale states. For a deliverable pair, the framing
-   pattern (chosen_pattern_id) was kept BECAUSE its move
-   closes the gap, but Phase 2.1 found it cannot ship the deliverable this
-   gap demands, so it paired the leg. Carry `companion_pattern` through to
-   gap_closure[] unchanged, and make core_mechanism realize BOTH halves on
-   this gap: the framing pattern supplies the claim / inversion, and the
-   companion supplies the missing deliverable as the object that actually
-   validates the gap's closure (e.g. an `assumption_audit_and_pivot` +
-   `controlled_diagnostic_design` leg states the inverted assumption AND
-   ships the confound-isolating empirical separation that confirms it).
-   The companion is realized at the main-pattern level here — do not pick a
-   second sub-pattern for it.
-4. Open the picked sub-pattern's card at
+   COMPANION: when present, realize the exact declared object O → producer →
+   consuming operation → lost capability. Companion and sibling use the same
+   necessity standard. A post-hoc benchmark cannot enter a method through a
+   “deliverable repair” label. Do not create a second sub-pattern for it.
+   For an empirical diagnostic anchor, a measurement can itself be the contribution;
+   for theory the dependency may be a proof object. Parent-only fit is valid.
+
+4. Only if a sub-pattern was picked, open its card at
    `references/ideation-sub-patterns/<cluster>.md` where `<cluster>` is
    the cluster ID **C00 through C30** (e.g. `C12.md`, `C25.md`). NOT named
    by the parent pattern (there is no `assumption-audit.md` or
@@ -79,8 +72,8 @@ Phase 2.2 runs in two reading sub-steps:
    look like tactically) and **`Step-by-Step`** (5 abstract imperative
    steps that capture the cluster's structural move pattern, distilled
    from the cluster's [Accept] examples WITHOUT citing specific papers,
-   with [Reject]-derived boundaries embedded). The Step-by-Step is your
-   tactical recipe for sub-step b.
+   with [Reject]-derived risk cues embedded). The Step-by-Step is optional
+   tactical guidance, not a completion checklist or a new proof obligation.
 
 **Sub-step b — write the candidate**
 
@@ -94,9 +87,7 @@ closed via the causal chain (pattern's move → applied to this gap →
 produces what artifact → closes the gap because Y); `core_mechanism_reasoning`
 exposes how you arrived at this design (decisions, alternatives considered);
 `core_mechanism_steps` writes concrete implementation as a numbered list
-so the candidate is buildable, not aspirational. Each picked sub-pattern's
-`Step-by-Step` (5 abstract steps loaded in sub-step a) is your tactical
-recipe — apply each step's general move pattern to your specific gap.
+so the candidate is buildable, not aspirational. Each applicable card is a source of useful research moves, not a mandatory recipe. Apply only moves justified by the problem and the claimed contribution; a card never authorizes adding a theorem or algorithm.
 The steps are intentionally domain-agnostic; instantiate them concretely
 for your problem rather than executing them verbatim. Do NOT cite or
 mimic specific [Accept] papers from the cluster card — the sub-pattern's
@@ -188,7 +179,11 @@ Don't stack. If none passes, candidate isn't ready — back to Phase 2.1.
 Output (strict JSON):
 
 {
-  "title": "<paper-level title, ≤ 15 words>",
+  "contract_version": 2,
+  "title": "<≤15 words; name the anchor deliverable, not a supporting evaluation instrument>",
+  "intervention_object": {"acts_on": "<the object the mechanism modifies or reads — e.g. 'per-scale bit logits before quantisation', 'the KV cache of the committed prefix', 'the per-block calibration risk'>",
+                          "operator": "<the operation applied to it, one sentence, named by what it computes (a partition, a gain, a test, a projection)>",
+                          "decision_variables": "<what the mechanism chooses at each step, or 'none'>"},
 
   "hook": "<≤2 sentences. Pick ONE shape: (a) / (b) / (c). Don't stack.>",
 
@@ -197,7 +192,8 @@ Output (strict JSON):
   "gap_closure": [
     {"gap": "<verbatim from phase2_1.selected_gaps[].gap>",
      "main_pattern": "<from phase2_1.selected_gaps[].chosen_pattern_id; for the anchor this may instead be one of its anchor_alternates when sub-step a's grade match selected the alternate>",
-     "sub_pattern": "<the sub-pattern picked in sub-step a, formatted as `C## (parent pattern display name)` — e.g. `C12 (Substitute the Operator or Representation)`; take the code and its parent display name from references/ideation-sub-patterns/overview.md and verify its parent matches main_pattern>",
+     "sub_pattern_not_applicable_reason": "<short reason when sub_pattern is null, otherwise empty>",
+     "sub_pattern": "<null when no tactic fits; otherwise the sub-pattern picked in sub-step a, formatted as `C## (parent pattern display name)` — e.g. `C12 (Substitute the Operator or Representation)`; take the code and its parent display name from references/ideation-sub-patterns/overview.md and verify its parent matches main_pattern>",
      "companion_pattern": "<null unless Phase 2.1 set companion_pattern non-null on this gap; then carry that pattern_id through verbatim. The companion supplies this gap's missing deliverable at the main-pattern level (no sub_pattern) and core_mechanism must show that deliverable.>",
      "how_closed": "<one line: which specific element of core_mechanism closes this gap, in the spirit of the picked sub-pattern's tactical_pattern (descriptive — what kind of move closes it, e.g., 'closed by reformulating the LLM-generated text record as a structured posterior representation'). When companion_pattern is set, name both halves — the framing move and the companion's deliverable.>"}
   ],
@@ -233,8 +229,15 @@ Output (strict JSON):
     "..."
   ],
 
-  "composition_note": "<echo VERBATIM from phase2_select.composition_note (empty string when it was empty). Non-empty only for a sanctioned single-pattern selection; the deterministic validator checks its presence and the audit weighs its defense.>"
+  "composition_note": "<echo VERBATIM from phase2_select.composition_note (empty string when it was empty). Optional compatibility note; a single pattern needs no special defense.>"
 }
+
+Theory applicability: when no data are sampled and no empirical method is claimed,
+observation-model and GPU consumption may be explicitly n/a with a reason. Falsification
+may be a counterexample search or a proof-obligation/assumption test; do not fabricate
+a downstream-task metric, negative-control experiment or recovery guarantee to fill a
+method-shaped template. If the candidate actually claims recovery or an equivalence,
+state its conditions and proof obligations; a concrete counterexample blocks that claim.
 
 Hard rules (5):
 
@@ -284,9 +287,16 @@ Hard rules (5):
 
 5. **Every number carries provenance.** (a) PARAMETERS: any quantity the
    procedure READS AS A PARAMETER — a threshold, budget, window, interval,
-   count, weight — must be a NAMED symbol carrying a default value and a
-   one-clause selection rule ("epsilon = 0.03, swept over 0.02-0.05";
-   "n_min = 30, the usual floor for a stable rate estimate"). A bare
+   count, weight — must be a NAMED symbol with a one-clause selection rule
+   or admissible range ("epsilon, swept on a log grid"; "n_min, the floor
+   at which the rate estimate stabilises, chosen on held-out tasks"). The
+   idea is stated over VARIABLES: a default value is NOT required and is
+   given only when the mechanism's definition fixes it or a cited paper
+   measured it (say which). Do not derive sample sizes, window lengths,
+   grid cells or budget arithmetic inside the mechanism or the
+   falsification — those are the constants of an experiment not yet
+   designed, and every one you commit to is a number an auditor must then
+   check instead of checking the idea. A bare
    literal buried in prose ("gate on >= 95% agreement", "the top 5", "every
    2e3 tokens") is forbidden: an unnamed quantity cannot be swept by the
    falsification plan, cannot carry an assumption at T4, and reads to a
@@ -367,3 +377,14 @@ Notes:
   in this phase's sub-step a. There is no separate `patterns_used[]` field.
 
 Output path: `$RUN_DIR/phase2_generate/phase2_generate_output.json`.
+
+## Contribution and source fidelity
+The hook's first sentence names the anchor contribution. A title word such as certificate,
+verification, audit or probe is not intrinsically wrong; it must describe the actual main
+contribution. Post-hoc measurements belong to falsification unless the contribution type is
+empirical_reveal: a method candidate carries no controlled_diagnostic_design sibling or
+companion (Phase 2.1 hard rule); the per-pixel / per-band / per-trial measurement such a gap
+asked for is the ablation arm or negative control inside `falsification_prediction`, named
+there with its metric. Preserve selection dependency declarations; do not pad components.
+An unproved theorem can be a conditional research target with explicit proof obligations;
+do not present it as established, and do not add it merely to satisfy a pattern card.

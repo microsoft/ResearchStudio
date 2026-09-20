@@ -2,16 +2,18 @@
 
 Why: Phase 4.1 emits a rich, structured `phase4_expansion.json` that doubles as the audit
 record (motivation / method / claims / falsification / feasibility / literature). The
-*deliverable* the user reads, however, is intentionally lean: only **Title + Motivation +
-Method**, in two registers × the languages each register ships:
+*deliverable* the user reads, however, is intentionally lean: the std cards carry only **Title +
+Motivation + Method**; the detail card adds the research boundary (status, main contribution,
+falsification, resources, open questions). Two registers × the languages each register ships:
 
-  普通版 (std / plain register)      — 英文 + 中文   → .md, .tex, .pdf each
+  普通版 (std / plain register)      — 英文 + 中文   → .md, .pdf each (.tex under work/)
   详细版 (detail / detailed register) — 英文 only      → .md
 
-So this script emits 7 files (no model call — pure templating):
+So this script emits 5 deliverables in `out` (no model call — pure templating) and keeps every
+build file (.tex, .aux, .log, .pdf.error.txt) in `out/work/`:
 
-  idea.std.en.md   idea.std.en.tex   idea.std.en.pdf
-  idea.std.zh.md   idea.std.zh.tex   idea.std.zh.pdf
+  idea.std.en.md   idea.std.en.pdf
+  idea.std.zh.md   idea.std.zh.pdf
   idea.detail.en.md
 
 Method in every card = module buckets (steps not claimed by any module fall into a leading
@@ -168,6 +170,9 @@ def _escape_unbalanced_braces(t: str) -> str:
 
 def _conv_math(run: str) -> str:
     """Convert one math fragment from the Unicode/ASCII convention to LaTeX (no delimiters)."""
+    # An author who writes `$`x_{i}`$` or `$x_i$` marks the token as math; the delimiters themselves
+    # must not reach the typeset math (a literal `$` there ends math mode, a backtick prints as one).
+    run = re.sub(r'^\$?`?|`?\$?$', '', run) if re.search(r'^[$`]|[$`]$', run) else run
     t = _escape_unbalanced_braces(unicodedata.normalize('NFD', run))
     for mark, macro in _COMBINING:
         t = re.sub(r'(.)' + mark, lambda m, _mc=macro: _mc + '{' + m.group(1) + '}', t)
@@ -188,6 +193,14 @@ def _conv_math(run: str) -> str:
             break
         t = _folded
     t = re.sub(r'\^(?!\{)([A-Za-z0-9]+)', r'^{\1}', t)
+    # `a_{hat}^{prov}_{i}` (a subscript on each side of a superscript, or the reverse) is the same
+    # double-script error with a script in between; fold the like-kind pair around the other one.
+    while True:
+        _folded = re.sub(r'_\{([^{}]*)\}(\^\{[^{}]*\})_\{([^{}]*)\}', r'_{\1,\3}\2', t)
+        _folded = re.sub(r'\^\{([^{}]*)\}(_\{[^{}]*\})\^\{([^{}]*)\}', r'^{\1,\3}\2', _folded)
+        if _folded == t:
+            break
+        t = _folded
     for k, v in _MATH_UNICODE.items():
         t = t.replace(k, v + ' ')                        # trailing space terminates control words
     t = t.replace('%', r'\%').replace('#', r'\#').replace('&', r'\&')
@@ -312,6 +325,12 @@ def _render_inline(s, mode: str = 'tex') -> str:
 
 
 # ----------------------------------------------------------------------------- shared shaping
+def _module_header(m: dict) -> str:
+    """The reader's heading for a module: its authored `module_title`; the id only when the derivation
+    predates titles (`M1_edit_operator` was what every card showed before)."""
+    return str(m.get('module_title') or m.get('module_id') or '').strip()
+
+
 def _is_background_header(h: str) -> bool:
     """True for the scaffolding module — the unchanged-setup part of the method. Author modules
     name it 'Background' / '背景脚手架'; we match loosely so the renderer can float it to the front."""
@@ -334,13 +353,14 @@ def _bucket(steps: list, modules: list, lang: str) -> list:
         ids = m.get('step_ids', []) or []
         assigned.update(ids)
         module_buckets.append({
-            'header': m.get('module_id', ''),
+            'header': _module_header(m),
+            'background': _is_background_header(m.get('module_id', '')) or _is_background_header(_module_header(m)),
             'purpose': m.get('purpose_oneline', ''),
             'steps': [by_id[i] for i in ids if i in by_id],
         })
     glue = [s for s in steps if s.get('step_id') not in assigned]
-    bg_modules = [b for b in module_buckets if _is_background_header(b['header'])]
-    contrib_modules = [b for b in module_buckets if not _is_background_header(b['header'])]
+    bg_modules = [b for b in module_buckets if b['background']]
+    contrib_modules = [b for b in module_buckets if not b['background']]
     buckets = []
     if glue:
         buckets.append({'header': BACKGROUND_LABEL[lang], 'purpose': '', 'steps': glue})
@@ -473,6 +493,56 @@ def _md_motivation(d: dict, register: str, lang: str) -> list:
     return out
 
 
+def delivery_sections(d, register, lang):
+    """Shared semantic source for Markdown and LaTeX, including the research boundary.
+
+    v2 expansions only: a legacy (v1) expansion carries none of the plain_* delivery
+    fields, and re-rendering it must not change its cards. The std cards are Title +
+    Motivation + Method and nothing else (the user's deliverable spec); the research
+    boundary below ships on the detail card, whose reader wants the obligations.
+    """
+    if d.get('contract_version') != 2 or register == 'std':
+        return []
+    zh = lang == 'zh'
+    plain = register == 'std'
+    cost = d.get('cost_assessment') or {}
+    if cost:
+        labels = (('原始估算', '当前估算', '用户上限', '状态', '变化') if zh else
+                  ('Original estimate', 'Current estimate', 'User ceiling', 'Status', 'Change'))
+        budget = '\n\n'.join([
+            f"{labels[0]}: {cost.get('original_estimate', '')}",
+            f"{labels[1]}: {cost.get('current_estimate', '')}",
+            f"{labels[2]}: {cost.get('user_budget', '')}",
+            f"{labels[3]}: {cost.get('status', 'unknown')}. {cost.get('basis', '')}",
+            f"{labels[4]}: {cost.get('change_reason', '')}"])
+    else:
+        budget = str(d.get('compute_budget', '未评估' if zh else 'Not assessed'))
+    notes = d.get('implementation_notes') or []
+    unresolved = '\n\n'.join(str(n.get('hole', '')) + ': ' + str(n.get('evidence', '')) for n in notes)
+    unresolved = unresolved or ('未记录额外的实现选择；经验性主张尚未验证。' if zh else
+                                'No additional implementation choices recorded; empirical claims remain untested.')
+    status = ('研究状态' if zh else 'Research status',
+              '研究提案，尚未经真实实验验证。流程检查不等于新颖性或数学正确性的证明。' if zh else
+              'Research proposal — not experimentally validated. Pipeline checks do not prove novelty or mathematical correctness.')
+    if str(d.get('proposal_status') or '').startswith('FAILED VALIDATION'):
+        status = (status[0], str(d['proposal_status']) + '\n\n' + '\n\n'.join('- ' + x for x in (d.get('validation_failures') or [])))
+    technical = [
+        ('主要贡献' if zh else 'Main contribution', 'plain_core_claim', d.get('core_claim') or d.get('hook', '')),
+        ('最小证伪设计' if zh else 'Minimal falsification', 'plain_falsification', d.get('falsification_prediction', '')),
+        ('资源与可行性' if zh else 'Resources and feasibility', 'plain_resource_summary', budget),
+        ('未解决事项' if zh else 'Open questions', 'plain_open_questions', unresolved),
+    ]
+    out = [status]
+    for title, key, fallback in technical:
+        if plain:
+            v = d.get(key + '_' + lang)
+            if isinstance(v, str) and v.strip() and '<TODO[' not in v:
+                out.append((title, v))
+        else:
+            out.append((title, str(fallback)))
+    return out
+
+
 def render_card_md(d: dict, register: str, lang: str) -> str:
     src = _card_inputs(d, register, lang)
     lab = LABELS[lang]
@@ -482,6 +552,11 @@ def render_card_md(d: dict, register: str, lang: str) -> str:
     parts = [f'# {src["title"] or "Untitled"}', '']
     if method_name:
         parts += [f'**{lab["method_name"]}{lab["label_sep"]}** {method_name}', '']
+    status = str(d.get('proposal_status') or '')
+    if status.startswith('FAILED VALIDATION'):
+        # A card the pipeline's own validation refused says so on its first lines, in every register.
+        parts += [f'**{"状态" if lang == "zh" else "Status"}{lab["label_sep"]}** '
+                  f'{"未通过验证。" if lang == "zh" else ""}{status}', '']
 
     parts.append(f'## {lab["motivation"]}')
     parts += _md_motivation(d, register, lang)
@@ -556,6 +631,8 @@ def render_card_md(d: dict, register: str, lang: str) -> str:
                                  + ', '.join(f'`{f}`' for f in fca))
             parts.append('')
 
+    for title, body in delivery_sections(d, register, lang):
+        parts += ['## ' + title, '', _render_inline(body, 'md'), '']
     return '\n'.join(parts) + '\n'
 
 
@@ -697,6 +774,10 @@ def render_card_latex(d: dict, register: str, lang: str) -> str:
     out.append(rf'\section*{{{latex_escape(src["title"] or "Untitled")}}}')
     if method_name:
         out.append(rf'\textbf{{{latex_escape(lab["method_name"] + lab["label_sep"])}}} {latex_escape(method_name)}')
+    status = str(d.get('proposal_status') or '')
+    if status.startswith('FAILED VALIDATION'):
+        out.append(rf'\par\textbf{{{latex_escape(("状态" if lang == "zh" else "Status") + lab["label_sep"])}}} '
+                   rf'{latex_escape(("未通过验证。" if lang == "zh" else "") + status)}')
 
     out.append(rf'\section*{{{latex_escape(lab["motivation"])}}}')
     out += _tex_motivation(d, register, lang)
@@ -744,6 +825,8 @@ def render_card_latex(d: dict, register: str, lang: str) -> str:
                 out.append(rf'\noindent\emph{{{desc}}}')
             out.extend(_tex_equation(body, tag))
 
+    for title, body in delivery_sections(d, register, lang):
+        out += [rf'\section*{{{latex_escape(title)}}}', _render_inline(body, 'tex')]
     out.append(r'\end{document}')
     return '\n'.join(out) + '\n'
 
@@ -784,6 +867,29 @@ def _find_tex_engine(env: dict) -> tuple[str, list[str]] | None:
     return None
 
 
+_DOUBLE_SCRIPT_TEX = re.compile(r'\^(\{[^{}]*\}|[A-Za-z0-9])\^|_(\{[^{}]*\}|[A-Za-z0-9])_')
+
+
+def _repair_double_scripts(tex: str) -> str:
+    """`B_i^s^T` is a LaTeX error that aborts the engine and leaves a one-page PDF. In the .tex only
+    (the Markdown keeps the author's text), insert an empty group between repeated scripts so the
+    expression renders: `B_i^{s}{}^{T}`. The latex_double_script validator still reports the field."""
+    def fix(m):
+        a, b = m.group(1), m.group(2)
+        return (f'^{a}{{}}^' if a is not None else f'_{b}{{}}_')
+    def in_math(seg):
+        prev = None
+        while prev != seg:
+            prev, seg = seg, _DOUBLE_SCRIPT_TEX.sub(fix, seg)
+        # A prime after a superscript is a second superscript (`B^{s}'`): move it inside the group.
+        seg = re.sub(r"\^\{([^{}]*)\}'", r"^{\1'}", seg)
+        seg = re.sub(r"\^([A-Za-z0-9])'", r"^{\1'}", seg)
+        return seg
+    # Only math segments are touched; \texttt{w_t_m} is an identifier and must stay as written.
+    return re.sub(r'(\\\(.*?\\\)|\\\[.*?\\\]|\$\$.*?\$\$|(?<!\\)\$[^$\n]*?(?<!\\)\$)',
+                  lambda m: in_math(m.group(0)), tex, flags=re.S)
+
+
 def compile_pdf(tex_path: Path) -> Path | None:
     """Compile one .tex to .pdf in its own directory. Returns the PDF path, or None
     (with an actionable, cross-platform hint on stderr) if no engine is available
@@ -809,80 +915,40 @@ def compile_pdf(tex_path: Path) -> Path | None:
         print(f'  ⚠️ {engine_name} timed out for {tex_path.name}', file=sys.stderr)
         return None
     pdf_path = tex_path.with_suffix('.pdf')
+    error_note = tex_path.with_suffix('.pdf.error.txt')
     if proc.returncode != 0 or not pdf_path.exists():
-        log = proc.stdout.decode('utf-8', 'replace')[-1500:]
-        print(f'  ⚠️ {engine_name} failed for {tex_path.name}:\n{log}', file=sys.stderr)
+        full = proc.stdout.decode('utf-8', 'replace')
+        first = next((l.strip() for l in full.splitlines() if l.startswith('! ')), 'engine returned non-zero')
+        print(f'  ⚠️ {engine_name} failed for {tex_path.name}:\n{full[-1500:]}', file=sys.stderr)
+        # A non-stop engine still emits a (truncated) PDF; the publisher must not call that
+        # "compiled". Observed live: a double superscript cut a 5,500-word card to one page.
+        error_note.write_text(first + '\n')
         return pdf_path if pdf_path.exists() else None
+    error_note.unlink(missing_ok=True)
     for ext in ('.aux', '.log', '.out'):
         tex_path.with_suffix(ext).unlink(missing_ok=True)
     return pdf_path
 
 
-# ----------------------------------------------------------------------------- implementability merge
-def merge_implementability(expansion: dict, impl: dict) -> int:
-    """Fold the Phase 4.1.5 implementability audit's `enriched_steps` into `expansion` IN PLACE so the
-    rendered Method section carries the detailed, implementable step text instead of the terse Phase 4.1
-    gestures. Bounded by design: for each enriched step we replace ONLY the three prose surfaces the cards
-    render — `method_flow.steps[].what_changes` (pro card), `plain_method_steps_en[].what_to_do` and
-    `plain_method_steps_zh[].what_to_do` (std cards) — matched by `step_id`. Every other field (titles,
-    why_*, linked_*, inputs/outputs, equations, and the kill-switch fields) is untouched; the audit file
-    structurally never carries them. Returns the number of steps enriched."""
-    enriched = {e.get('step_id'): e for e in (impl.get('enriched_steps') or []) if e.get('step_id')}
-    if not enriched:
-        return 0
-    # The audit writes any 【作者需决定：…】/【author decision: …】 annotation INLINE in the enriched text,
-    # placed right after the sentence it qualifies — so we render the enriched prose verbatim rather than
-    # appending notes at the step end (which detaches the decision from the sentence it bites).
-    pro_steps = (expansion.get('method_flow', {}) or {}).get('steps', []) or []
-    std_en = expansion.get('plain_method_steps_en') or []
-    std_zh = expansion.get('plain_method_steps_zh') or []
-    n = 0
-    for s in pro_steps:
-        e = enriched.get(s.get('step_id'))
-        if e and e.get('what_changes'):
-            s['what_changes'] = e['what_changes']; n += 1
-    for s in std_en:
-        e = enriched.get(s.get('step_id'))
-        if e and e.get('what_to_do_en'):
-            s['what_to_do'] = e['what_to_do_en']
-    for s in std_zh:
-        e = enriched.get(s.get('step_id'))
-        if e and e.get('what_to_do_zh'):
-            s['what_to_do'] = e['what_to_do_zh']
-    return n
-
-
-def apply_implementability(expansion: dict, expansion_path: Path, impl_path: Path | None = None) -> int:
-    """Locate the implementability audit JSON (explicit `impl_path`, else the sibling
-    `phase4_implementability.json` next to the expansion) and merge it. No-op (returns 0) when absent,
-    so rendering still works for runs produced before this step existed."""
-    p = impl_path or (expansion_path.parent / 'phase4_implementability.json')
-    if not p.exists():
-        return 0
-    impl = json.loads(p.read_text())
-    n = merge_implementability(expansion, impl)
-    if n:
-        print(f'  merged implementability audit ({n} steps enriched) from {p}')
-    return n
-
-
-# ----------------------------------------------------------------------------- entry point
-def render_one(expansion: dict, out_dir: Path) -> Path:
-    """Emit the 7 lean deliverables. Returns the std/en markdown path (the primary surface
-    the host LLM reads back to the caller)."""
+def render_one(expansion: dict, out_dir: Path, compile_pdfs: bool = True, work_dir: Path = None) -> Path:
+    """Emit the 5 lean deliverables into `out_dir`; every build file goes to `work_dir`
+    (default `out_dir/work`). Returns the std/en markdown path (the primary surface the host
+    LLM reads back to the caller)."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    work_dir = Path(work_dir) if work_dir else out_dir / 'work'
+    work_dir.mkdir(parents=True, exist_ok=True)
 
     # std register ships both languages; detail register ships English markdown only.
     std_md_path = None
     for lang in ('en', 'zh'):
         md_path = out_dir / f'idea.std.{lang}.md'
-        tex_path = out_dir / f'idea.std.{lang}.tex'
+        tex_path = work_dir / f'idea.std.{lang}.tex'
         md_path.write_text(render_card_md(expansion, 'std', lang))
-        tex_path.write_text(render_card_latex(expansion, 'std', lang))
+        tex_path.write_text(_repair_double_scripts(render_card_latex(expansion, 'std', lang)))
         print(f'  wrote {md_path}')
         print(f'  wrote {tex_path}')
-        pdf = compile_pdf(tex_path)
-        if pdf is None:
+        pdf = compile_pdf(tex_path) if compile_pdfs else None
+        if pdf is None and compile_pdfs:
             # First compile failed despite the per-equation structural guard (e.g. an
             # equation that is brace-balanced but uses an undefined macro). Retry once
             # with ALL equations degraded to raw text so a PDF is still produced.
@@ -897,6 +963,7 @@ def render_one(expansion: dict, out_dir: Path) -> Path:
                 print(f'  ⚠️ {tex_path.name}: a formula would not typeset; recompiled with '
                       f'equations shown as raw LaTeX')
         if pdf and pdf.exists():
+            pdf = Path(shutil.move(str(pdf), str(out_dir / pdf.name)))
             print(f'  wrote {pdf}')
         if lang == 'en':
             std_md_path = md_path
@@ -931,14 +998,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--expansion', required=True, help='Phase 4 expansion JSON path')
     ap.add_argument('--out', required=True, help='Output dir')
-    ap.add_argument('--implementability', default=None,
-                    help='Phase 4.1.5 implementability audit JSON (default: sibling phase4_implementability.json)')
     args = ap.parse_args()
 
     expansion_path = _resolve_input(args.expansion)
     expansion = json.loads(expansion_path.read_text())
-    apply_implementability(expansion, expansion_path,
-                           _resolve_input(args.implementability) if args.implementability else None)
     out_dir = Path(args.out)
     render_one(expansion, out_dir)
 

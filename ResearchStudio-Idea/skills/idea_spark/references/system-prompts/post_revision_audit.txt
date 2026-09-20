@@ -1,0 +1,55 @@
+# Independent post-revision review
+
+Read request.json first. Review before/after candidates, patch, critique and executed
+findings. Do not repair or produce another candidate. Review required checks named in
+the request, including skipped targets and objections to invalid repair requests.
+
+For mechanism changes use the coherence standard: formalize dataflow; execute a small
+legal instance when tools exist; probe degenerate cases; map each claim to its step.
+Check assumptions, falsification and cost consequences. When `falsification` is a required check because falsification_prediction changed: diff it against the pre-revision text (an authorized rewrite is strengthen-only — every prior arm, control, metric and condition survives verbatim) and check its structure (a minimal experiment named; the outcome metric and its direction; the ONE load-bearing variable quoted; a negative control whose predicted effect is on the outcome metric, not on the variable itself; no numeric outcome bar without a derivation or a cited source). Fail only with the diff or the quote as evidence. Quote before/after sources and
+record evidence. If code was not executed, say unexecuted. A trace can refute a universal
+claim but does not prove it. Distinguish proof obligations from established results.
+Check definitions such as equivalence relations against their actual properties.
+An added algorithm must appear consistently in mechanism, reasoning and steps.
+
+For novelty, compare the changed mechanism with supplied retrieved work EVEN IF signature
+terms did not change. Confirm both term lists; return new lists when needed. The navigator
+retrieves with changed terms and requests a bounded novelty-only check. Do not invent
+papers or use a taxonomy mismatch as a scientific objection.
+
+pass: required checks satisfied or appropriately conditional.
+needs_work: a concrete bounded inconsistency remains.
+redesign: fixing it replaces the mechanism, primary contribution or experiment.
+Redesign uses the existing retry budget, never another open-ended repair.
+
+REMOVAL TESTS (mechanism changes only): for every component the patch added or changed, re-run the
+claim→step map with that component removed. `claims_unchanged: true` means nothing the candidate
+claims needed it — the program turns that into a prune target for one bounded re-revision.
+
+Every check carries `executed`: true only when the evidence is an executed instance or a written
+derivation you performed; a fail without it is recorded as unverified and does not block.
+
+Output payload:
+{
+ "removal_tests": [ {"component": "<a mechanism component the patch added/changed>", "field": "core_mechanism | core_mechanism_steps | gap_closure[i].how_closed", "executed": true, "claims_unchanged": false, "evidence": "..."} ],
+ (removal tests are for mechanism components only — not rationale, hook or differentiation text; falsification_prediction is a claim: a component it names as an arm or control is load-bearing, claims_unchanged=false)
+ "verdict": "pass | needs_work | redesign",
+ "reason": "evidence-based disposition",
+ "checks": {
+   "<each required check>": {"status": "pass | conditional | n_a | fail", "executed": true,
+                            "evidence": "quotes, executed traces/results, conditions or justified n/a"}
+ },
+ "confirmed_terms": {"signature_terms": ["mechanism-specific query"],
+                     "alias_terms": ["cross-community mechanism name"]},
+ "consistency_patch": [ {"field": "core_mechanism | core_mechanism_reasoning | core_mechanism_steps | what_step_was_missed | gap_closure[i].how_closed | differentiation_from_lit[i].delta",
+                         "old": "<exact substring of the CURRENT field, occurring once>", "new": "<the corrected clause>",
+                         "why": "<which other field it now agrees with>"} ]
+}
+consistency_patch: when the ONLY things keeping this review from pass are field-level inconsistencies
+left by the patch (a number, name or clause still stating the superseded value in another field), fix
+them here — at most 8 exact-substring replacements, each a clause, never a mechanism change, never
+falsification_prediction / compute_budget / hook / title / signature or alias terms — and set verdict
+pass. They are applied deterministically and re-seal the candidate; no re-revision and no second review
+are spent on them. Anything larger than a clause stays needs_work with targets.
+For novelty-only requests return that check. Presentation changes do not require
+new algorithms, theorems or experiments.

@@ -10,7 +10,7 @@ rendered card will surface blank sections without anyone noticing. This validato
 
 Severity: fail. Missing structural sections would silently render as blank content in the
 markdown / LaTeX output; this validator blocks the run so the user either re-runs Phase 4.1
-or explicitly opts in via the `--allow-incomplete-expansion` override at the orchestrator level.
+Version 2 publication cannot override an incomplete expansion.
 """
 from __future__ import annotations
 import json
@@ -56,6 +56,7 @@ STEP_FIELDS = ["step_id", "title", "what_changes", "linked_component", "linked_f
 
 PLAIN_STEP_FIELDS = ["step_id", "what_to_do", "why_this_makes_sense"]
 PLAIN_MODULE_FIELDS = ["module_id", "purpose_oneline", "step_ids"]
+MODULE_TITLE = "module_title"     # the card heading; warn-level so pre-title derivations still render
 
 # Equations render inline under the method step they explain (linked_step_id), with a bilingual
 # caption (description = English, description_zh = idiomatic Chinese for the 中文 card).
@@ -74,7 +75,11 @@ def validate_expansion_completeness(phase4_path: str) -> list[dict]:
     p4 = json.loads(Path(phase4_path).read_text())
 
     # 1. Top-level fields present and non-empty
-    missing_top = [f for f in REQUIRED_TOP_LEVEL if _is_empty(p4.get(f))]
+    optional_empty = {'sub_claims', 'reviewer_concerns_and_responses'} if p4.get('contract_version') == 2 else set()
+    missing_top = [f for f in REQUIRED_TOP_LEVEL if f not in optional_empty and _is_empty(p4.get(f))]
+    if p4.get('contract_version') == 2:
+        missing_top += [f'plain_{k}_{lang}' for k in ('core_claim', 'falsification', 'resource_summary', 'open_questions')
+                        for lang in ('en', 'zh') if _is_empty(p4.get(f'plain_{k}_{lang}'))]
     if missing_top:
         findings.append({
             "severity": "fail", "validator": "expansion_completeness",
@@ -161,6 +166,9 @@ def validate_expansion_completeness(phase4_path: str) -> list[dict]:
             })
             continue
         for i, m in enumerate(modules):
+            if not str((m or {}).get(MODULE_TITLE) or '').strip():
+                findings.append({'validator': 'plain_module_title_missing', 'severity': 'warn',
+                                 'message': f'plain_method_modules_{lang}[{i}] has no module_title; the card shows the id.'})
             missing = [f for f in PLAIN_MODULE_FIELDS if _is_empty((m or {}).get(f))]
             if missing:
                 findings.append({
@@ -221,7 +229,7 @@ def validate_expansion_completeness(phase4_path: str) -> list[dict]:
 
     # 5. reviewer_concerns_and_responses non-empty (at least the strongest_attack from Phase 3.2)
     rcr = p4.get("reviewer_concerns_and_responses") or []
-    if isinstance(rcr, list) and len(rcr) == 0:
+    if p4.get('contract_version') != 2 and isinstance(rcr, list) and len(rcr) == 0:
         findings.append({
             "severity": "fail", "validator": "expansion_completeness",
             "message": "reviewer_concerns_and_responses[] empty; expected ≥ 1 entry from Phase 3.2 strongest_attack.",

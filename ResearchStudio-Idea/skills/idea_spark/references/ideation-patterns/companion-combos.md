@@ -1,39 +1,11 @@
-# Companion-pattern combinations (attested co-occurrence)
+# Historical companion-pattern examples
 
-When a gap_closure leg's chosen pattern is the right FRAMING move but cannot
-itself produce the deliverable that `intake.contribution_type` commits to
-(canonical case: an `assumption_audit_and_pivot` leg on a `method` problem —
-the audit names and inverts an assumption, but its honest deliverable is a
-theorem / identifiability claim, not the runnable or empirical artifact a
-`method` paper must ship), the leg names a `companion_pattern` that DOES own
-the missing deliverable. This file is the membership set of which companions
-are empirically real rather than forced.
-
-## How to use
-
-Each pattern below lists the set of patterns it co-occurs with in the corpus.
-The list is a MEMBERSHIP SET, not a ranking — it is read as a yes/no test, so
-its internal order carries no priority and is never the basis of a choice.
-
-1. **Attestation (membership test).** The companion MUST be in the chosen
-   pattern's set below. A pairing absent here was never observed together in
-   the corpus and is presumed forced; do not use it.
-
-2. **Deliverable-fit (the actual choice).** Among the attested companions,
-   take the ONE whose move owns the deliverable the primary pattern cannot
-   produce for this `contribution_type`. This filter typically collapses the
-   set to one or two: e.g. `controlled_diagnostic_design` owns a
-   confound-isolating empirical separation; `architectural_operator_substitution`
-   owns a runnable operator; `self_supervised_signal_engineering` owns a
-   manufactured optimization signal. State the choice and its reason in
-   `companion_rationale` (which missing deliverable, why this companion owns
-   it) — the pick is anchored to that reason, never to list position.
-
-The two checks are a conjunction: both must hold, and their order is
-irrelevant. Counts are omitted by design — co-occurrence frequency here mostly
-reflects how broad a framing pattern is, not how good a given pairing is, so
-ranking by it would pull selection toward hub patterns instead of toward
-deliverable-fit.
+These co-occurrences are descriptive suggestions, not a membership gate or ranking.
+A new combination need not have appeared in the corpus. Any chosen companion must
+name its object, producer, consuming operation and removal effect. A method's post-hoc
+measurement is not a necessary method component; runtime signals may be.
+Assumption auditing does not intrinsically require an identifiability theorem.
+There is no minimum pattern count. Leave an unnecessary companion absent.
 
 ## Provenance
 
@@ -42,7 +14,7 @@ multi-label-tagged papers (HDBSCAN mcs=10 alignment). Source:
 `data/clustering/multilabel/paper_multilabel_v2.json`. Rebuild with
 `python3 -m scripts.build_companion_combos`. 15 patterns, 68 edges.
 
-## Allow-list
+## Observed pairs
 
 
 ### adapt_via_conditioning

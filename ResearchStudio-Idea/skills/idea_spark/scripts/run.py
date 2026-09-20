@@ -824,6 +824,39 @@ def cmd_phase0(args) -> int:
                           and pool_caps.get(j['job'], 0) > 0
                           and j['job'] not in [n for n, _c in _dead]), None)
         if _survivor is None:
+            # No enabled sibling survived. A DISABLED sibling whose connector worked elsewhere (oa_recent,
+            # cap 0 by default, when arXiv and ss_recent both 429) is switched on for this window at the
+            # dead caps, preprints included — the dead jobs were the preprint carriers, and a fresh window
+            # with no papers at all costs Phase 1 its gap freshness. Observed: arXiv and Semantic Scholar
+            # both rate-limited for over an hour while OpenAlex answered every query.
+            _fallback = next((j for j in PHASE0_RETRIEVAL_JOBS
+                              if (j['window_min'], j['window_max']) == _wkey
+                              and j['connector'] in successes
+                              and pool_caps.get(j['job'], 0) == 0), None)
+            if _fallback is None:
+                continue
+            # size it off the window's configured caps, not the dead list: caps absorbed along the chain
+            # (arxiv -> ss_recent -> openreview) are otherwise lost with the last carrier
+            _fcap = min(sum(pool_caps.get(j['job'], 0) for j in PHASE0_RETRIEVAL_JOBS
+                            if (j['window_min'], j['window_max']) == _wkey), 60)
+            _fjob = _fallback['job']
+            print(f'  [{_fjob}] enabled as the fallback for window {_wkey[0]}-{_wkey[1]}mo: every job in it '
+                  f'({", ".join(n for n, _c in _dead)}) failed; running at cap {_fcap}, preprints included',
+                  file=sys.stderr)
+            _fout = out_dir / f'{_fjob}_phase0.json'
+            _fextra = [a for a in _fallback.get('extra_args', []) if a != '--published-only']
+            _ftimeout = _fallback.get('timeout', 300)
+            if not getattr(args, 'no_openalex_semantic', False) and _fallback['connector'] == 'openalex':
+                _fextra = _fextra + ['--with-semantic']
+                _ftimeout = max(_ftimeout, 600)
+            if run_connector_subprocess(
+                    module_of[_fallback['connector']], queries_json,
+                    window_max_months=_fallback['window_max'], out_path=_fout,
+                    label=f'{_fjob}_fallback', window_min_months=_fallback['window_min'],
+                    max_results=_fcap, max_per_query=_fallback.get('max_per_query', 0),
+                    extra_args=_fextra, timeout=_ftimeout, as_of=as_of):
+                hits_files.append((_fout, _fallback['connector']))
+                dead_by_window[_wkey] = []
             continue
         _own = pool_caps[_survivor['job']]
         _bonus = min(sum(c for _n, c in _dead), _own)
@@ -1232,36 +1265,11 @@ def _write_fulltext_split(out_dir: Path, cache: dict, lit_results: list) -> None
     (split_dir / 'index.json').write_text(json.dumps(index, indent=2, ensure_ascii=False))
 
 
-def cmd_validate(args) -> int:
-    """Run the contract validators on the phase outputs the user provides."""
-    from scripts.validators import run_all_validators
-    findings = run_all_validators(
-        phase1_path=args.phase1, phase2_path=args.phase2,
-        phase3_path=args.phase3, phase4_path=args.phase4,
-        phase4_impl_path=args.phase4_impl,
-        phase2_select_path=getattr(args, 'phase2_select', None),
-    )
-    if not findings:
-        print('No validators ran — provide --phase1/2/3/4 paths to enable checks.', file=sys.stderr)
-        return 0
-
-    fails = [f for f in findings if f['severity'] == 'fail']
-    warns = [f for f in findings if f['severity'] == 'warn']
-    passes = [f for f in findings if f['severity'] == 'pass']
-
-    for f in findings:
-        sev_marker = {'fail': '✗', 'warn': '⚠', 'pass': '✓'}.get(f['severity'], '?')
-        print(f'  {sev_marker} [{f["validator"]}] {f["message"]}')
-
-    print(f'\n{len(passes)} pass, {len(warns)} warn, {len(fails)} fail', file=sys.stderr)
-    return 1 if fails else 0
-
-
-# --- main dispatch ----------------------------------------------------------
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
+    from scripts.quality_cli import register_commands
+    register_commands(sub, ROOT)
 
     p0 = sub.add_parser('phase0', help='Run Phase 0 literature grounding via in-skill connectors')
     p0.add_argument('--query', required=True, help='User research question (free text)')
@@ -1650,290 +1658,6 @@ def main():
         return 0
     ltm.set_defaults(func=_cmd_lit_table_merge)
 
-    pr = sub.add_parser('phase4_render', help='Render the Phase 4 expansion JSON into the idea-card markdown + LaTeX (templating, no model call; compiles a PDF when xelatex/tectonic is on PATH, else skips with a hint)')
-    pr.add_argument('--expansion', required=True, help='Phase 4 expansion JSON path')
-    pr.add_argument('--out', default='outputs/phase4', help='Output dir (default outputs/phase4/)')
-    pr.add_argument('--implementability', default=None,
-                    help='Phase 4.1.5 implementability audit JSON (default: auto-detect sibling phase4_implementability.json)')
-    def _cmd_phase4_render(args):
-        from scripts.render_pdf import render_one, apply_implementability, _resolve_input
-        out_dir = Path(args.out).resolve(); out_dir.mkdir(parents=True, exist_ok=True)
-        expansion_path = _resolve_input(args.expansion)
-        expansion = json.loads(expansion_path.read_text())
-        apply_implementability(expansion, expansion_path,
-                               _resolve_input(args.implementability) if args.implementability else None)
-        md_path = render_one(expansion, out_dir)
-        # Optional: generate a pipeline diagram via Azure OpenAI if available;
-        # skipped gracefully if azure-identity / azure-openai are not installed.
-        try:
-            #from scripts.gen_pipeline import generate_pipeline
-            #generate_pipeline(md_path)
-            pass
-        except (ImportError, ModuleNotFoundError) as e:
-            print(f'  (skipped pipeline diagram: {e.name} not installed)', file=sys.stderr)
-        return 0
-    pr.set_defaults(func=_cmd_phase4_render)
-
-    psk = sub.add_parser('phase4_skeleton',
-                         help='Build the deterministic Phase 4 expansion skeleton. Every mechanical '
-                              'field (kill-switch echo, venue-year lookup, group-by over lit_table, '
-                              'candidate_uses from gap_closure x pattern_saturation, reviewer_concerns '
-                              'lifted from the audit, differentiation_from_lit enriched with venue_year, '
-                              'feasibility.compute verdict bucketed against intake.compute) is populated; '
-                              'every prose field is a `<TODO[path]: hint>` placeholder. The host LLM then '
-                              'authors a flat fill_map (path -> value) for the prose only, and '
-                              '`phase4_assemble` merges it. LLM payload drops from ~30 fields to ~12 '
-                              'prose-only fields.')
-    psk.add_argument('--candidate', required=True,
-                     help='Phase 3.3 final_candidate.json if revise ran, else Phase 2.2 '
-                          'phase2_generate_output.json. Source of kill-switch + gap_closure + '
-                          'differentiation_from_lit + almost_prior_paper_id + what_step_was_missed.')
-    psk.add_argument('--phase1', required=True, help='phase1_output.json')
-    psk.add_argument('--phase2-select', required=True, help='phase2_select_output.json')
-    psk.add_argument('--phase3-critique', required=True, help='phase3_critique_output.json')
-    psk.add_argument('--phase3-revise', default=None,
-                     help='phase3_revise_output.json (optional; only when Phase 3.3 ran). '
-                          'Used to populate reviewer_concerns_and_responses[].fields_changed_to_address.')
-    psk.add_argument('--phase0-dir', required=True,
-                     help='Phase 0 output dir containing lit_table.md + lit_results.json')
-    psk.add_argument('--collision', default=None,
-                     help='collision_hits.json from Phase 3.1 (optional; if absent the '
-                          'literature_breakdown.phase3_collision list is empty).')
-    psk.add_argument('--out', required=True,
-                     help='Output dir for phase4_skeleton.json (typically $RUN_DIR/phase4/).')
-    def _cmd_phase4_skeleton(args):
-        from scripts.phase4_skeleton import build_skeleton, parse_lit_table
-        out_dir = Path(args.out).resolve(); out_dir.mkdir(parents=True, exist_ok=True)
-        candidate = json.loads(Path(args.candidate).resolve().read_text())
-        if 'final_candidate' in candidate and isinstance(candidate['final_candidate'], dict):
-            candidate = candidate['final_candidate']
-        phase1 = json.loads(Path(args.phase1).resolve().read_text())
-        phase2_select = json.loads(Path(args.phase2_select).resolve().read_text())
-        phase3_critique = json.loads(Path(args.phase3_critique).resolve().read_text())
-        phase3_revise = (json.loads(Path(args.phase3_revise).resolve().read_text())
-                         if args.phase3_revise else None)
-        phase0_dir = Path(args.phase0_dir).resolve()
-        lit_table_rows = parse_lit_table(phase0_dir / 'lit_table.md')
-        lit_results_path = phase0_dir / 'lit_results.json'
-        lit_results = json.loads(lit_results_path.read_text()) if lit_results_path.exists() else []
-        if isinstance(lit_results, dict) and 'papers' in lit_results:
-            lit_results = lit_results['papers']
-        collision_hits = (json.loads(Path(args.collision).resolve().read_text())
-                          if args.collision and Path(args.collision).exists() else [])
-        skeleton = build_skeleton(candidate, phase1, phase2_select, phase3_critique,
-                                  phase3_revise, lit_table_rows, lit_results, collision_hits)
-        out_path = out_dir / 'phase4_skeleton.json'
-        out_path.write_text(json.dumps(skeleton, indent=2, ensure_ascii=False))
-        n_todo = sum(1 for v in json.dumps(skeleton).split('"') if v.startswith('<TODO['))
-        n_lit = skeleton['literature_breakdown']['summary']['n_phase0_on_topic']
-        n_diff = len(skeleton['differentiation_from_lit'])
-        n_rev = len(skeleton['reviewer_concerns_and_responses'])
-        print(f'OK Phase 4 skeleton complete. Wrote {out_path}', file=sys.stderr)
-        print(f'   {n_todo} TODO placeholders for the LLM to author', file=sys.stderr)
-        print(f'   {n_lit} on-topic lit_table papers; {n_diff} differentiation entries; '
-              f'{n_rev} reviewer concerns', file=sys.stderr)
-        print(f'   compute verdict: {skeleton["feasibility_validation"]["compute"]["verdict"]}',
-              file=sys.stderr)
-        return 0
-    psk.set_defaults(func=_cmd_phase4_skeleton)
-
-    pas = sub.add_parser('phase4_assemble',
-                         help='Apply the LLM-authored fill_map JSON to the Phase 4 skeleton, '
-                              'producing phase4_expansion.json. Refuses to overwrite kill-switch '
-                              'fields. Pure Python, no LLM.')
-    pas.add_argument('--skeleton', required=True, help='Path to phase4_skeleton.json')
-    pas.add_argument('--fill-map', required=True, action='append',
-                     help='Path to a JSON file with {field_path: value} entries authored by the LLM. '
-                          'Each path is the SAME path syntax used in the TODO placeholders. '
-                          'Repeatable: pass once per map (e.g. the technical fill_map and the '
-                          'derive_map) — maps are merged; overlapping paths are an error.')
-    pas.add_argument('--out', required=True, help='Output dir for phase4_expansion.json.')
-    def _cmd_phase4_assemble(args):
-        from scripts.phase4_skeleton import assemble_expansion
-        from scripts.json_repair import load_llm_json
-        skeleton = json.loads(Path(args.skeleton).resolve().read_text())
-        fill_map: dict = {}
-        for fm_path in args.fill_map:
-            # fill maps are LLM-written: a stray ASCII quote inside CJK prose
-            # ("评级短语"重复毫无价值"有多准确") terminates the string early and
-            # kills the assemble. Repair-on-read, reported on stderr.
-            fm = load_llm_json(Path(fm_path).resolve())
-            if not isinstance(fm, dict):
-                print(f'ERROR: fill_map JSON must be an object {{path: value}}, got '
-                      f'{type(fm).__name__} in {fm_path}', file=sys.stderr)
-                return 1
-            overlap = set(fill_map) & set(fm)
-            if overlap:
-                print(f'ERROR: fill maps overlap on {sorted(overlap)[:5]} — each TODO path must be '
-                      f'owned by exactly one map', file=sys.stderr)
-                return 1
-            fill_map.update(fm)
-        try:
-            expansion = assemble_expansion(skeleton, fill_map)
-        except ValueError as e:
-            print(f'ERROR: {e}', file=sys.stderr)
-            return 1
-        out_dir = Path(args.out).resolve(); out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / 'phase4_expansion.json'
-        out_path.write_text(json.dumps(expansion, indent=2, ensure_ascii=False))
-        n_remaining = sum(1 for v in json.dumps(expansion).split('"') if v.startswith('<TODO['))
-        if n_remaining:
-            print(f'WARN {n_remaining} TODO placeholders remain in the expansion -- '
-                  f'expansion_completeness validator will likely fail', file=sys.stderr)
-        print(f'OK Phase 4 assembly complete. Wrote {out_path}', file=sys.stderr)
-        return 0
-    pas.set_defaults(func=_cmd_phase4_assemble)
-
-    pmv = sub.add_parser('phase4_method_view',
-                         help='Extract the method-only slice of phase4_expansion.json into '
-                              'phase4/method_view.json — exactly the fields the 4.1.5 '
-                              'implementability audit reads (method_flow, plain step renderings, '
-                              'key_equations, claims). Cuts the audit\'s input roughly in half; '
-                              'motivation prose, differentiation, landscape and kill-switch fields '
-                              'are excluded by construction. Pure Python, no LLM.')
-    pmv.add_argument('--expansion', required=True, help='Path to the COMPLETE phase4_expansion.json')
-    pmv.add_argument('--out', required=True, help='Output dir for method_view.json')
-    def _cmd_phase4_method_view(args):
-        expansion = json.loads(Path(args.expansion).resolve().read_text())
-        view_fields = ['title', 'method_name', 'abstract_draft', 'core_claim', 'sub_claims',
-                       'key_equations', 'method_flow', 'plain_method_steps_en', 'plain_method_steps_zh']
-        view = {k: expansion[k] for k in view_fields if k in expansion}
-        missing = [k for k in ('method_flow', 'key_equations') if k not in view]
-        if missing:
-            print(f'ERROR: expansion lacks required field(s) {missing} — is this a complete expansion?',
-                  file=sys.stderr)
-            return 1
-        leaked = '<TODO[' in json.dumps(view)
-        if leaked:
-            print('ERROR: view still contains TODO placeholders — run the final assemble '
-                  '(all fill maps) before extracting the view', file=sys.stderr)
-            return 1
-        out_dir = Path(args.out).resolve(); out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / 'method_view.json'
-        out_path.write_text(json.dumps(view, indent=2, ensure_ascii=False))
-        full = len(json.dumps(expansion))
-        print(f'OK method view written: {out_path} ({len(json.dumps(view)):,}B vs expansion {full:,}B)',
-              file=sys.stderr)
-        return 0
-    pmv.set_defaults(func=_cmd_phase4_method_view)
-
-    prb = sub.add_parser('phase3_revise_brief',
-                         help='Extract the revision brief from the Phase 3.2 audit report — verdict, '
-                              'rationale, revision_targets and the compact checks, dropping the '
-                              'gap_closure_reject_check bulk (per-lesson quotations the audit already '
-                              'distilled into revision_targets). The 3.3 reviser reads this instead of '
-                              'the full report. Pure Python, no LLM.')
-    prb.add_argument('--critique', required=True, help='Path to phase3_critique_output.json')
-    prb.add_argument('--out', required=True, help='Output dir for revise_brief.json')
-    def _cmd_phase3_revise_brief(args):
-        critique_path = Path(args.critique).resolve()
-        critique = json.loads(critique_path.read_text())
-        if not critique.get('revision_targets'):
-            print('WARN critique has no revision_targets — brief written anyway, but 3.3 should not '
-                  'be running on this verdict', file=sys.stderr)
-        brief = {k: v for k, v in critique.items() if k != 'gap_closure_reject_check'}
-        brief['_brief_note'] = ('gap_closure_reject_check details omitted for context economy — '
-                                f'full report at {critique_path}; read it ONLY if a revision_target\'s '
-                                '`issue` cites a specific reject lesson you need verbatim.')
-        out_dir = Path(args.out).resolve(); out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / 'revise_brief.json'
-        out_path.write_text(json.dumps(brief, indent=2, ensure_ascii=False))
-        print(f'OK revision brief written: {out_path} ({len(json.dumps(brief)):,}B vs '
-              f'critique {len(json.dumps(critique)):,}B)', file=sys.stderr)
-        return 0
-    prb.set_defaults(func=_cmd_phase3_revise_brief)
-
-    pfv = sub.add_parser('phase3_falsification_view',
-                         help='Extract the falsification-re-audit slice of the merged candidate — '
-                              'the rewritten falsification_prediction plus the mechanism fields '
-                              'needed to judge non-tautology. The re-audit reads this instead of the '
-                              'full candidate. Pure Python, no LLM.')
-    pfv.add_argument('--candidate', required=True, help='Path to phase3_revise/final_candidate.json')
-    pfv.add_argument('--out', required=True, help='Output dir for falsification_view.json')
-    def _cmd_phase3_falsification_view(args):
-        cand = json.loads(Path(args.candidate).resolve().read_text())
-        fields = ['title', 'falsification_prediction', 'core_mechanism',
-                  'core_mechanism_steps', 'core_mechanism_reasoning']
-        view = {k: cand[k] for k in fields if k in cand}
-        if 'falsification_prediction' not in view:
-            print('ERROR: candidate lacks falsification_prediction — wrong file?', file=sys.stderr)
-            return 1
-        out_dir = Path(args.out).resolve(); out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / 'falsification_view.json'
-        out_path.write_text(json.dumps(view, indent=2, ensure_ascii=False))
-        print(f'OK falsification view written: {out_path} ({len(json.dumps(view)):,}B vs '
-              f'candidate {len(json.dumps(cand)):,}B)', file=sys.stderr)
-        return 0
-    pfv.set_defaults(func=_cmd_phase3_falsification_view)
-
-    pm = sub.add_parser('phase3_merge_revisions',
-                        help='Apply the Phase 3.3 patch (applied_revisions[]) to the Phase 2.2 '
-                             'candidate deterministically. Writes final_candidate.json next to '
-                             'the patch file AND back-injects it into the patch file so the '
-                             'legacy kill_switch_integrity validator keeps finding it under '
-                             "phase3_revise_output.json['final_candidate']. Pure Python, no LLM. "
-                             'This replaces the old Phase 3.3 contract where the LLM had to echo '
-                             'the full ~25k-token candidate back; the new contract is patch-only.')
-    pm.add_argument('--phase2', required=True,
-                    help='Path to phase2_generate_output.json (the canonical Phase 2.2 candidate).')
-    pm.add_argument('--revisions', required=True,
-                    help='Path to phase3_revise_output.json containing applied_revisions[]. '
-                         'The file is updated in place to add a `final_candidate` key.')
-    pm.add_argument('--critique', default=None,
-                    help='Path to phase3_critique_output.json. Required to authorize a '
-                         '`rewrite_falsification` patch op (the merger verifies the audit '
-                         'emitted a scope=falsification revision_target). Optional otherwise.')
-    pm.add_argument('--out', required=True,
-                    help='Output dir for final_candidate.json (typically the same dir as --revisions).')
-    pm.add_argument('--out-name', dest='out_name', default='final_candidate.json',
-                    help='Merged-candidate filename (default final_candidate.json). The Phase 2.3 '
-                         'coherence gate reuses this merger with --out-name refined_candidate.json.')
-    def _cmd_phase3_merge(args):
-        from scripts.merge_revisions import merge_phase3_revisions
-        try:
-            final_path, revisions_path = merge_phase3_revisions(
-                Path(args.phase2).resolve(),
-                Path(args.revisions).resolve(),
-                Path(args.out).resolve(),
-                critique_path=Path(args.critique).resolve() if args.critique else None,
-                out_name=args.out_name,
-            )
-        except ValueError as e:
-            print(f'ERROR: {e}', file=sys.stderr)
-            return 1
-        # The same merger serves two phases; label the log by the actual out-name
-        # so a 2.3 coherence merge doesn't masquerade as Phase 3.3 in run logs.
-        stage = ('Phase 2.3 coherence' if (args.out_name or '') == 'refined_candidate.json'
-                 else 'Phase 3.3')
-        print(f'✅ {stage} merge complete. Wrote {final_path}', file=sys.stderr)
-        print(f'   Back-injected `final_candidate` into {args.revisions} for legacy consumers.', file=sys.stderr)
-        try:
-            rev_doc = json.loads(Path(revisions_path).read_text())
-            skipped = [r for r in (rev_doc.get('applied_revisions') or [])
-                       if isinstance(r, dict) and r.get('outcome') == 'skipped_anti_substitution']
-            if skipped:
-                print('   ⚠️  DROPPED REVISION(S) — kill-switch protection refused these audit-requested '
-                      'changes; they are NOT in the merged candidate:', file=sys.stderr)
-                for r in skipped:
-                    print(f'      - field={r.get("field")!r} issue={str(r.get("issue") or "")[:120]!r}',
-                          file=sys.stderr)
-                print('      The Phase 4 skeleton surfaces these as reviewer concerns; if the change '
-                      'was a strengthen-only falsification edit, the audit should have authorized it '
-                      'via a scope=falsification target (see critique.txt).', file=sys.stderr)
-        except Exception:
-            pass
-        try:
-            if json.loads(Path(revisions_path).read_text()).get('falsification_rewritten'):
-                print('   ⚠️  falsification_prediction was REWRITTEN (audited exception). '
-                      'Before Phase 4, run the falsification re-audit '
-                      '(falsification_reaudit.txt — self-contained prompt) → '
-                      'phase3_critique/falsification_reaudit.json with verdict=advance.',
-                      file=sys.stderr)
-        except Exception:
-            pass
-        return 0
-    pm.set_defaults(func=_cmd_phase3_merge)
-
     pu = sub.add_parser('add_user_ref',
                         help='Merge a user-named paper reference into phase0/user_refs.json '
                              '(deterministic JSON merge, dedup on type:value; creates the file '
@@ -2035,27 +1759,39 @@ def main():
             from scripts.search_arxiv import search as ax_search
         except Exception:
             ax_search = None
+        try:
+            from scripts.search_openalex import search as oa_search
+        except Exception:
+            oa_search = None
 
         def _resolve(title):
-            """Return a real connector record whose title matches `title` (>=0.9), or None."""
+            """Return a real connector record whose title matches `title` (>=0.9), or None.
+            Three engines are tried in turn and the search stops at the first exact-enough title:
+            Semantic Scholar, arXiv, then OpenAlex — the third exists because the first two share
+            one failure mode (both rate-limit the same IP for an hour after a Phase 0 burst; observed
+            every nomination costing 3 min of backoff and resolving nothing while OpenAlex answered)."""
             tkey = _tnorm(title)
-            candidates = []
-            if ss_search:
+
+            def _best(cands):
+                best, best_r = None, 0.0
+                for c in cands or []:
+                    r = difflib.SequenceMatcher(None, tkey, _tnorm(c.get('title'))).ratio()
+                    if r > best_r:
+                        best, best_r = c, r
+                return best if best_r >= 0.9 else None
+
+            engines = [('ss', lambda: ss_search(title, since_year=2000, max_results=5)) if ss_search else None,
+                       ('arxiv', lambda: ax_search(title, max_results=5)) if ax_search else None,
+                       ('openalex', lambda: oa_search(title, '2000-01-01', max_results=5)) if oa_search else None]
+            for name, call in [e for e in engines if e]:
                 try:
-                    candidates += ss_search(title, since_year=2000, max_results=5) or []
+                    hit = _best(call())
                 except Exception as e:
-                    print(f'  [ss lookup failed for {title!r}: {e}]', file=sys.stderr)
-            if ax_search:
-                try:
-                    candidates += ax_search(title, max_results=5) or []
-                except Exception as e:
-                    print(f'  [arxiv lookup failed for {title!r}: {e}]', file=sys.stderr)
-            best, best_r = None, 0.0
-            for c in candidates:
-                r = difflib.SequenceMatcher(None, tkey, _tnorm(c.get('title'))).ratio()
-                if r > best_r:
-                    best, best_r = c, r
-            return best if best_r >= 0.9 else None
+                    print(f'  [{name} lookup failed for {title!r}: {e}]', file=sys.stderr)
+                    continue
+                if hit is not None:
+                    return hit
+            return None
 
         added, already, unresolved = [], [], []
         for ref in refs:
@@ -2254,15 +1990,6 @@ def main():
         return cmd_next(args)
     pn.set_defaults(func=_cmd_next)
 
-    pv = sub.add_parser('validate', help='Run validators on phase outputs')
-    pv.add_argument('--phase1', help='phase1_output.json path (required for V3 evidence-chain)')
-    pv.add_argument('--phase2', help='phase2_output.json path (required for V2/V3/V4)')
-    pv.add_argument('--phase3', help='phase3_critique_output.json path (required for V1)')
-    pv.add_argument('--phase4', help='phase4_expansion_output.json path (required for V1)')
-    pv.add_argument('--phase4-impl', dest='phase4_impl', help='phase4_implementability.json path (enables implementability_completeness)')
-    pv.add_argument('--phase2-select', dest='phase2_select',
-                    help='phase2_select_output.json path (enables user_direction)')
-    pv.set_defaults(func=cmd_validate)
 
     args = ap.parse_args()
     # Guard every path-bearing arg against an unexpanded/empty run-dir variable

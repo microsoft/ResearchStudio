@@ -18,6 +18,7 @@ Judging rules:
 - Flaw (a) claims: the basis must point at specific words of the step text that the gate's formalization contradicts. Verify against the candidate's actual text; a "charitable reading" argument counts ONLY if the finding's own `reading_dependence` tag says reading_dependent AND the basis names the alternative reading — a reading_robust finding cannot be refuted by re-reading.
 - Flaw (b) claims: the basis must identify the specific computation. Recompute it yourself — you have a code-execution tool; write and RUN a short stdlib-only check and paste script + output into `reason`. Hand-verification only if no execution tool exists (mark it unexecuted).
 - Flaw (c) claims: the basis must name the violated premise as the candidate states it. Verify the premise actually appears in the candidate.
+- Flaw (d) `derivation_fails` claims: the basis must supply a LEGAL instance (the candidate's own constants; inputs the procedure admits) and the computation showing the finding's quantity does not behave as the `derivation` says. Re-run that computation yourself; an instance that changes a constant the candidate fixed, or that the procedure would reject, does not refute.
 - When in doubt, the executed finding stands: `refutation_valid: false`. Asymmetry is intentional — the gate ran code; the audit reasoned.
 
 Output (JSON, Write to the exact path the host names — default `$RUN_DIR/phase3_critique/refutation_recheck.json`):
@@ -26,7 +27,7 @@ Output (JSON, Write to the exact path the host names — default `$RUN_DIR/phase
   "rechecks": [
     {
       "finding_ref": "<copied from the disposition entry being judged>",
-      "claimed_flaw": "formalization_mismatch | arithmetic_error | illegal_instance | none_stated",
+      "claimed_flaw": "formalization_mismatch | arithmetic_error | illegal_instance | derivation_fails | none_stated",
       "refutation_valid": true | false,
       "reason": "<1-3 sentences, checkable; include the recomputation script+output when flaw (b) was claimed>"
     }

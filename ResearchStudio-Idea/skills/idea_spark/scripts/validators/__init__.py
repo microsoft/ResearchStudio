@@ -20,7 +20,7 @@ Validators:
                             (motivation with ≥ 2 why_prior_stopped, method_flow.steps[] with
                             linked_component + linked_falsification, feasibility 5 sub-verdicts +
                             overall, abstract_draft, core_claim). Hard fail — orchestrator blocks
-                            ship unless `--allow-incomplete-expansion` override is set.
+                            ship. Version 2 has no incomplete-output publication override.
   implementability_completeness — Phase 4.1.5 implementability audit covers every method step
                             (enriched_steps[] one-per-step, same ids/order, each with what_changes +
                             what_to_do_en/zh), records underspecified_points[], and carries no
@@ -45,12 +45,22 @@ from .threat_grounding import validate_threat_grounding
 from .alias_collateral_coverage import validate_alias_collateral_coverage
 from .user_direction import validate_user_direction
 from .chinese_word_order import validate_chinese_word_order
+from .motivation_opener import validate_motivation_opener
 
 
 def run_all_validators(phase2_path=None, phase3_path=None, phase4_path=None, phase1_path=None,
                        phase4_impl_path=None, phase2_select_path=None) -> list[dict]:
     """Run all validators given which phase outputs are available."""
     findings = []
+    from scripts.quality_contract import read, selection_findings, style_findings
+    p1 = read(phase1_path, {}) if phase1_path else {}
+    ctype = p1.get('intake', {}).get('contribution_type', 'method')
+    if phase2_select_path:
+        selection = read(phase2_select_path, {})
+        if selection.get('contract_version') == 2:
+            findings.extend(selection_findings(selection, ctype))
+    if phase2_path:
+        findings.extend(style_findings(read(phase2_path), ctype))
 
     if phase2_path and phase3_path and phase4_path:
         findings.extend(validate_kill_switch_integrity(phase2_path, phase3_path, phase4_path))
@@ -66,6 +76,7 @@ def run_all_validators(phase2_path=None, phase3_path=None, phase4_path=None, pha
     if phase4_path:
         findings.extend(validate_expansion_completeness(phase4_path))
         findings.extend(validate_chinese_word_order(phase4_path))
+        findings.extend(validate_motivation_opener(phase4_path))
 
     if phase4_path and phase4_impl_path:
         findings.extend(validate_implementability_completeness(phase4_path, phase4_impl_path))
