@@ -9,6 +9,8 @@ desktop.ini
 *.swp
 *.swo
 *~
+.claude/
+.codex/
 
 # ─── Python ──────────────────────────────────────────────────────────
 __pycache__/

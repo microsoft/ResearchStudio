@@ -88,6 +88,16 @@ bash install.sh
 npx github:microsoft/ResearchStudio
 ```
 
+On Windows, run the same installer from Git Bash (Git for Windows; WSL is not
+required):
+
+```bash
+bash install.sh
+```
+
+If Reel's native tools are missing, the installer prints the corresponding
+Windows package-manager commands.
+
 For usage, see [Idea](ResearchStudio-Idea/#usage) and [Reel](ResearchStudio-Reel/#usage).
 We recommend using these skills with model versions $\ge$ `claude-opus-4.6` or `gpt-5.5`.
 
