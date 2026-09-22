@@ -35,3 +35,8 @@ venv/
 *.log
 logs/
 .omc/
+
+# ─── ResearchStudio installer output (skills links, runtime settings) ───
+.claude/
+.codex/
+.qoder/
