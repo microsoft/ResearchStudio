@@ -149,6 +149,8 @@ function setupCarouselAutoScroll(){
   document.querySelectorAll(".carousel").forEach(track => {
     const wrap = track.closest(".carousel-wrap");
     if (track.dataset.looping === "1"){
+      // Already duplicated: re-measure the period (tile widths / padding can change on
+      // resize) without duplicating again, and resync the phase to the current position.
       const n = track.children.length / 2;
       const kids = track.children;
       const measuredWidth = kids[n] ? kids[n].offsetLeft - kids[0].offsetLeft : 0;
@@ -157,6 +159,7 @@ function setupCarouselAutoScroll(){
       if (state){
         state.singleWidth = singleWidth;
         state.position = wrapCarouselPhase(track.scrollLeft, singleWidth);
+        state._lastWritten = track.scrollLeft;
         track.dataset.period = String(singleWidth);
         carouselTracks.push(state);
       }
@@ -181,13 +184,38 @@ function setupCarouselAutoScroll(){
     const singleWidth = kids[n] ? kids[n].offsetLeft - kids[0].offsetLeft : track.scrollWidth;
     track.dataset.looping = "1";
     track.dataset.period = String(singleWidth);
-    const state = { el: track, singleWidth, position: 0, paused: false };
+    const state = { el: track, singleWidth, position: 0, paused: false, _lastWritten: 0 };
     carouselStateByTrack.set(track, state);
-    track.addEventListener("mouseenter", () => { state.paused = true; });
-    track.addEventListener("mouseleave", () => { state.paused = false; });
-    track.addEventListener("pointerdown", () => { state.paused = true; });
-    track.addEventListener("pointerup", () => { state.paused = false; });
-    track.addEventListener("pointercancel", () => { state.paused = false; });
+    // Manual scrolls (arrow buttons, touch, wheel) must resync the phase accumulator,
+    // otherwise the next tick would snap back to the stale phase. Our own writes are
+    // detected by comparing against the last value we wrote.
+    track.addEventListener("scroll", () => {
+      const st = carouselStateByTrack.get(track);
+      if (st && Math.abs(track.scrollLeft - st._lastWritten) > 0.5) st.position = track.scrollLeft;
+    });
+    // Look the state up by element instead of closing over `state`: setupCarouselAutoScroll
+    // is re-run on resize and replaces the state objects, so a stale closure would keep
+    // mutating an object the tick loop no longer reads (hover-pause silently breaks).
+    track.addEventListener("mouseenter", () => {
+      const st = carouselStateByTrack.get(track);
+      if (st) st.paused = true;
+    });
+    track.addEventListener("mouseleave", () => {
+      const st = carouselStateByTrack.get(track);
+      if (st) st.paused = false;
+    });
+    track.addEventListener("pointerdown", () => {
+      const st = carouselStateByTrack.get(track);
+      if (st) st.paused = true;
+    });
+    track.addEventListener("pointerup", () => {
+      const st = carouselStateByTrack.get(track);
+      if (st) st.paused = false;
+    });
+    track.addEventListener("pointercancel", () => {
+      const st = carouselStateByTrack.get(track);
+      if (st) st.paused = false;
+    });
     carouselTracks.push(state);
   });
 }
@@ -207,6 +235,7 @@ window.addEventListener("resize", () => {
       // writes, so deriving every frame from the DOM would discard the speed.
       if (s.paused){
         s.position = wrapCarouselPhase(s.el.scrollLeft, s.singleWidth);
+        s._lastWritten = s.el.scrollLeft;
         return;
       }
       // Shift by exactly one period so the wrap is phase-continuous and invisible.
@@ -214,7 +243,8 @@ window.addEventListener("resize", () => {
       // accumulates into a visible jump.
       const next = s.position + CAROUSEL_SPEED;
       s.position = next >= s.singleWidth ? next - s.singleWidth : next;
-      s.el.scrollLeft = s.position;
+      s._lastWritten = Math.round(s.position);
+      s.el.scrollLeft = s._lastWritten;
     });
   }
   requestAnimationFrame(tickCarousels);
