@@ -78,6 +78,33 @@ r3 = {'crossref': [P(source='crossref', title='Bridged Paper', doi='10.2/bp')],
       'open_alex': [P(source='open_alex', title='BRIDGED PAPER!', doi='10.2/bp')]}
 check('title bridges doi-less duplicate into the doi cluster', len(dedup(r3)) == 1)
 
+# --- dedup: independent reviews with a repeated title retain their own DOI ---
+review = {'type': 'peer-review', 'is_review_of': ['10.3/article']}
+r4 = {
+    'open_alex': [P(source='open_alex', title='Review for widget gating', doi='10.3/v2')],
+    'crossref': [
+        P(source='crossref', title='Review for widget gating',
+          crossref_metadata=review),
+        P(source='crossref', title='Review for widget gating', doi='10.3/article'),
+        P(source='crossref', title='Review for widget gating', doi='10.3/v1',
+          crossref_metadata=review),
+        P(source='crossref', title='Review for widget gating', doi='10.3/v2',
+          crossref_metadata=review),
+        P(source='crossref', title='Review for widget gating', doi='https://doi.org/10.3/V2',
+          crossref_metadata={'type': None, 'is_review_of': []}),
+    ],
+}
+review_rows, _ = rank(dedup(r4), ['widget gating'])
+by_doi = {p['doi']: p for p in review_rows}
+check('reviews keep separate identities and attach metadata to the exact DOI',
+      set(by_doi) == {None, '10.3/article', '10.3/v1', '10.3/v2'}
+      and by_doi[None]['crossref_metadata'] == review
+      and by_doi['10.3/v1']['crossref_metadata'] == review
+      and by_doi['10.3/v2']['crossref_metadata'] == review
+      and not any(by_doi[doi]['is_survey'] for doi in (None, '10.3/v1', '10.3/v2'))
+      and by_doi['10.3/v2']['found_in'] == ['open_alex', 'crossref']
+      and not by_doi['10.3/article'].get('crossref_metadata'))
+
 # --- rank: sort by score desc, surveys sunk, no dropping by default ---
 papers = [P(title='A Survey of Widget Gating', citation_count=999),
           P(title='Widget gating with held-out oracles', citation_count=1),

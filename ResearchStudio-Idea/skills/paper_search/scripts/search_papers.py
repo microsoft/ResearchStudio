@@ -329,6 +329,14 @@ def search_papers(
     return results
 
 
+def _print_crossref_metadata(paper):
+    metadata = paper.get("crossref_metadata", {})
+    if metadata.get("type"):
+        print(f"      Crossref type: {metadata['type']}")
+    if metadata.get("is_review_of"):
+        print("      is-review-of: " + ", ".join(metadata["is_review_of"]))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Search papers across multiple academic sources",
@@ -397,6 +405,7 @@ if __name__ == "__main__":
                 print(f"  [{i}] {p['title']}")
                 print(f"      Authors: {', '.join(p['authors'][:3])}{'...' if len(p['authors']) > 3 else ''}")
                 print(f"      Year: {p['year']}  Citations: {p['citation_count']}  Venue: {p['venue']}")
+                _print_crossref_metadata(p)
                 print(f"      URL: {p['url']}")
                 print()
             total += len(papers)
@@ -422,6 +431,7 @@ if __name__ == "__main__":
             print(f"      Authors: {', '.join(p['authors'][:3])}{'...' if len(p['authors']) > 3 else ''}")
             print(f"      Year: {p['year']}  Citations: {p['citation_count']}  Venue: {p['venue']}")
             print(f"      Sources: {srcs}" + (f"  {ids}" if ids else ""))
+            _print_crossref_metadata(p)
             print(f"      URL: {p['url']}")
             print()
         print(f"Total: {len(ranked)} unique papers (ranked; surveys sunk to the bottom).")
