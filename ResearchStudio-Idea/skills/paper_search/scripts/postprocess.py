@@ -83,12 +83,19 @@ _FILL_FIELDS = ("abstract", "venue", "publication_date", "doi", "arxiv_id",
                 "url", "year")
 
 
+def _is_peer_review(metadata) -> bool:
+    return bool(metadata and (metadata.get("type") == "peer-review"
+                             or metadata.get("is_review_of")))
+
+
 def dedup(results) -> list:
     """Collapse cross-source duplicates. `results` is {source: [paper, ...]}.
 
     Matching keys, in strength order: normalized DOI, normalized arXiv id,
     normalized title. A paper joins an existing cluster if ANY key matches
     (so a DOI-only record and a title-only record of the same paper merge).
+    Identified peer-review records match by their own DOI only, since distinct
+    reviews and decisions can have identical titles.
     Returns merged papers; each carries `found_in` (canonical-order source
     list) and max `citation_count`; missing fields are filled from dups.
     """
@@ -102,12 +109,30 @@ def dedup(results) -> list:
         for p in results.get(source) or []:
             ordered.append(p)
 
+    crossref_by_doi = {}
+    for p in ordered:
+        doi = norm_doi(p.get("doi"))
+        metadata = p.get("crossref_metadata")
+        if not doi or not metadata:
+            continue
+        prior = crossref_by_doi.get(doi, {})
+        types = (prior.get("type"), metadata.get("type"))
+        related = (prior.get("is_review_of", []) + metadata.get("is_review_of", []))
+        crossref_by_doi[doi] = {
+            "type": "peer-review" if "peer-review" in types else types[0] or types[1],
+            "is_review_of": list(dict.fromkeys(related)),
+        }
+
     for p in ordered:
         doi = norm_doi(p.get("doi"))
         arx = norm_arxiv(p.get("arxiv_id"))
         tit = title_norm(p.get("title"))
+        keys = ((doi, by_doi),)
+        metadata = crossref_by_doi.get(doi) or p.get("crossref_metadata")
+        if not _is_peer_review(metadata):
+            keys += ((arx, by_arxiv), (tit, by_title))
         idx = None
-        for key, table in ((doi, by_doi), (arx, by_arxiv), (tit, by_title)):
+        for key, table in keys:
             if key and key in table:
                 idx = table[key]
                 break
@@ -132,15 +157,18 @@ def dedup(results) -> list:
                     rec["source_metadata"] = [*existing, metadata]
         # register ALL keys of this paper against the cluster, so later
         # records matching by a different key still land in the same cluster
-        for key, table in ((doi, by_doi), (arx, by_arxiv), (tit, by_title)):
+        for key, table in keys:
             if key and key not in table:
                 table[key] = idx
 
     for rec in clusters:
         rec["found_in"].sort(key=_source_priority)
+        canonical_doi = norm_doi(rec.get("doi"))
+        metadata = crossref_by_doi.get(canonical_doi)
+        if metadata:
+            rec["crossref_metadata"] = metadata
         # The canonical DOI can be filled late by a title match. Never
         # expose a different known DOI's access metadata under that DOI.
-        canonical_doi = norm_doi(rec.get("doi"))
         if canonical_doi and rec.get("source_metadata"):
             matching = [
                 item for item in rec["source_metadata"]
@@ -160,7 +188,8 @@ def rank(papers, queries, min_score=None):
     words = term_words(queries)
     for p in papers:
         p["relevance_score"] = relevance_score(p, words)
-        p["is_survey"] = is_survey(p.get("title"))
+        p["is_survey"] = (not _is_peer_review(p.get("crossref_metadata"))
+                          and is_survey(p.get("title")))
     n_dropped = 0
     if min_score is not None:
         kept = [p for p in papers if p["relevance_score"] >= min_score]
