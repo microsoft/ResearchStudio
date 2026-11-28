@@ -7,8 +7,9 @@
 #   • which agent runtimes to link into — Claude Code, Codex, or both
 #
 # Auto-detects OS + Python, installs each bundle's native and Python deps,
-# and symlinks the selected skills into <repo-root>/.claude/skills/ and/or
-# <repo-root>/.codex/skills/ (both git-ignored). Idempotent — safe to re-run.
+# and installs the selected skills into <repo-root>/.claude/skills/ and/or
+# <repo-root>/.codex/skills/ (both git-ignored; junctioned on Windows with a
+# copy fallback). Idempotent — safe to re-run.
 #
 # Usage:
 #   bash install.sh                              # interactive prompts
@@ -142,13 +143,13 @@ case "$(uname -s)" in
     elif command -v dnf     >/dev/null 2>&1; then PKG=dnf
     elif command -v pacman  >/dev/null 2>&1; then PKG=pacman
     else PKG=none; fi ;;
-  MINGW*|MSYS*|CYGWIN*|Windows*)
-    echo "Windows shell detected — install.sh is a bash script. Run it inside WSL (Ubuntu):"
-    echo "    wsl --install        # one-time, then reopen Ubuntu and re-run: bash install.sh"
-    exit 1 ;;
+  MINGW*|MSYS*|CYGWIN*|Windows*) OS=windows; PKG=none ;;
   *) OS=unknown; PKG=none ;;
 esac
 echo "  os:           $OS  (package manager: $PKG)"
+if [ "$OS" = windows ]; then
+  export PYTHONUTF8="${PYTHONUTF8:-1}"
+fi
 
 # ---------------------------------------------------------------------------
 # 1) Python detection — Reel needs ≥3.10, Idea-only is happy with ≥3.9
@@ -207,6 +208,49 @@ pip_install() {
   "$PY" -m pip install --user --upgrade "$@"
 }
 
+# remove_skill_destination <path> — safely remove a prior skill install.
+# cmd rmdir removes Windows junctions without traversing their target.
+remove_skill_destination() {
+  local dst="$1"
+  [ -e "$dst" ] || [ -L "$dst" ] || return 0
+
+  if [ "$OS" = windows ] && command -v cygpath >/dev/null 2>&1 && command -v cmd.exe >/dev/null 2>&1; then
+    local dst_win
+    dst_win="$(cygpath -w "$dst")"
+    MSYS_NO_PATHCONV=1 cmd.exe /c rmdir "$dst_win" >/dev/null 2>&1 || rm -rf "$dst"
+  else
+    rm -rf "$dst"
+  fi
+}
+
+# install_skill <runtime> <src> <dst> <name> — install one skill for one runtime.
+install_skill() {
+  local runtime="$1" src="$2" dst="$3" name="$4"
+  remove_skill_destination "$dst"
+
+  if [ "$OS" = windows ] && command -v cygpath >/dev/null 2>&1 && command -v cmd.exe >/dev/null 2>&1; then
+    local src_win dst_win
+    src_win="$(cygpath -w "$src")"
+    dst_win="$(cygpath -w "$dst")"
+    if MSYS_NO_PATHCONV=1 cmd.exe /c mklink /J "$dst_win" "$src_win" >/dev/null; then
+      printf '   • %-7s %s (junction) → %s\n' "$runtime" "$name" "$src"
+      return
+    fi
+
+    warn "could not create a Windows junction for $name — copying instead"
+  fi
+
+  if [ "$OS" = windows ]; then
+    printf '   • %-7s %s (copied) ← %s\n' "$runtime" "$name" "$src"
+  else
+    ln -s "$src" "$dst"
+    printf '   • %-7s %s → %s\n' "$runtime" "$name" "$src"
+    return
+  fi
+
+  cp -R "$src" "$dst"
+}
+
 # link_skill <abs_src_dir> <link_name>  — into every selected runtime's skills dir.
 link_skill() {
   local src="$1" name="$2"
@@ -214,14 +258,12 @@ link_skill() {
   if [ "$USE_CLAUDE" = 1 ]; then
     mkdir -p "$CLAUDE_SKILLS_DIR"
     local dst="$CLAUDE_SKILLS_DIR/$name"
-    rm -rf "$dst"; ln -s "$src" "$dst"
-    printf '   • claude  %s → %s\n' "$name" "$src"
+    install_skill claude "$src" "$dst" "$name"
   fi
   if [ "$USE_CODEX" = 1 ]; then
     mkdir -p "$CODEX_SKILLS_DIR"
     local dst="$CODEX_SKILLS_DIR/$name"
-    rm -rf "$dst"; ln -s "$src" "$dst"
-    printf '   • codex   %s → %s\n' "$name" "$src"
+    install_skill codex "$src" "$dst" "$name"
   fi
 }
 
@@ -372,7 +414,14 @@ if [ "$USE_REEL" = 1 ]; then
       ;;
     dnf)    sudo dnf install -y poppler-utils libreoffice ffmpeg || warn "native tools failed — Reel features degrade; install manually if needed" ;;
     pacman) sudo pacman -S --noconfirm poppler libreoffice-fresh ffmpeg || warn "native tools failed — Reel features degrade; install manually if needed" ;;
-    *)      warn "no known package manager — install these manually: ${REEL_APT[*]}" ;;
+    *)
+      warn "no known package manager — install these manually: ${REEL_APT[*]}"
+      if [ "$OS" = windows ]; then
+        warn "with winget: winget install --id oschwartz10612.Poppler --exact"
+        warn "           winget install --id TheDocumentFoundation.LibreOffice --exact"
+        warn "           winget install --id Gyan.FFmpeg --exact"
+      fi
+      ;;
   esac
 
   log "Python dependencies (PyMuPDF, Pillow, numpy, python-docx, qrcode, playwright, imageio-ffmpeg, edge-tts)"
