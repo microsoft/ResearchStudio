@@ -151,6 +151,10 @@ def dedup(results) -> list:
             for f in _FILL_FIELDS:
                 if not rec.get(f) and p.get(f):
                     rec[f] = p[f]
+            for metadata in p.get("source_metadata") or []:
+                existing = rec.get("source_metadata") or []
+                if metadata not in existing:
+                    rec["source_metadata"] = [*existing, metadata]
         # register ALL keys of this paper against the cluster, so later
         # records matching by a different key still land in the same cluster
         for key, table in keys:
@@ -159,9 +163,21 @@ def dedup(results) -> list:
 
     for rec in clusters:
         rec["found_in"].sort(key=_source_priority)
-        metadata = crossref_by_doi.get(norm_doi(rec.get("doi")))
+        canonical_doi = norm_doi(rec.get("doi"))
+        metadata = crossref_by_doi.get(canonical_doi)
         if metadata:
             rec["crossref_metadata"] = metadata
+        # The canonical DOI can be filled late by a title match. Never
+        # expose a different known DOI's access metadata under that DOI.
+        if canonical_doi and rec.get("source_metadata"):
+            matching = [
+                item for item in rec["source_metadata"]
+                if norm_doi(item.get("doi")) in ("", canonical_doi)
+            ]
+            if matching:
+                rec["source_metadata"] = matching
+            else:
+                del rec["source_metadata"]
     return clusters
 
 

@@ -54,22 +54,23 @@ def search_papers_by_open_alex(
             break
 
         for work in results:
+            metadata = _source_metadata(work)
             papers.append({
                 "title": work.get("title", ""),
                 "authors": [
-                    authorship["author"]["display_name"]
-                    for authorship in work.get("authorships", [])
-                    if authorship.get("author", {}).get("display_name")
+                    name for author in metadata["authors"]
+                    if (name := author["raw_name"] or author["display_name"])
                 ],
                 "year": work.get("publication_year"),
                 "abstract": _reconstruct_abstract(work.get("abstract_inverted_index")),
                 "url": work.get("doi") or work.get("id", ""),
-                "venue": (work.get("primary_location", {}).get("source") or {}).get("display_name", ""),
+                "venue": ((work.get("primary_location") or {}).get("source") or {}).get("display_name", ""),
                 "citation_count": work.get("cited_by_count", 0),
                 "publication_date": work.get("publication_date", ""),
                 "source": "open_alex",
                 "doi": (work.get("doi") or "").replace("https://doi.org/", "") or None,
                 "arxiv_id": None,
+                "source_metadata": [metadata],
             })
 
         page += 1
@@ -81,6 +82,48 @@ def search_papers_by_open_alex(
         time.sleep(1)  # Be polite to the API
 
     return papers[:max_results]
+
+
+def _source_metadata(work: dict) -> dict:
+    """Keep provider-supplied identity and access metadata for downstream readers."""
+    ids = work.get("ids") or {}
+    authors = []
+    for authorship in work.get("authorships") or []:
+        author = authorship.get("author") or {}
+        authors.append({
+            "raw_name": (authorship.get("raw_author_name") or "").strip() or None,
+            "display_name": author.get("display_name"),
+            "id": author.get("id"),
+            "orcid": author.get("orcid"),
+        })
+
+    locations = []
+    for location in (work.get("best_oa_location"), work.get("primary_location"),
+                     *(work.get("locations") or [])):
+        if not location:
+            continue
+        entry = {
+            "landing_page_url": location.get("landing_page_url"),
+            "pdf_url": location.get("pdf_url"),
+            "is_oa": location.get("is_oa"),
+            "license": location.get("license"),
+            "version": location.get("version"),
+            "source_id": (location.get("source") or {}).get("id"),
+        }
+        if (entry["landing_page_url"] or entry["pdf_url"]) and entry not in locations:
+            locations.append(entry)
+
+    return {
+        "source": "open_alex",
+        "id": work.get("id"),
+        "doi": work.get("doi") or ids.get("doi"),
+        "pmid": ids.get("pmid"),
+        "pmcid": ids.get("pmcid"),
+        "is_oa": (work.get("open_access") or {}).get("is_oa"),
+        "oa_status": (work.get("open_access") or {}).get("oa_status"),
+        "authors": authors,
+        "locations": locations,
+    }
 
 
 def _reconstruct_abstract(inverted_index) -> str:  # dict | None (3.9-safe: no runtime union)
