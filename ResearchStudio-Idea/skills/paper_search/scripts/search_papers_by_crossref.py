@@ -83,6 +83,14 @@ def search_papers_by_crossref(
                 "source": "crossref",
                 "doi": item.get("DOI"),
                 "arxiv_id": None,
+                "crossref_metadata": {
+                    "type": item.get("type"),
+                    "is_review_of": [
+                        relation["id"]
+                        for relation in (item.get("relation") or {}).get("is-review-of", [])
+                        if relation.get("id-type") == "doi" and relation.get("id")
+                    ],
+                },
             })
 
         offset += limit

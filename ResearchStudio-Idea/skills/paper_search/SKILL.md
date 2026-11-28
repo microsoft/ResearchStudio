@@ -146,7 +146,8 @@ structured dict rather than CLI text output). This is rarely necessary — see
       "publication_date": str,
       "source": str,
       "doi": str | None,
-      "arxiv_id": str | None
+      "arxiv_id": str | None,
+      "crossref_metadata": {"type": str | None, "is_review_of": list[str]}  (optional)
     }, ...
   ],
   "semantic_scholar": [...],
