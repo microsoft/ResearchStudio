@@ -3,6 +3,7 @@
 
 import argparse
 import re
+import sys
 import time
 
 from _http_runtime import create_session, request
@@ -41,7 +42,11 @@ def search_papers_by_dblp(
 
         response = request(session, "GET", url, source="dblp", params=params)
         response.raise_for_status()
-        data = response.json()
+        try:
+            data = _response_json(response)
+        except ValueError as exc:
+            print(f"[dblp] {exc}; stopping pagination.", file=sys.stderr)
+            break
 
         hits = data.get("result", {}).get("hits", {})
         total = int(hits.get("@total", 0))
@@ -94,6 +99,30 @@ def search_papers_by_dblp(
         time.sleep(0.5)  # Be polite to the Crossref API
 
     return papers
+
+
+def _response_json(response) -> dict:
+    """Decode a DBLP response and report a useful preview for invalid payloads."""
+    body = response.text.strip()
+    if not body:
+        raise ValueError(f"empty response (HTTP {response.status_code})")
+
+    content_type = response.headers.get("Content-Type", "")
+    try:
+        data = response.json()
+    except ValueError as exc:
+        preview = " ".join(body[:200].splitlines())
+        raise ValueError(
+            f"invalid JSON response (HTTP {response.status_code}, "
+            f"Content-Type: {content_type or 'unknown'}): {preview!r}"
+        ) from exc
+
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"unexpected JSON payload type {type(data).__name__} "
+            f"(HTTP {response.status_code})"
+        )
+    return data
 
 
 def _fetch_abstract_from_doi(url: str, session=None) -> str:
